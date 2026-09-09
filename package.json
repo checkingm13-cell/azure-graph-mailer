@@ -1,0 +1,33 @@
+{
+  "name": "azure-graph-mailer",
+  "version": "1.0.0",
+  "description": "Multi-Account Industrial Email Dispatcher using Microsoft Graph API & Azure Communication Services",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "node --watch src/app.js",
+    "test:db": "node tests/db-test.js",
+    "test:pool": "node tests/pool-test.js",
+    "test:auth": "node tests/graph-auth-test.js"
+  },
+  "keywords": [
+    "microsoft-graph",
+    "azure",
+    "email-automation",
+    "multi-account",
+    "cold-email",
+    "queue"
+  ],
+  "author": "Antigravity Engineering",
+  "license": "ISC",
+  "dependencies": {
+    "@azure/communication-email": "^1.0.0",
+    "@azure/identity": "^4.2.0",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
+    "cors": "^2.8.5",
+    "csv-parser": "^3.0.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}

@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azure Multi-Account Mailer Engine</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- Top Header Bar -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="app-logo">⚡</div>
+      <div>
+        <h1 class="app-title">Azure Multi-Account Mailer</h1>
+        <p class="app-subtitle">High-Scale Microsoft Graph &amp; ACS Industrial Engine</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <div id="workerStateBadge" class="status-badge active">
+        <span class="dot"></span>
+        <span id="workerStatusText">WORKER RUNNING</span>
+      </div>
+      <button id="btnToggleWorker" class="btn btn-secondary btn-sm">⏸️ Pause Worker</button>
+    </div>
+  </header>
+
+  <!-- Global Metrics Strip -->
+  <section class="metrics-strip">
+    <div class="metric-card">
+      <div class="metric-label">Active Sender Pool</div>
+      <div class="metric-value text-sky" id="statActiveAccounts">--</div>
+      <div class="metric-sub" id="statTotalAccounts">-- registered accounts</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Daily Capacity (24h)</div>
+      <div class="metric-value text-emerald" id="statDailyCapacity">--</div>
+      <div class="metric-sub" id="statSentToday">-- sent today</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Queue Backlog</div>
+      <div class="metric-value text-amber" id="statQueuePending">0</div>
+      <div class="metric-sub" id="statQueueSending">0 currently in transit</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Total Contacts</div>
+      <div class="metric-value text-purple" id="statTotalContacts">--</div>
+      <div class="metric-sub">Deduplicated Directory</div>
+    </div>
+  </section>
+
+  <!-- Main Workspace -->
+  <main class="main-container">
+    
+    <!-- Tab Navigation -->
+    <nav class="nav-tabs">
+      <button class="nav-tab active" data-tab="tab-overview">📊 Dashboard &amp; Queue</button>
+      <button class="nav-tab" data-tab="tab-accounts">👥 Sender Accounts Pool</button>
+      <button class="nav-tab" data-tab="tab-campaigns">🚀 Launch Campaign</button>
+      <button class="nav-tab" data-tab="tab-templates">✉️ Email Templates</button>
+      <button class="nav-tab" data-tab="tab-contacts">📋 Contacts Directory</button>
+      <button class="nav-tab" data-tab="tab-logs">📜 Audit Logs</button>
+    </nav>
+
+    <!-- ================================================================= -->
+    <!-- TAB 1: OVERVIEW & QUEUE -->
+    <!-- ================================================================= -->
+    <section id="tab-overview" class="tab-pane active">
+      <div class="section-header">
+        <h2>Live Multi-Account Sender Pool</h2>
+        <span class="section-desc">Fair Round-Robin rotation with rolling 24h limits</span>
+      </div>
+
+      <!-- Account Pool Grid -->
+      <div id="accountsPoolGrid" class="accounts-grid">
+        <div class="loading-placeholder">Loading account pool status...</div>
+      </div>
+
+      <!-- Live Pipeline Table -->
+      <div class="panel-card" style="margin-top: 24px;">
+        <div class="panel-header">
+          <h3>In-Flight Queue Pipeline</h3>
+          <span class="badge badge-queued" id="badgeQueueTotal">0 in pipeline</span>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Recipient Email</th>
+                <th>Author Name</th>
+                <th>Assigned Sender Account</th>
+                <th>Subject</th>
+                <th>Status</th>
+                <th>Attempts</th>
+              </tr>
+            </thead>
+            <tbody id="queueTableBody">
+              <tr><td colspan="7" class="table-empty">Queue is empty. Ready for new campaigns.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- TAB 2: SENDER ACCOUNTS POOL (1 TO 40+ ACCOUNTS) -->
+    <!-- ================================================================= -->
+    <section id="tab-accounts" class="tab-pane">
+      <div class="two-col-layout">
+        <!-- Add Account Card -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <h3>Add / Update Sender Account</h3>
+          </div>
+          <form id="formAddAccount">
+            <div class="form-group">
+              <label class="form-label">Sender Email Address</label>
+              <input type="email" id="accEmail" class="form-input" placeholder="e.g. editor@mail.theparipexjournal.com" required>
+              <span class="form-help">Must be a Shared Mailbox or User Mailbox in your M365 tenant.</span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Display Name</label>
+              <input type="text" id="accDisplayName" class="form-input" placeholder="e.g. Editorial Office - Paripex" required>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Daily Limit (24h)</label>
+                <input type="number" id="accDailyLimit" class="form-input" value="500" min="50" max="2000" required>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Cooldown (Seconds)</label>
+                <input type="number" id="accCooldown" class="form-input" value="60" min="5" max="3600" required>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Dispatch Engine</label>
+              <select id="accProvider" class="form-select">
+                <option value="GRAPH_API">Microsoft Graph API (Default)</option>
+                <option value="AZURE_ACS">Azure Communication Services (ACS)</option>
+              </select>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-block">➕ Add Account to Pool</button>
+          </form>
+        </div>
+
+        <!-- Accounts List Card -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <h3>Registered Sender Accounts</h3>
+            <span id="badgeAccountCount" class="badge badge-completed">0 accounts</span>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Sender Email</th>
+                  <th>Engine</th>
+                  <th>Daily Quota</th>
+                  <th>Cooldown</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="accountsTableBody">
+                <tr><td colspan="5" class="table-empty">No accounts registered yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- TAB 3: CAMPAIGNS & LAUNCH -->
+    <!-- ================================================================= -->
+    <section id="tab-campaigns" class="tab-pane">
+      <div class="two-col-layout">
+        <!-- Launch Form -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <h3>Broadcast New Campaign</h3>
+            <span class="section-desc">Rotates automatically across all active accounts</span>
+          </div>
+          <form id="formCreateCampaign">
+            <div class="form-group">
+              <label class="form-label">Campaign Title</label>
+              <input type="text" id="campName" class="form-input" placeholder="e.g. Paripex Sept 2026 Volume 14 Issue 9" required>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Select Email Template</label>
+              <select id="campTemplateSelect" class="form-select" required>
+                <option value="">-- Choose Template --</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Target Audience Scope</label>
+              <label class="radio-label">
+                <input type="radio" name="audienceScope" value="all" checked>
+                <span>Broadcast to ALL Active Contacts in Directory</span>
+              </label>
+            </div>
+
+            <div class="card-callout">
+              <strong>💡 Scale-Up Safe Dispatch:</strong>
+              Emails are automatically distributed across your entire sender pool. With 10 accounts at a 60s cooldown, you achieve 1 send every 6 seconds with zero spam flags.
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-block" style="margin-top: 18px;">
+              🚀 Queue &amp; Start Campaign
+            </button>
+          </form>
+        </div>
+
+        <!-- Recent Campaigns Table -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <h3>Campaign History</h3>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Name</th>
+                  <th>Template</th>
+                  <th>Status</th>
+                  <th>Progress</th>
+                </tr>
+              </thead>
+              <tbody id="campaignsTableBody">
+                <tr><td colspan="5" class="table-empty">No campaigns executed yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- TAB 4: EMAIL TEMPLATES -->
+    <!-- ================================================================= -->
+    <section id="tab-templates" class="tab-pane">
+      <div class="two-col-layout">
+        <!-- Create / Edit Template -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <h3>Create / Edit Template</h3>
+          </div>
+          <form id="formTemplate">
+            <input type="hidden" id="tplId">
+            <div class="form-group">
+              <label class="form-label">Template Identifier</label>
+              <input type="text" id="tplName" class="form-input" placeholder="e.g. Call for Papers - Medical Track" required>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Subject Line</label>
+              <div class="tag-pills">
+                <span class="tag-pill" data-target="tplSubject" data-tag="{{Name}}">+ {{Name}}</span>
+                <span class="tag-pill" data-target="tplSubject" data-tag="{{Paper Title}}">+ {{Paper Title}}</span>
+              </div>
+              <input type="text" id="tplSubject" class="form-input" placeholder="Invitation: {{Paper Title}} - Journal ParipEx" required>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Email Body (HTML supported)</label>
+              <div class="tag-pills">
+                <span class="tag-pill" data-target="tplBody" data-tag="{{Name}}">+ {{Name}}</span>
+                <span class="tag-pill" data-target="tplBody" data-tag="{{Paper Title}}">+ {{Paper Title}}</span>
+                <span class="tag-pill" data-target="tplBody" data-tag="{{Affiliation}}">+ {{Affiliation}}</span>
+                <span class="tag-pill" data-target="tplBody" data-tag="{{Date}}">+ {{Date}}</span>
+              </div>
+              <textarea id="tplBody" class="form-textarea font-mono" rows="10" required></textarea>
+            </div>
+
+            <button type="submit" class="btn btn-primary">💾 Save Template</button>
+            <button type="button" id="btnResetTemplate" class="btn btn-secondary" style="margin-left: 8px;">Clear</button>
+          </form>
+        </div>
+
+        <!-- Templates List -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <h3>Saved Templates</h3>
+          </div>
+          <div id="templatesList" class="templates-grid">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- TAB 5: CONTACTS DIRECTORY -->
+    <!-- ================================================================= -->
+    <section id="tab-contacts" class="tab-pane">
+      <div class="two-col-layout">
+        <!-- CSV Uploader -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <h3>Import Authors via CSV</h3>
+            <span class="section-desc">Supports flexible columns (Email, Name, Title, Org)</span>
+          </div>
+          <form id="formUploadCsv">
+            <div class="file-drop-zone" id="dropZone">
+              <div style="font-size: 32px; margin-bottom: 8px;">📄</div>
+              <div style="font-weight: 600;">Drag &amp; Drop CSV File Here</div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">or click to browse from your computer</div>
+              <input type="file" id="csvFileInput" accept=".csv" style="display: none;">
+            </div>
+            <div id="selectedFileName" style="margin-top: 8px; font-size: 12px; font-family: var(--font-mono); color: var(--sky);"></div>
+            <button type="submit" id="btnUploadCsv" class="btn btn-primary btn-block" style="margin-top: 14px;" disabled>
+              📥 Parse &amp; Save Contacts
+            </button>
+          </form>
+        </div>
+
+        <!-- Directory Table -->
+        <div class="panel-card">
+          <div class="panel-header">
+            <h3>Recent Contacts (Last 100)</h3>
+            <span id="badgeContactTotal" class="badge badge-completed">0 contacts</span>
+          </div>
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Author Name</th>
+                  <th>Paper Title</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="contactsTableBody">
+                <tr><td colspan="4" class="table-empty">No contacts imported yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================= -->
+    <!-- TAB 6: AUDIT LOGS -->
+    <!-- ================================================================= -->
+    <section id="tab-logs" class="tab-pane">
+      <div class="panel-card">
+        <div class="panel-header">
+          <h3>Real-Time Audit Log Terminal</h3>
+          <button id="btnRefreshLogs" class="btn btn-secondary btn-sm">↻ Refresh</button>
+        </div>
+        <div id="terminalLogs" class="terminal-window">
+          <div class="terminal-line">[SYSTEM] Initializing audit log stream...</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
