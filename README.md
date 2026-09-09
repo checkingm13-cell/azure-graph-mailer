@@ -32,6 +32,7 @@ This folder is configured as an **Obsidian-ready vault**. You can open `D:\proje
 * 🏗️ **[[docs/ARCHITECTURE_AND_SYSTEM_DESIGN]]**: Detailed multi-account rotation algorithm, database schema, and Graph API vs ACS technical comparison.
 * 📜 **[[docs/MICROSOFT_GRAPH_API_SPEC_AND_PERMISSIONS]]**: Deep-dive into Microsoft Graph `Mail.Send` permissions, `POST /users/{id}/sendMail` schema, `202 Accepted` responses, and 429 throttling policies.
 * 🛡️ **[[docs/MULTI_ACCOUNT_WARMUP_AND_ANTI_SPAM]]**: Deliverability physics, Google Multi-Send bounce post-mortem, SPF/DKIM/DMARC setup, and 4-week mailbox warmup ramp schedule.
+* 📬 **[[docs/M365_SHARED_MAILBOX_SETUP_GUIDE]]**: Complete guide for creating unlimited FREE Shared Mailboxes in M365 Admin Center and assigning Send-As permissions.
 * 🚀 **[[docs/DEPLOYMENT_GUIDE]]**: Step-by-step instructions for deploying to Azure App Service Linux with "Always On" persistence.
 
 ---
@@ -103,6 +104,7 @@ D:\projects\azure-graph-mailer\
 │   ├── ARCHITECTURE_AND_SYSTEM_DESIGN.md
 │   ├── MICROSOFT_GRAPH_API_SPEC_AND_PERMISSIONS.md
 │   ├── MULTI_ACCOUNT_WARMUP_AND_ANTI_SPAM.md
+│   ├── M365_SHARED_MAILBOX_SETUP_GUIDE.md
 │   └── DEPLOYMENT_GUIDE.md
 ├── src/
 │   ├── app.js                  # Main Express server entry point

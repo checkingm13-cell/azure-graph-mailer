@@ -8,7 +8,8 @@
     "dev": "node --watch src/app.js",
     "test:db": "node tests/db-test.js",
     "test:pool": "node tests/pool-test.js",
-    "test:auth": "node tests/graph-auth-test.js"
+    "test:auth": "node tests/graph-auth-test.js",
+    "test:send": "node tests/send-real-test.js"
   },
   "keywords": [
     "microsoft-graph",
