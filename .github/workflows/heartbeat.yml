@@ -1,0 +1,17 @@
+name: Azure 24/7 Keep-Alive Heartbeat
+
+on:
+  schedule:
+    # Runs every 10 minutes (Azure F1 sleeps after 20 minutes of inactivity)
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Azure Health Endpoint
+        run: |
+          echo "💓 Sending keep-alive heartbeat to Azure Mailer..."
+          response=$(curl -s -m 15 "https://paripex-mailer-app.azurewebsites.net/health")
+          echo "Response: $response"
