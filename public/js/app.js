@@ -916,7 +916,9 @@ document.addEventListener('DOMContentLoaded', () => {
               <button type="button" class="btn btn-danger btn-sm btn-cancel-camp" data-id="${c.id}" style="padding: 3px 8px; font-size: 11px;">Cancel</button>
             `;
           } else {
-            actionsHtml = `<span style="color: var(--text-muted); font-size: 11px;">Completed</span>`;
+            actionsHtml = `
+              <button type="button" class="btn btn-secondary btn-sm btn-clone-camp" data-id="${c.id}" data-name="${escapeHtml(c.name)}" style="padding: 3px 8px; font-size: 11px; background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4); color: var(--sky);">🔄 Re-run / Clone</button>
+            `;
           }
 
           const timeDisplay = c.started_at 
@@ -937,6 +939,41 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join('');
 
         // Wire Action buttons
+        campaignsTableBody.querySelectorAll('.btn-clone-camp').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const campId = btn.dataset.id;
+            const campName = btn.dataset.name;
+            const confirmed = confirm(`🔄 Re-run / Clone Campaign "${campName}"?\n\nThis will take the contacts from this campaign and queue a new dispatch run without needing to re-upload the CSV file.`);
+            if (!confirmed) return;
+
+            btn.disabled = true;
+            btn.textContent = '⏳ Queuing...';
+
+            try {
+              const res = await fetch(`/api/campaigns/${campId}/clone`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'all' })
+              });
+              const data = await res.json();
+              if (data.ok) {
+                alert(`🎉 SUCCESS!\n\n${data.message}`);
+                loadCampaigns();
+                refreshTelemetry();
+                switchTab('tab-overview');
+              } else {
+                alert(data.error || 'Failed to re-run campaign.');
+                btn.disabled = false;
+                btn.textContent = '🔄 Re-run';
+              }
+            } catch (err) {
+              alert('Error re-running campaign: ' + err.message);
+              btn.disabled = false;
+              btn.textContent = '🔄 Re-run';
+            }
+          });
+        });
+
         campaignsTableBody.querySelectorAll('.btn-pause-camp').forEach((btn) => {
           btn.addEventListener('click', async () => {
             await fetch(`/api/campaigns/${btn.dataset.id}/pause`, { method: 'POST' });

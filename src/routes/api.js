@@ -607,6 +607,86 @@ router.post('/campaigns/:id/cancel', (req, res) => {
   res.json({ ok: true, message: `Campaign "${camp.name}" cancelled successfully.` });
 });
 
+// 6C. CLONE / RE-RUN CAMPAIGN (Re-use existing campaign audience)
+router.post('/campaigns/:id/clone', (req, res) => {
+  const campId = req.params.id;
+  const { newName, templateId, mode = 'all' } = req.body || {};
+
+  const origCamp = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campId);
+  if (!origCamp) return res.status(404).json({ ok: false, error: 'Campaign not found' });
+
+  const targetTemplateId = templateId || origCamp.template_id;
+  const template = db.prepare('SELECT * FROM templates WHERE id = ?').get(targetTemplateId);
+  if (!template) return res.status(404).json({ ok: false, error: 'Template not found' });
+
+  let query = 'SELECT email, name FROM queue WHERE campaign_id = ?';
+  if (mode === 'failed_only') {
+    query += " AND status = 'failed'";
+  }
+  const items = db.prepare(query).all(campId);
+  if (!items || items.length === 0) {
+    return res.status(400).json({ ok: false, error: 'No contacts found to re-run for this campaign.' });
+  }
+
+  // Deduplicate
+  const uniqueItems = [];
+  const seen = new Set();
+  for (const it of items) {
+    if (!seen.has(it.email.toLowerCase())) {
+      seen.add(it.email.toLowerCase());
+      uniqueItems.push(it);
+    }
+  }
+
+  const campaignName = (newName && newName.trim()) 
+    ? newName.trim() 
+    : `${origCamp.name}_Rerun_${Date.now().toString().slice(-4)}`;
+
+  const nowSql = formatSqliteDateTime(new Date());
+
+  const cloneTx = db.transaction(() => {
+    const campRes = db.prepare(`
+      INSERT INTO campaigns (name, template_id, status, total_count, scheduled_at)
+      VALUES (?, ?, 'QUEUED', ?, ?)
+    `).run(campaignName, targetTemplateId, uniqueItems.length, nowSql);
+
+    const newCampId = campRes.lastInsertRowid;
+
+    const queueInsert = db.prepare(`
+      INSERT INTO queue (campaign_id, contact_id, email, name, subject, rendered_html, status, scheduled_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'queued', ?)
+    `);
+
+    for (const it of uniqueItems) {
+      const contact = db.prepare('SELECT id, paper_title, affiliation FROM contacts WHERE email = ?').get(it.email);
+      const cObj = {
+        name: it.name || '',
+        paper_title: contact?.paper_title || '',
+        affiliation: contact?.affiliation || ''
+      };
+      const renderedSubject = renderTemplate(template.subject, cObj);
+      const renderedBody = renderTemplate(template.body_html, cObj);
+      queueInsert.run(newCampId, contact?.id || null, it.email, it.name || '', renderedSubject, renderedBody, nowSql);
+    }
+
+    db.prepare(`
+      INSERT INTO logs (campaign_id, level, message)
+      VALUES (?, 'INFO', ?)
+    `).run(newCampId, `Campaign "${campaignName}" created via Re-run/Clone of Campaign #${campId} (${uniqueItems.length} recipients).`);
+
+    return { newCampId, campaignName, count: uniqueItems.length };
+  });
+
+  const result = cloneTx();
+  res.json({
+    ok: true,
+    message: `Campaign "${result.campaignName}" cloned successfully with ${result.count} recipients queued!`,
+    campaignId: result.newCampId,
+    name: result.campaignName,
+    totalQueued: result.count
+  });
+});
+
 router.get('/campaigns/active-monitor', (req, res) => {
   const status = queueWorker.getStatus();
   res.json({
