@@ -23,6 +23,10 @@ jobs:
         with:
           node-version: '24.x'
 
+      - name: Install dependencies
+        run: |
+          npm install --omit=dev
+
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
@@ -56,4 +60,3 @@ jobs:
           app-name: 'paripex-mailer-app'
           slot-name: 'Production'
           package: .
-          
