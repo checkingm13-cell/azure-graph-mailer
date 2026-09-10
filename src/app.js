@@ -23,6 +23,16 @@ app.use(express.static(path.resolve(__dirname, '../public')));
 // Mount API routes
 app.use('/api', apiRoutes);
 
+// Lightweight Health & Heartbeat Endpoint (For Uptime Monitors & Azure Health Checks)
+app.get(['/health', '/heartbeat', '/ping'], (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    uptime: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString(),
+    worker: queueWorker.isRunning && !queueWorker.isPaused ? 'active' : 'idle'
+  });
+});
+
 // Seed default sender account if pool is empty
 function seedDefaultAccount() {
   const count = db.prepare('SELECT COUNT(*) AS total FROM accounts').get().total;
