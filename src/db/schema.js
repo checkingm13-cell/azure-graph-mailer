@@ -90,6 +90,29 @@ CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email);
 
 function initSchema(db) {
   db.exec(schemaSql);
+
+  // Safe additive migrations for scheduling
+  try {
+    const campaignCols = db.prepare("PRAGMA table_info(campaigns)").all().map(c => c.name);
+    if (!campaignCols.includes('scheduled_at')) {
+      db.exec("ALTER TABLE campaigns ADD COLUMN scheduled_at TEXT");
+    }
+    if (!campaignCols.includes('started_at')) {
+      db.exec("ALTER TABLE campaigns ADD COLUMN started_at TEXT");
+    }
+    if (!campaignCols.includes('completed_at')) {
+      db.exec("ALTER TABLE campaigns ADD COLUMN completed_at TEXT");
+    }
+
+    const queueCols = db.prepare("PRAGMA table_info(queue)").all().map(c => c.name);
+    if (!queueCols.includes('scheduled_at')) {
+      db.exec("ALTER TABLE queue ADD COLUMN scheduled_at TEXT");
+    }
+
+    db.exec("CREATE INDEX IF NOT EXISTS idx_queue_schedule ON queue(status, scheduled_at, id)");
+  } catch (err) {
+    console.warn('[Schema] Migration notice:', err.message);
+  }
 }
 
 module.exports = { initSchema };

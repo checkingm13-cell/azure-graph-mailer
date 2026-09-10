@@ -8,10 +8,17 @@ const multer = require('multer');
 const fs = require('fs');
 const csv = require('csv-parser');
 const XLSX = require('xlsx');
+const config = require('../config/env');
 const db = require('../db');
 const AccountPool = require('../services/accountPool');
 const queueWorker = require('../services/queueWorker');
 const { renderTemplate } = require('../services/templateEngine');
+
+function formatSqliteDateTime(d) {
+  const date = d ? new Date(d) : new Date();
+  if (isNaN(date.getTime())) return new Date().toISOString().replace('T', ' ').slice(0, 19);
+  return date.toISOString().replace('T', ' ').slice(0, 19);
+}
 
 const upload = multer({ dest: 'uploads/' });
 
@@ -342,7 +349,20 @@ router.post('/campaigns/preview-upload', upload.single('file'), (req, res) => {
 
     const previouslyContactedCount = validContacts.filter(c => c.previouslyContacted !== null).length;
 
-    // Calculate auto-split batches
+    // Scheduling configuration & projection
+    const scheduleMode = req.body.scheduleMode || 'immediate';
+    const scheduledStartTime = req.body.scheduledStartTime || '';
+    const staggerMinutes = Math.max(1, parseInt(req.body.staggerMinutes || '60', 10));
+
+    let baseMs = Date.now();
+    if ((scheduleMode === 'scheduled' || scheduleMode === 'staggered') && scheduledStartTime) {
+      const parsed = new Date(scheduledStartTime).getTime();
+      if (!isNaN(parsed) && parsed > Date.now()) {
+        baseMs = parsed;
+      }
+    }
+
+    // Calculate auto-split batches with timeline projection
     const batches = [];
     const totalBatches = Math.ceil(validContacts.length / batchSize) || 1;
     for (let i = 0; i < totalBatches; i++) {
@@ -350,10 +370,27 @@ router.post('/campaigns/preview-upload', upload.single('file'), (req, res) => {
       const end = start + batchSize;
       const batchContacts = validContacts.slice(start, end);
       const batchNumStr = String(i + 1).padStart(2, '0');
+
+      let startMs = baseMs;
+      if (scheduleMode === 'staggered') {
+        startMs = baseMs + i * (staggerMinutes * 60 * 1000);
+      } else if (scheduleMode === 'scheduled') {
+        startMs = baseMs + i * 2000;
+      } else {
+        startMs = Date.now() + i * 2000;
+      }
+
+      const durationSeconds = Math.round(batchContacts.length * (config.globalSendIntervalMs / 1000));
+      const endMs = startMs + (durationSeconds * 1000);
+
       batches.push({
         batchNumber: i + 1,
         name: `${baseCampaignName}_Batch_${batchNumStr}`,
-        count: batchContacts.length
+        count: batchContacts.length,
+        scheduledAt: new Date(startMs).toISOString(),
+        projectedStart: new Date(startMs).toISOString(),
+        projectedEnd: new Date(endMs).toISOString(),
+        estimatedDuration: durationSeconds < 60 ? `${durationSeconds}s` : `${Math.ceil(durationSeconds / 60)} min`
       });
     }
 
@@ -367,6 +404,9 @@ router.post('/campaigns/preview-upload', upload.single('file'), (req, res) => {
       duplicateInSheetCount,
       previouslyContactedCount,
       batchSize,
+      scheduleMode,
+      scheduledStartTime,
+      staggerMinutes,
       totalBatches,
       batches,
       contacts: validContacts,
@@ -380,13 +420,16 @@ router.post('/campaigns/preview-upload', upload.single('file'), (req, res) => {
   }
 });
 
-// LAUNCH AUTO-SPLIT BATCHES SEQUENTIALLY
+// LAUNCH AUTO-SPLIT BATCHES SEQUENTIALLY OR SCHEDULED
 router.post('/campaigns/launch-batches', (req, res) => {
   const {
     baseCampaignName,
     templateId,
     batchSize = 50,
     skipPreviouslyContacted = false,
+    scheduleMode = 'immediate',
+    scheduledStartTime = '',
+    staggerMinutes = 60,
     contacts = []
   } = req.body;
 
@@ -414,6 +457,15 @@ router.post('/campaigns/launch-batches', (req, res) => {
   }
 
   const numericBatchSize = Math.max(1, parseInt(batchSize, 10));
+  const numericStagger = Math.max(1, parseInt(staggerMinutes || '60', 10));
+
+  let baseMs = Date.now();
+  if ((scheduleMode === 'scheduled' || scheduleMode === 'staggered') && scheduledStartTime) {
+    const parsed = new Date(scheduledStartTime).getTime();
+    if (!isNaN(parsed) && parsed > Date.now()) {
+      baseMs = parsed;
+    }
+  }
 
   const launchTx = db.transaction(() => {
     // 1. Ensure all contacts are persisted into master contacts table (Zero Duplicates)
@@ -439,13 +491,13 @@ router.post('/campaigns/launch-batches', (req, res) => {
     const createdCampaigns = [];
 
     const campInsert = db.prepare(`
-      INSERT INTO campaigns (name, template_id, status, total_count)
-      VALUES (?, ?, 'QUEUED', ?)
+      INSERT INTO campaigns (name, template_id, status, total_count, scheduled_at)
+      VALUES (?, ?, ?, ?, ?)
     `);
 
     const queueInsert = db.prepare(`
-      INSERT INTO queue (campaign_id, contact_id, email, name, subject, rendered_html, status)
-      VALUES (?, ?, ?, ?, ?, ?, 'queued')
+      INSERT INTO queue (campaign_id, contact_id, email, name, subject, rendered_html, status, scheduled_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'queued', ?)
     `);
 
     for (let i = 0; i < totalBatches; i++) {
@@ -455,24 +507,39 @@ router.post('/campaigns/launch-batches', (req, res) => {
       const batchNumStr = String(i + 1).padStart(2, '0');
       const batchName = `${baseCampaignName}_Batch_${batchNumStr}`;
 
-      const campRes = campInsert.run(batchName, templateId, batchSlice.length);
+      let startMs = baseMs;
+      if (scheduleMode === 'staggered') {
+        startMs = baseMs + i * (numericStagger * 60 * 1000);
+      } else if (scheduleMode === 'scheduled') {
+        startMs = baseMs + i * 2000;
+      } else {
+        startMs = Date.now() + i * 2000;
+      }
+
+      const batchScheduledAt = formatSqliteDateTime(new Date(startMs));
+      const isFuture = startMs > (Date.now() + 5000);
+      const initialStatus = isFuture ? 'SCHEDULED' : 'QUEUED';
+
+      const campRes = campInsert.run(batchName, templateId, initialStatus, batchSlice.length, batchScheduledAt);
       const campaignId = campRes.lastInsertRowid;
 
       for (const c of batchSlice) {
         const contactId = contactIdMap.get(c.email) || null;
         const renderedSubject = renderTemplate(template.subject, c);
         const renderedBody = renderTemplate(template.body_html, c);
-        queueInsert.run(campaignId, contactId, c.email, c.name || '', renderedSubject, renderedBody);
+        queueInsert.run(campaignId, contactId, c.email, c.name || '', renderedSubject, renderedBody, batchScheduledAt);
       }
 
       db.prepare(`
         INSERT INTO logs (campaign_id, level, message)
         VALUES (?, 'INFO', ?)
-      `).run(campaignId, `Auto-split batch "${batchName}" created with ${batchSlice.length} recipients.`);
+      `).run(campaignId, `Auto-split batch "${batchName}" created with ${batchSlice.length} recipients. Mode: ${scheduleMode}, Scheduled: ${batchScheduledAt}.`);
 
       createdCampaigns.push({
         campaignId,
         name: batchName,
+        status: initialStatus,
+        scheduledAt: batchScheduledAt,
         count: batchSlice.length
       });
     }
@@ -486,7 +553,69 @@ router.post('/campaigns/launch-batches', (req, res) => {
     message: `Successfully created ${createdCampaigns.length} campaigns across ${filteredContacts.length} recipients!`,
     totalCampaigns: createdCampaigns.length,
     totalQueued: filteredContacts.length,
+    scheduleMode,
     campaigns: createdCampaigns
+  });
+});
+
+// 6B. CAMPAIGN CONTROLS: PAUSE, RESUME, CANCEL & MONITOR
+router.post('/campaigns/:id/pause', (req, res) => {
+  const campId = req.params.id;
+  const camp = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campId);
+  if (!camp) return res.status(404).json({ ok: false, error: 'Campaign not found' });
+
+  if (camp.status === 'COMPLETED' || camp.status === 'CANCELLED') {
+    return res.status(400).json({ ok: false, error: `Cannot pause a ${camp.status} campaign.` });
+  }
+
+  db.prepare("UPDATE campaigns SET status = 'PAUSED' WHERE id = ?").run(campId);
+  db.prepare("INSERT INTO logs (campaign_id, level, message) VALUES (?, 'WARN', ?)").run(campId, `Campaign "${camp.name}" paused by user.`);
+  res.json({ ok: true, message: `Campaign "${camp.name}" paused successfully.` });
+});
+
+router.post('/campaigns/:id/resume', (req, res) => {
+  const campId = req.params.id;
+  const camp = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campId);
+  if (!camp) return res.status(404).json({ ok: false, error: 'Campaign not found' });
+
+  if (camp.status !== 'PAUSED') {
+    return res.status(400).json({ ok: false, error: `Campaign is not paused (status: ${camp.status}).` });
+  }
+
+  const nextStatus = camp.started_at ? 'RUNNING' : 'QUEUED';
+  db.prepare("UPDATE campaigns SET status = ? WHERE id = ?").run(nextStatus, campId);
+  db.prepare("INSERT INTO logs (campaign_id, level, message) VALUES (?, 'INFO', ?)").run(campId, `Campaign "${camp.name}" resumed successfully.`);
+  res.json({ ok: true, message: `Campaign "${camp.name}" resumed successfully.` });
+});
+
+router.post('/campaigns/:id/cancel', (req, res) => {
+  const campId = req.params.id;
+  const camp = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campId);
+  if (!camp) return res.status(404).json({ ok: false, error: 'Campaign not found' });
+
+  if (camp.status === 'COMPLETED') {
+    return res.status(400).json({ ok: false, error: 'Cannot cancel a completed campaign.' });
+  }
+
+  const cancelTx = db.transaction(() => {
+    db.prepare("UPDATE campaigns SET status = 'CANCELLED', completed_at = datetime('now') WHERE id = ?").run(campId);
+    db.prepare("UPDATE queue SET status = 'failed', last_error = 'Cancelled by user' WHERE campaign_id = ? AND status = 'queued'").run(campId);
+    db.prepare("INSERT INTO logs (campaign_id, level, message) VALUES (?, 'WARN', ?)").run(campId, `Campaign "${camp.name}" cancelled by user.`);
+  });
+
+  cancelTx();
+  res.json({ ok: true, message: `Campaign "${camp.name}" cancelled successfully.` });
+});
+
+router.get('/campaigns/active-monitor', (req, res) => {
+  const status = queueWorker.getStatus();
+  res.json({
+    ok: true,
+    activeCampaign: status.activeCampaign,
+    upcomingCampaigns: status.upcomingCampaigns,
+    queue: status.queue,
+    workerRunning: status.isRunning,
+    workerPaused: status.isPaused
   });
 });
 

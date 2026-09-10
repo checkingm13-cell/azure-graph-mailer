@@ -47,10 +47,52 @@ document.addEventListener('DOMContentLoaded', () => {
   const terminalLogs = document.getElementById('terminalLogs');
   const btnRefreshLogs = document.getElementById('btnRefreshLogs');
 
+  // Live Hero Monitor Elements
+  const monitorStatusBadge = document.getElementById('monitorStatusBadge');
+  const monitorCampaignName = document.getElementById('monitorCampaignName');
+  const btnMonitorPause = document.getElementById('btnMonitorPause');
+  const btnMonitorResume = document.getElementById('btnMonitorResume');
+  const btnMonitorCancel = document.getElementById('btnMonitorCancel');
+  const monitorProgressBar = document.getElementById('monitorProgressBar');
+  const monitorProgressText = document.getElementById('monitorProgressText');
+  const monitorSenderEmail = document.getElementById('monitorSenderEmail');
+  const monitorEtaText = document.getElementById('monitorEtaText');
+  const monitorCurrentRecipient = document.getElementById('monitorCurrentRecipient');
+  const monitorUpcomingContainer = document.getElementById('monitorUpcomingContainer');
+  const monitorUpcomingList = document.getElementById('monitorUpcomingList');
+
+  // Scheduling Inputs
+  const campaignScheduleMode = document.getElementById('campaignScheduleMode');
+  const groupScheduledStartTime = document.getElementById('groupScheduledStartTime');
+  const campaignScheduledStartTime = document.getElementById('campaignScheduledStartTime');
+  const groupStaggerInterval = document.getElementById('groupStaggerInterval');
+  const campaignStaggerMinutes = document.getElementById('campaignStaggerMinutes');
+
   let isWorkerPaused = false;
   let allLoadedTemplates = [];
   let currentPreviewData = null;
   let selectedFile = null;
+
+  function formatTimeUntil(dateStr) {
+    if (!dateStr) return '--';
+    const cleanStr = dateStr.includes('Z') || dateStr.includes('+') ? dateStr : dateStr.replace(' ', 'T') + 'Z';
+    const target = new Date(cleanStr);
+    const now = new Date();
+    const diffMs = target.getTime() - now.getTime();
+    if (diffMs <= 0) return 'due now';
+    const diffMins = Math.round(diffMs / 60000);
+    if (diffMins < 60) return `in ${diffMins}m`;
+    const diffHours = Math.floor(diffMins / 60);
+    const remMins = diffMins % 60;
+    return `in ${diffHours}h ${remMins}m`;
+  }
+
+  function formatDateTime(dateStr) {
+    if (!dateStr) return '--';
+    const cleanStr = dateStr.includes('Z') || dateStr.includes('+') ? dateStr : dateStr.replace(' ', 'T') + 'Z';
+    const d = new Date(cleanStr);
+    return isNaN(d.getTime()) ? dateStr : d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
 
   // 1. TAB NAVIGATION
   document.querySelectorAll('.nav-tab').forEach((tab) => {
@@ -118,7 +160,146 @@ document.addEventListener('DOMContentLoaded', () => {
 
       badgeQueueTotal.textContent = `${worker.queue.queued} waiting`;
 
+      // Live Campaign Monitor Hero Card
+      if (monitorCampaignName) {
+        const activeCamp = worker.activeCampaign;
+        const upcoming = worker.upcomingCampaigns || [];
+
+        if (activeCamp) {
+          monitorCampaignName.textContent = `${activeCamp.name} (#${activeCamp.id})`;
+          monitorProgressBar.style.width = `${activeCamp.progressPct}%`;
+          monitorProgressText.textContent = `${activeCamp.sentCount} / ${activeCamp.totalCount} (${activeCamp.progressPct}%)`;
+          monitorSenderEmail.textContent = activeCamp.activeSender || 'dr.reetashah@theparipexjournal.com';
+          monitorCurrentRecipient.textContent = activeCamp.currentRecipient || '--';
+
+          if (activeCamp.status === 'RUNNING') {
+            monitorStatusBadge.className = 'badge badge-sending';
+            monitorStatusBadge.textContent = '⚡ NOW RUNNING';
+            if (btnMonitorPause) {
+              btnMonitorPause.style.display = 'inline-block';
+              btnMonitorPause.dataset.id = activeCamp.id;
+            }
+            if (btnMonitorResume) btnMonitorResume.style.display = 'none';
+            if (btnMonitorCancel) {
+              btnMonitorCancel.style.display = 'inline-block';
+              btnMonitorCancel.dataset.id = activeCamp.id;
+            }
+
+            if (activeCamp.etaSeconds > 0) {
+              monitorEtaText.textContent = activeCamp.etaSeconds < 60 
+                ? `~${activeCamp.etaSeconds}s remaining` 
+                : `~${Math.ceil(activeCamp.etaSeconds / 60)} min remaining`;
+            } else {
+              monitorEtaText.textContent = 'Finishing batch...';
+            }
+          } else if (activeCamp.status === 'PAUSED') {
+            monitorStatusBadge.className = 'badge badge-paused';
+            monitorStatusBadge.textContent = '⏸️ PAUSED';
+            if (btnMonitorPause) btnMonitorPause.style.display = 'none';
+            if (btnMonitorResume) {
+              btnMonitorResume.style.display = 'inline-block';
+              btnMonitorResume.dataset.id = activeCamp.id;
+            }
+            if (btnMonitorCancel) {
+              btnMonitorCancel.style.display = 'inline-block';
+              btnMonitorCancel.dataset.id = activeCamp.id;
+            }
+            monitorEtaText.textContent = 'Paused by user';
+          }
+        } else if (upcoming.length > 0) {
+          const nextCamp = upcoming[0];
+          monitorCampaignName.textContent = `Next Scheduled: ${nextCamp.name}`;
+          monitorProgressBar.style.width = '0%';
+          monitorProgressText.textContent = `0 / ${nextCamp.totalCount} (Waiting)`;
+          monitorSenderEmail.textContent = 'dr.reetashah@theparipexjournal.com';
+          monitorCurrentRecipient.textContent = 'Waiting for scheduled launch';
+          monitorStatusBadge.className = 'badge badge-scheduled';
+          monitorStatusBadge.textContent = '📅 SCHEDULED';
+          monitorEtaText.textContent = `Starts ${formatTimeUntil(nextCamp.scheduledAt)}`;
+
+          if (btnMonitorPause) btnMonitorPause.style.display = 'none';
+          if (btnMonitorResume) btnMonitorResume.style.display = 'none';
+          if (btnMonitorCancel) {
+            btnMonitorCancel.style.display = 'inline-block';
+            btnMonitorCancel.dataset.id = nextCamp.id;
+          }
+        } else {
+          monitorCampaignName.textContent = 'No active campaign running';
+          monitorProgressBar.style.width = '0%';
+          monitorProgressText.textContent = '0 / 0 (Idle)';
+          monitorSenderEmail.textContent = 'dr.reetashah@theparipexjournal.com';
+          monitorCurrentRecipient.textContent = '--';
+          monitorStatusBadge.className = 'badge badge-queued';
+          monitorStatusBadge.textContent = 'IDLE';
+          monitorEtaText.textContent = '--';
+
+          if (btnMonitorPause) btnMonitorPause.style.display = 'none';
+          if (btnMonitorResume) btnMonitorResume.style.display = 'none';
+          if (btnMonitorCancel) btnMonitorCancel.style.display = 'none';
+        }
+
+        // Upcoming Scheduled Queue Timeline
+        if (upcoming.length > 0) {
+          monitorUpcomingContainer.style.display = 'block';
+          monitorUpcomingList.innerHTML = upcoming.map((u) => `
+            <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; padding: 8px 12px; min-width: 220px; font-size: 11px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <strong style="color: var(--text-primary); font-size: 12px;">${escapeHtml(u.name)}</strong>
+                <span class="badge badge-scheduled">${formatTimeUntil(u.scheduledAt)}</span>
+              </div>
+              <div style="color: var(--text-muted);">${u.totalCount} emails &bull; ${formatDateTime(u.scheduledAt)}</div>
+              <div style="margin-top: 6px; text-align: right;">
+                <button type="button" class="btn btn-danger btn-sm btn-timeline-cancel" data-id="${u.id}" style="padding: 2px 8px; font-size: 10px;">Cancel</button>
+              </div>
+            </div>
+          `).join('');
+
+          monitorUpcomingList.querySelectorAll('.btn-timeline-cancel').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+              if (!confirm('Cancel this scheduled batch?')) return;
+              await fetch(`/api/campaigns/${btn.dataset.id}/cancel`, { method: 'POST' });
+              refreshTelemetry();
+              loadCampaigns();
+            });
+          });
+        } else {
+          monitorUpcomingContainer.style.display = 'none';
+        }
+      }
+
     } catch (_) {}
+  }
+
+  // Monitor Hero Buttons
+  if (btnMonitorPause) {
+    btnMonitorPause.addEventListener('click', async () => {
+      const campId = btnMonitorPause.dataset.id;
+      if (!campId) return;
+      await fetch(`/api/campaigns/${campId}/pause`, { method: 'POST' });
+      refreshTelemetry();
+      loadCampaigns();
+    });
+  }
+
+  if (btnMonitorResume) {
+    btnMonitorResume.addEventListener('click', async () => {
+      const campId = btnMonitorResume.dataset.id;
+      if (!campId) return;
+      await fetch(`/api/campaigns/${campId}/resume`, { method: 'POST' });
+      refreshTelemetry();
+      loadCampaigns();
+    });
+  }
+
+  if (btnMonitorCancel) {
+    btnMonitorCancel.addEventListener('click', async () => {
+      const campId = btnMonitorCancel.dataset.id;
+      if (!campId) return;
+      if (!confirm('Cancel this batch? Remaining queued emails will not be sent.')) return;
+      await fetch(`/api/campaigns/${campId}/cancel`, { method: 'POST' });
+      refreshTelemetry();
+      loadCampaigns();
+    });
   }
 
   // Worker Toggle Button
@@ -522,6 +703,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const totalBatches = Math.ceil(contacts.length / size) || 1;
     const baseName = batchBaseCampaignName.value.trim() || currentPreviewData.baseCampaignName;
+    const mode = campaignScheduleMode ? campaignScheduleMode.value : 'immediate';
+    const startTimeVal = campaignScheduledStartTime ? campaignScheduledStartTime.value : '';
+    const staggerMins = Math.max(1, parseInt(campaignStaggerMinutes ? campaignStaggerMinutes.value || '60' : '60', 10));
+
+    let baseMs = Date.now();
+    if (startTimeVal && (mode === 'scheduled' || mode === 'staggered')) {
+      const parsed = new Date(startTimeVal).getTime();
+      if (!isNaN(parsed) && parsed > Date.now()) {
+        baseMs = parsed;
+      }
+    }
 
     batchesListContainer.innerHTML = '';
     for (let i = 0; i < totalBatches; i++) {
@@ -530,15 +722,33 @@ document.addEventListener('DOMContentLoaded', () => {
       const batchNumStr = String(i + 1).padStart(2, '0');
       const batchName = `${baseName}_Batch_${batchNumStr}`;
 
+      let startMs = baseMs;
+      if (mode === 'staggered') {
+        startMs = baseMs + i * (staggerMins * 60 * 1000);
+      } else if (mode === 'scheduled') {
+        startMs = baseMs + i * 2000;
+      } else {
+        startMs = Date.now() + i * 2000;
+      }
+
+      const durationSec = Math.round(count * 2.5);
+      const durationStr = durationSec < 60 ? `${durationSec}s` : `${Math.ceil(durationSec / 60)} min`;
+      const timeStr = new Date(startMs).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const timeBadge = mode === 'immediate' && i === 0 ? '⚡ Starts Now' : formatTimeUntil(new Date(startMs).toISOString());
+
       batchesListContainer.innerHTML += `
         <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; font-size: 12px;">
-          <div style="font-weight: 600; color: var(--sky);">${escapeHtml(batchName)}</div>
-          <div style="color: var(--text-muted); margin-top: 4px;">👥 <strong>${count}</strong> recipients queued</div>
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
+            <strong style="color: var(--sky);">${escapeHtml(batchName)}</strong>
+            <span class="badge ${mode === 'immediate' && i === 0 ? 'badge-completed' : 'badge-scheduled'}">${timeBadge}</span>
+          </div>
+          <div style="color: var(--text-muted); margin-bottom: 4px;">👥 <strong>${count}</strong> emails &bull; Est: ~${durationStr}</div>
+          <div style="font-size: 11px; color: var(--text-secondary);">📅 Scheduled: <strong>${timeStr}</strong></div>
         </div>
       `;
     }
 
-    btnConfirmLaunchBatches.textContent = `🚀 Confirm & Launch All ${totalBatches} Batches (${contacts.length} Total Emails)`;
+    btnConfirmLaunchBatches.textContent = `🚀 Confirm & Schedule All ${totalBatches} Batches (${contacts.length} Total Emails)`;
   }
 
   function updateSampleEmailPreview() {
@@ -582,6 +792,41 @@ document.addEventListener('DOMContentLoaded', () => {
     batchTemplateSelect.addEventListener('change', updateSampleEmailPreview);
   }
 
+  // Scheduling Mode Change Listener
+  if (campaignScheduleMode) {
+    campaignScheduleMode.addEventListener('change', () => {
+      const mode = campaignScheduleMode.value;
+      if (mode === 'scheduled') {
+        groupScheduledStartTime.style.display = 'block';
+        groupStaggerInterval.style.display = 'none';
+        if (!campaignScheduledStartTime.value) {
+          const tomorrow = new Date();
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          tomorrow.setHours(9, 0, 0, 0);
+          campaignScheduledStartTime.value = tomorrow.toISOString().slice(0, 16);
+        }
+      } else if (mode === 'staggered') {
+        groupScheduledStartTime.style.display = 'block';
+        groupStaggerInterval.style.display = 'block';
+        if (!campaignScheduledStartTime.value) {
+          const now = new Date();
+          campaignScheduledStartTime.value = now.toISOString().slice(0, 16);
+        }
+      } else {
+        groupScheduledStartTime.style.display = 'none';
+        groupStaggerInterval.style.display = 'none';
+      }
+      renderBatchesBreakdown();
+    });
+  }
+
+  if (campaignScheduledStartTime) {
+    campaignScheduledStartTime.addEventListener('input', renderBatchesBreakdown);
+  }
+  if (campaignStaggerMinutes) {
+    campaignStaggerMinutes.addEventListener('input', renderBatchesBreakdown);
+  }
+
   if (formLaunchBatches) {
     formLaunchBatches.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -594,13 +839,16 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       btnConfirmLaunchBatches.disabled = true;
-      btnConfirmLaunchBatches.textContent = '⏳ Creating Campaigns & Populating 24/7 Queue...';
+      btnConfirmLaunchBatches.textContent = '⏳ Creating Campaigns & Scheduling Queue...';
 
       const payload = {
         baseCampaignName: batchBaseCampaignName.value.trim() || currentPreviewData.baseCampaignName,
         templateId: parseInt(templateId, 10),
         batchSize: parseInt(batchSizeInput.value || '50', 10),
         skipPreviouslyContacted: chkSkipPreviouslyContacted.checked,
+        scheduleMode: campaignScheduleMode ? campaignScheduleMode.value : 'immediate',
+        scheduledStartTime: campaignScheduledStartTime ? campaignScheduledStartTime.value : '',
+        staggerMinutes: parseInt(campaignStaggerMinutes ? campaignStaggerMinutes.value || '60' : '60', 10),
         contacts: currentPreviewData.contacts
       };
 
@@ -614,7 +862,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btnConfirmLaunchBatches.disabled = false;
 
         if (data.ok) {
-          alert(`🎉 SUCCESS! Created ${data.totalCampaigns} campaign batches with ${data.totalQueued} emails queued!\n\nThe 24/7 background worker is now dispatching them sequentially across your sender accounts.`);
+          alert(`🎉 SUCCESS! Created ${data.totalCampaigns} campaign batches with ${data.totalQueued} emails queued!\n\nMode: ${data.scheduleMode.toUpperCase()}. The background scheduler will dispatch each batch right on time.`);
           campaignPreFlightBox.style.display = 'none';
           currentPreviewData = null;
           if (campaignCsvFileInput) campaignCsvFileInput.value = '';
@@ -638,17 +886,77 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!data.ok) return;
 
       if (data.campaigns.length === 0) {
-        campaignsTableBody.innerHTML = `<tr><td colspan="5" class="table-empty">No campaigns executed yet.</td></tr>`;
+        campaignsTableBody.innerHTML = `<tr><td colspan="7" class="table-empty">No campaigns executed yet.</td></tr>`;
       } else {
-        campaignsTableBody.innerHTML = data.campaigns.map((c) => `
-          <tr>
-            <td>#${c.id}</td>
-            <td><strong>${escapeHtml(c.name)}</strong></td>
-            <td>${escapeHtml(c.template_name || '--')}</td>
-            <td><span class="badge ${c.status === 'COMPLETED' ? 'badge-completed' : 'badge-queued'}">${c.status}</span></td>
-            <td>${c.sent_count} / ${c.total_count} (${c.failed_count} failed)</td>
-          </tr>
-        `).join('');
+        campaignsTableBody.innerHTML = data.campaigns.map((c) => {
+          let statusBadgeClass = 'badge-queued';
+          if (c.status === 'COMPLETED') statusBadgeClass = 'badge-completed';
+          else if (c.status === 'RUNNING') statusBadgeClass = 'badge-sending';
+          else if (c.status === 'PAUSED') statusBadgeClass = 'badge-paused';
+          else if (c.status === 'SCHEDULED') statusBadgeClass = 'badge-scheduled';
+          else if (c.status === 'CANCELLED') statusBadgeClass = 'badge-cancelled';
+
+          let actionsHtml = '';
+          if (c.status === 'RUNNING') {
+            actionsHtml = `
+              <button type="button" class="btn btn-secondary btn-sm btn-pause-camp" data-id="${c.id}" style="padding: 3px 8px; font-size: 11px;">Pause</button>
+              <button type="button" class="btn btn-danger btn-sm btn-cancel-camp" data-id="${c.id}" style="padding: 3px 8px; font-size: 11px;">Cancel</button>
+            `;
+          } else if (c.status === 'PAUSED') {
+            actionsHtml = `
+              <button type="button" class="btn btn-primary btn-sm btn-resume-camp" data-id="${c.id}" style="padding: 3px 8px; font-size: 11px;">Resume</button>
+              <button type="button" class="btn btn-danger btn-sm btn-cancel-camp" data-id="${c.id}" style="padding: 3px 8px; font-size: 11px;">Cancel</button>
+            `;
+          } else if (c.status === 'SCHEDULED' || c.status === 'QUEUED') {
+            actionsHtml = `
+              <button type="button" class="btn btn-danger btn-sm btn-cancel-camp" data-id="${c.id}" style="padding: 3px 8px; font-size: 11px;">Cancel</button>
+            `;
+          } else {
+            actionsHtml = `<span style="color: var(--text-muted); font-size: 11px;">Completed</span>`;
+          }
+
+          const timeDisplay = c.started_at 
+            ? `Started: ${formatDateTime(c.started_at)}` 
+            : (c.scheduled_at ? `Scheduled: ${formatDateTime(c.scheduled_at)}` : '--');
+
+          return `
+            <tr>
+              <td>#${c.id}</td>
+              <td><strong>${escapeHtml(c.name)}</strong></td>
+              <td>${escapeHtml(c.template_name || '--')}</td>
+              <td><span style="font-size: 11px; color: var(--text-secondary);">${timeDisplay}</span></td>
+              <td><span class="badge ${statusBadgeClass}">${c.status}</span></td>
+              <td>${c.sent_count} / ${c.total_count} ${c.failed_count > 0 ? `<span style="color: var(--rose);">(${c.failed_count} err)</span>` : ''}</td>
+              <td>${actionsHtml}</td>
+            </tr>
+          `;
+        }).join('');
+
+        // Wire Action buttons
+        campaignsTableBody.querySelectorAll('.btn-pause-camp').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            await fetch(`/api/campaigns/${btn.dataset.id}/pause`, { method: 'POST' });
+            loadCampaigns();
+            refreshTelemetry();
+          });
+        });
+
+        campaignsTableBody.querySelectorAll('.btn-resume-camp').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            await fetch(`/api/campaigns/${btn.dataset.id}/resume`, { method: 'POST' });
+            loadCampaigns();
+            refreshTelemetry();
+          });
+        });
+
+        campaignsTableBody.querySelectorAll('.btn-cancel-camp').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            if (!confirm('Cancel this campaign? Any unsent emails will be stopped.')) return;
+            await fetch(`/api/campaigns/${btn.dataset.id}/cancel`, { method: 'POST' });
+            loadCampaigns();
+            refreshTelemetry();
+          });
+        });
       }
     } catch (_) {}
   }

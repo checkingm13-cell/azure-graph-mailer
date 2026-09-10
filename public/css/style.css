@@ -499,6 +499,22 @@ body {
   color: var(--rose);
 }
 
+.badge-scheduled {
+  background: rgba(168, 85, 247, 0.15);
+  color: var(--purple);
+}
+
+.badge-paused {
+  background: rgba(245, 158, 11, 0.2);
+  color: var(--amber);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.badge-cancelled {
+  background: rgba(107, 114, 128, 0.2);
+  color: var(--text-muted);
+}
+
 /* Terminal Window */
 .terminal-window {
   background-color: #050811;

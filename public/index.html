@@ -56,6 +56,56 @@
   <!-- Main Workspace -->
   <main class="main-container">
     
+    <!-- Live Campaign Monitor Hero Card (Always Visible Across Workspace) -->
+    <div id="liveCampaignMonitorCard" class="panel-card" style="margin-bottom: 20px; border: 1px solid rgba(56, 189, 248, 0.4); background: linear-gradient(180deg, rgba(14, 165, 233, 0.08) 0%, rgba(17, 24, 39, 0.95) 100%);">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span id="monitorStatusBadge" class="badge badge-queued" style="font-size: 11px; padding: 4px 10px; font-weight: 700;">IDLE</span>
+          <h3 id="monitorCampaignName" style="margin: 0; font-size: 16px; color: var(--text-primary);">No active campaign running</h3>
+        </div>
+        <div id="monitorActions" style="display: flex; gap: 8px;">
+          <button type="button" id="btnMonitorPause" class="btn btn-secondary btn-sm" style="display: none; padding: 6px 12px;">⏸️ Pause</button>
+          <button type="button" id="btnMonitorResume" class="btn btn-primary btn-sm" style="display: none; padding: 6px 12px;">▶️ Resume</button>
+          <button type="button" id="btnMonitorCancel" class="btn btn-danger btn-sm" style="display: none; padding: 6px 12px;">✕ Cancel Batch</button>
+        </div>
+      </div>
+
+      <!-- Live Progress Bar -->
+      <div style="background: rgba(255, 255, 255, 0.08); border-radius: 9999px; height: 10px; overflow: hidden; margin-bottom: 12px;">
+        <div id="monitorProgressBar" style="background: linear-gradient(90deg, var(--sky), var(--emerald)); height: 100%; width: 0%; transition: width 0.4s ease;"></div>
+      </div>
+
+      <!-- Telemetry Row -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; font-size: 12px;">
+        <div>
+          <span style="color: var(--text-muted);">Progress:</span>
+          <strong id="monitorProgressText" style="color: var(--text-primary); margin-left: 4px;">0 / 0 (0%)</strong>
+        </div>
+        <div>
+          <span style="color: var(--text-muted);">Sender Account:</span>
+          <strong id="monitorSenderEmail" style="color: var(--sky); margin-left: 4px;">dr.reetashah@theparipexjournal.com</strong>
+        </div>
+        <div>
+          <span style="color: var(--text-muted);">Dynamic ETA:</span>
+          <strong id="monitorEtaText" style="color: var(--emerald); margin-left: 4px;">--</strong>
+        </div>
+        <div>
+          <span style="color: var(--text-muted);">Current Recipient:</span>
+          <strong id="monitorCurrentRecipient" style="color: var(--text-secondary); margin-left: 4px;">--</strong>
+        </div>
+      </div>
+
+      <!-- Scheduled Queue Timeline (Upcoming Batches) -->
+      <div id="monitorUpcomingContainer" style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08); display: none;">
+        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--purple); margin-bottom: 8px; letter-spacing: 0.05em;">
+          📅 Scheduled Queue Timeline (Upcoming Batches)
+        </div>
+        <div id="monitorUpcomingList" style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px;">
+          <!-- Dynamically populated upcoming batch cards -->
+        </div>
+      </div>
+    </div>
+
     <!-- Tab Navigation -->
     <nav class="nav-tabs">
       <button class="nav-tab active" data-tab="tab-overview">📊 Dashboard &amp; Queue</button>
@@ -269,10 +319,35 @@
               </div>
             </div>
 
+            <!-- Scheduling Configuration Mode -->
+            <div class="form-row" style="background: rgba(255,255,255,0.02); padding: 14px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 16px;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label">🗓️ Scheduling Dispatch Mode</label>
+                <select id="campaignScheduleMode" class="form-select">
+                  <option value="immediate">⚡ Immediate Launch (Starts now, runs 24/7)</option>
+                  <option value="scheduled">⏰ Specific Future Date &amp; Time (Hold until scheduled time)</option>
+                  <option value="staggered">⏳ Staggered Batches (Space 50-email batches by interval)</option>
+                </select>
+                <span class="form-help">Choose between instant dispatch, scheduled future time, or interval staggered.</span>
+              </div>
+              
+              <div class="form-group" id="groupScheduledStartTime" style="margin-bottom: 0; display: none;">
+                <label class="form-label">Target Launch Date &amp; Time</label>
+                <input type="datetime-local" id="campaignScheduledStartTime" class="form-input">
+                <span class="form-help">Batches will stay on hold until this exact time.</span>
+              </div>
+
+              <div class="form-group" id="groupStaggerInterval" style="margin-bottom: 0; display: none;">
+                <label class="form-label">Batch Stagger Interval (Minutes)</label>
+                <input type="number" id="campaignStaggerMinutes" class="form-input" value="60" min="5" max="1440">
+                <span class="form-help">Delay between consecutive batches (e.g. 60 or 120 min).</span>
+              </div>
+            </div>
+
             <!-- Auto-Split Batches Breakdown Table -->
             <div style="margin: 20px 0;">
-              <h5 style="margin-bottom: 8px; color: var(--text-secondary);">📦 Generated Campaign Batches:</h5>
-              <div id="batchesListContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px;">
+              <h5 style="margin-bottom: 8px; color: var(--text-secondary);">📦 Generated Campaign Batches &amp; Projected Launch Timeline:</h5>
+              <div id="batchesListContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px;">
                 <!-- Dynamically populated -->
               </div>
             </div>
@@ -290,7 +365,7 @@
             </div>
 
             <button type="submit" id="btnConfirmLaunchBatches" class="btn btn-primary btn-block" style="padding: 14px; font-size: 15px;">
-              🚀 Confirm &amp; Launch All Batches Sequentially (24/7 Across Pool)
+              🚀 Confirm &amp; Schedule Batches Across Pool
             </button>
           </form>
         </div>
@@ -308,12 +383,14 @@
                 <th>ID</th>
                 <th>Campaign Batch Name</th>
                 <th>Template</th>
+                <th>Scheduled / Started</th>
                 <th>Status</th>
                 <th>Progress (Sent / Total)</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody id="campaignsTableBody">
-              <tr><td colspan="5" class="table-empty">No campaigns executed yet.</td></tr>
+              <tr><td colspan="7" class="table-empty">No campaigns executed yet.</td></tr>
             </tbody>
           </table>
         </div>

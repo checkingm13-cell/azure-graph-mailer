@@ -33,18 +33,20 @@ app.get(['/health', '/heartbeat', '/ping'], (req, res) => {
   });
 });
 
-// Seed default sender account if pool is empty
+// Seed default sender account if not present
 function seedDefaultAccount() {
-  const count = db.prepare('SELECT COUNT(*) AS total FROM accounts').get().total;
-  if (count === 0 && config.defaultSenderEmail) {
-    console.log(`[Bootstrap] Seeding initial default sender account: ${config.defaultSenderEmail}`);
-    AccountPool.upsertAccount({
-      email: config.defaultSenderEmail,
-      displayName: 'Default Journal Sender',
-      provider: config.defaultProvider,
-      dailyLimit: config.defaultAccountDailyLimit,
-      cooldownSeconds: config.accountCooldownSeconds
-    });
+  if (config.defaultSenderEmail) {
+    const existing = db.prepare('SELECT id FROM accounts WHERE email = ?').get(config.defaultSenderEmail);
+    if (!existing) {
+      console.log(`[Bootstrap] Seeding dedicated primary sender account: ${config.defaultSenderEmail}`);
+      AccountPool.upsertAccount({
+        email: config.defaultSenderEmail,
+        displayName: 'Dr. Reeta Shah (Chief Editor, Journal Paripex)',
+        provider: config.defaultProvider,
+        dailyLimit: config.defaultAccountDailyLimit,
+        cooldownSeconds: config.accountCooldownSeconds
+      });
+    }
   }
 }
 

@@ -49,23 +49,35 @@ class QueueWorker {
       }
 
       try {
-        // 1. Fetch next queued item
+        // 1. Fetch next queued item that is scheduled for now or in the past
         const item = db.prepare(`
-          SELECT q.*, c.name AS campaign_name 
+          SELECT q.*, c.name AS campaign_name, c.status AS campaign_status
           FROM queue q
-          LEFT JOIN campaigns c ON q.campaign_id = c.id
+          JOIN campaigns c ON q.campaign_id = c.id
           WHERE q.status = 'queued'
-          ORDER BY q.id ASC
+            AND (q.scheduled_at IS NULL OR q.scheduled_at <= datetime('now'))
+            AND c.status IN ('SCHEDULED', 'QUEUED', 'RUNNING')
+          ORDER BY q.scheduled_at ASC, q.id ASC
           LIMIT 1
         `).get();
 
         if (!item) {
-          // No work to do, sleep 3s
+          // No active work to do, sleep 3s
           await sleep(3000);
           continue;
         }
 
-        // 2. Request an available account from the multi-account pool
+        // 2. Mark campaign as RUNNING if it was QUEUED or SCHEDULED
+        if (item.campaign_status !== 'RUNNING') {
+          db.prepare(`
+            UPDATE campaigns
+            SET status = 'RUNNING',
+                started_at = COALESCE(started_at, datetime('now'))
+            WHERE id = ?
+          `).run(item.campaign_id);
+        }
+
+        // 3. Request an available account from the multi-account pool
         const account = AccountPool.getAvailableAccount();
 
         if (!account) {
@@ -75,7 +87,7 @@ class QueueWorker {
           continue;
         }
 
-        // 3. Mark as sending atomically
+        // 4. Mark as sending atomically
         db.prepare(`
           UPDATE queue 
           SET status = 'sending',
@@ -86,12 +98,14 @@ class QueueWorker {
 
         this.currentTask = {
           queueId: item.id,
+          campaignId: item.campaign_id,
+          campaignName: item.campaign_name,
           to: item.email,
           account: account.email,
           startedAt: Date.now()
         };
 
-        // 4. Dispatch through appropriate provider
+        // 5. Dispatch through appropriate provider
         try {
           console.log(`[QueueWorker] ✉️ Sending to "${item.email}" via [${account.provider}] ${account.email}...`);
 
@@ -112,7 +126,7 @@ class QueueWorker {
             });
           }
 
-          // 5. Record Success
+          // 6. Record Success
           db.prepare(`
             UPDATE queue
             SET status = 'sent',
@@ -129,6 +143,23 @@ class QueueWorker {
             SET sent_count = sent_count + 1
             WHERE id = ?
           `).run(item.campaign_id);
+
+          // Check if campaign is now completed
+          const remainingInCamp = db.prepare(`
+            SELECT COUNT(*) AS count 
+            FROM queue 
+            WHERE campaign_id = ? AND status IN ('queued', 'sending')
+          `).get(item.campaign_id).count;
+
+          if (remainingInCamp === 0) {
+            db.prepare(`
+              UPDATE campaigns
+              SET status = 'COMPLETED',
+                  completed_at = datetime('now')
+              WHERE id = ?
+            `).run(item.campaign_id);
+            console.log(`[QueueWorker] 🏁 Campaign "${item.campaign_name}" (ID: ${item.campaign_id}) has COMPLETED!`);
+          }
 
           // Log event
           db.prepare(`
@@ -178,6 +209,23 @@ class QueueWorker {
                 SET failed_count = failed_count + 1
                 WHERE id = ?
               `).run(item.campaign_id);
+
+              // Check if campaign is now completed
+              const remainingInCamp = db.prepare(`
+                SELECT COUNT(*) AS count 
+                FROM queue 
+                WHERE campaign_id = ? AND status IN ('queued', 'sending')
+              `).get(item.campaign_id).count;
+
+              if (remainingInCamp === 0) {
+                db.prepare(`
+                  UPDATE campaigns
+                  SET status = 'COMPLETED',
+                      completed_at = datetime('now')
+                  WHERE id = ?
+                `).run(item.campaign_id);
+                console.log(`[QueueWorker] 🏁 Campaign "${item.campaign_name}" (ID: ${item.campaign_id}) has COMPLETED!`);
+              }
             }
 
             db.prepare(`
@@ -211,12 +259,72 @@ class QueueWorker {
       FROM queue
     `).get();
 
+    // Fetch active running or paused campaign
+    const activeCamp = db.prepare(`
+      SELECT c.*, t.name AS template_name
+      FROM campaigns c
+      LEFT JOIN templates t ON c.template_id = t.id
+      WHERE c.status IN ('RUNNING', 'PAUSED')
+      ORDER BY 
+        CASE WHEN c.status = 'RUNNING' THEN 0 ELSE 1 END,
+        c.started_at DESC, 
+        c.id DESC
+      LIMIT 1
+    `).get();
+
+    let activeCampaign = null;
+    if (activeCamp) {
+      const processed = (activeCamp.sent_count || 0) + (activeCamp.failed_count || 0);
+      const remaining = Math.max(0, (activeCamp.total_count || 0) - processed);
+      const progressPct = activeCamp.total_count > 0 
+        ? Math.min(100, Math.round((processed / activeCamp.total_count) * 100)) 
+        : 0;
+      const etaSeconds = Math.round(remaining * (config.globalSendIntervalMs / 1000));
+
+      activeCampaign = {
+        id: activeCamp.id,
+        name: activeCamp.name,
+        templateName: activeCamp.template_name || 'Standard Template',
+        status: activeCamp.status,
+        totalCount: activeCamp.total_count,
+        sentCount: activeCamp.sent_count,
+        failedCount: activeCamp.failed_count,
+        remaining,
+        progressPct,
+        etaSeconds,
+        scheduledAt: activeCamp.scheduled_at,
+        startedAt: activeCamp.started_at,
+        activeSender: this.currentTask ? this.currentTask.account : null,
+        currentRecipient: this.currentTask ? this.currentTask.to : null
+      };
+    }
+
+    // Fetch upcoming scheduled/queued campaigns (excluding the one active)
+    const activeId = activeCampaign ? activeCampaign.id : -1;
+    const upcomingCampaigns = db.prepare(`
+      SELECT c.*, t.name AS template_name
+      FROM campaigns c
+      LEFT JOIN templates t ON c.template_id = t.id
+      WHERE c.status IN ('SCHEDULED', 'QUEUED') AND c.id != ?
+      ORDER BY c.scheduled_at ASC, c.id ASC
+      LIMIT 10
+    `).all(activeId).map(c => ({
+      id: c.id,
+      name: c.name,
+      templateName: c.template_name || 'Standard Template',
+      status: c.status,
+      totalCount: c.total_count,
+      scheduledAt: c.scheduled_at
+    }));
+
     return {
       isRunning: this.isRunning,
       isPaused: this.isPaused,
       currentTask: this.currentTask,
       lastDispatchedAt: this.lastDispatchedAt,
-      queue: queueCounts
+      queue: queueCounts,
+      activeCampaign,
+      upcomingCampaigns
     };
   }
 }
