@@ -18,6 +18,7 @@ aliases:
 
 > [!NOTE]
 > **Obsidian Integration:** This architectural document explains the internal mechanisms of the **Round-Robin Multi-Account Pool**, the **Database Schema**, and the **Pacing Engine**.
+> Master SOP & Checklist: [[SCALE_TO_40_ACCOUNTS_AND_PROJECT_STATUS]]
 
 ---
 
