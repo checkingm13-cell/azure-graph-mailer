@@ -324,7 +324,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Render Table in Accounts tab
       if (data.accounts.length === 0) {
-        accountsTableBody.innerHTML = `<tr><td colspan="5" class="table-empty">No sender accounts registered yet.</td></tr>`;
+        accountsTableBody.innerHTML = `<tr><td colspan="6" class="table-empty">No sender accounts registered yet.</td></tr>`;
       } else {
         accountsTableBody.innerHTML = data.accounts.map((a) => `
           <tr>
@@ -333,13 +333,29 @@ document.addEventListener('DOMContentLoaded', () => {
               <div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(a.display_name)}</div>
             </td>
             <td><span class="account-badge">${a.provider}</span></td>
+            <td>
+              <span class="badge ${a.is_active ? 'badge-completed' : 'badge-failed'}" style="cursor: pointer;" title="Click to toggle status">
+                ${a.is_active ? '🟢 Active' : '⚪ Inactive'}
+              </span>
+            </td>
             <td>${a.sent_today} / ${a.daily_limit}</td>
             <td>${a.cooldown_seconds}s</td>
             <td>
+              <button class="btn btn-secondary btn-sm btn-toggle-account" data-id="${a.id}" style="margin-right: 4px;">
+                ${a.is_active ? 'Disable' : 'Enable'}
+              </button>
               <button class="btn btn-danger btn-sm btn-del-account" data-id="${a.id}">Delete</button>
             </td>
           </tr>
         `).join('');
+
+        document.querySelectorAll('.btn-toggle-account').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            await fetch(`/api/accounts/${btn.dataset.id}/toggle`, { method: 'PATCH' });
+            loadAccounts();
+            refreshTelemetry();
+          });
+        });
 
         document.querySelectorAll('.btn-del-account').forEach((btn) => {
           btn.addEventListener('click', async () => {

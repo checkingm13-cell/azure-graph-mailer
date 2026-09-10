@@ -48,6 +48,27 @@ function seedDefaultAccount() {
       });
     }
   }
+
+  // Auto-seed verified Azure Communication Services accounts
+  if (config.acsConnectionString) {
+    const acsSenders = [
+      { email: config.acsSenderEmail || 'DoNotReply@mail.theparipexjournal.com', name: 'Worldwide Journals (DoNotReply)' },
+      { email: 'Rishank@mail.theparipexjournal.com', name: 'Worldwide Journals (Rishank)' }
+    ];
+    for (const sender of acsSenders) {
+      const existing = db.prepare('SELECT id FROM accounts WHERE email = ?').get(sender.email);
+      if (!existing) {
+        console.log(`[Bootstrap] Seeding Azure Communication Services account: ${sender.email}`);
+        AccountPool.upsertAccount({
+          email: sender.email,
+          displayName: sender.name,
+          provider: 'AZURE_ACS',
+          dailyLimit: config.defaultAccountDailyLimit,
+          cooldownSeconds: config.accountCooldownSeconds
+        });
+      }
+    }
+  }
 }
 
 // Seed default template if templates empty

@@ -73,6 +73,14 @@ router.delete('/accounts/:id', (req, res) => {
   res.json({ ok: true, message: 'Account removed from pool.' });
 });
 
+router.patch('/accounts/:id/toggle', (req, res) => {
+  const account = db.prepare('SELECT is_active FROM accounts WHERE id = ?').get(req.params.id);
+  if (!account) return res.status(404).json({ ok: false, error: 'Account not found' });
+  const newStatus = account.is_active === 1 ? 0 : 1;
+  db.prepare('UPDATE accounts SET is_active = ? WHERE id = ?').run(newStatus, req.params.id);
+  res.json({ ok: true, is_active: newStatus });
+});
+
 // 4. TEMPLATES MANAGEMENT
 router.get('/templates', (req, res) => {
   const templates = db.prepare('SELECT * FROM templates ORDER BY id DESC').all();
