@@ -13,5 +13,5 @@ jobs:
       - name: Ping Azure Health Endpoint
         run: |
           echo "💓 Sending keep-alive heartbeat to Azure Mailer..."
-          response=$(curl -s -m 15 "https://paripex-mailer-app.azurewebsites.net/health")
+          response=$(curl -s -m 15 "https://paripex-mailer-app-fxdqc8ekgrcderdj.centralindia-01.azurewebsites.net/health")
           echo "Response: $response"
