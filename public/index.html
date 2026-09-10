@@ -305,18 +305,18 @@
     <!-- ================================================================= -->
     <section id="tab-contacts" class="tab-pane">
       <div class="two-col-layout">
-        <!-- CSV Uploader -->
+        <!-- Excel / CSV Uploader -->
         <div class="panel-card">
           <div class="panel-header">
-            <h3>Import Authors via CSV</h3>
-            <span class="section-desc">Supports flexible columns (Email, Name, Title, Org)</span>
+            <h3>Import Authors via Excel / CSV</h3>
+            <span class="section-desc">Supports Excel (.xlsx, .xls) and CSV sheets with automatic column detection (Email, Name, Title, Org)</span>
           </div>
           <form id="formUploadCsv">
             <div class="file-drop-zone" id="dropZone">
-              <div style="font-size: 32px; margin-bottom: 8px;">📄</div>
-              <div style="font-weight: 600;">Drag &amp; Drop CSV File Here</div>
-              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">or click to browse from your computer</div>
-              <input type="file" id="csvFileInput" accept=".csv" style="display: none;">
+              <div style="font-size: 32px; margin-bottom: 8px;">📊</div>
+              <div style="font-weight: 600;">Drag &amp; Drop Excel (.xlsx) or CSV File Here</div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">or click to browse from your computer (.xlsx, .xls, .csv)</div>
+              <input type="file" id="csvFileInput" accept=".csv, .xlsx, .xls" style="display: none;">
             </div>
             <div id="selectedFileName" style="margin-top: 8px; font-size: 12px; font-family: var(--font-mono); color: var(--sky);"></div>
             <button type="submit" id="btnUploadCsv" class="btn btn-primary btn-block" style="margin-top: 14px;" disabled>

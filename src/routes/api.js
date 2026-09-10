@@ -7,6 +7,7 @@ const router = express.Router();
 const multer = require('multer');
 const fs = require('fs');
 const csv = require('csv-parser');
+const XLSX = require('xlsx');
 const db = require('../db');
 const AccountPool = require('../services/accountPool');
 const queueWorker = require('../services/queueWorker');
@@ -104,61 +105,71 @@ router.get('/contacts', (req, res) => {
 
 router.post('/contacts/upload', upload.single('file'), (req, res) => {
   if (!req.file) {
-    return res.status(400).json({ ok: false, error: 'No CSV file uploaded.' });
+    return res.status(400).json({ ok: false, error: 'No Excel or CSV file uploaded.' });
   }
 
-  const results = [];
   const filePath = req.file.path;
+  const originalName = (req.file.originalname || '').toLowerCase();
 
-  fs.createReadStream(filePath)
-    .pipe(csv())
-    .on('data', (data) => results.push(data))
-    .on('end', () => {
-      fs.unlinkSync(filePath); // Clean up upload
+  try {
+    let rows = [];
 
-      let imported = 0;
-      let skipped = 0;
-
-      const insertStmt = db.prepare(`
-        INSERT INTO contacts (email, name, paper_title, affiliation)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(email) DO UPDATE SET
-          name = CASE WHEN excluded.name != '' THEN excluded.name ELSE contacts.name END,
-          paper_title = CASE WHEN excluded.paper_title != '' THEN excluded.paper_title ELSE contacts.paper_title END,
-          affiliation = CASE WHEN excluded.affiliation != '' THEN excluded.affiliation ELSE contacts.affiliation END
-      `);
-
-      const insertMany = db.transaction((rows) => {
-        for (const r of rows) {
-          // Find email column flexibly (Email, email, E-mail, Contact Email)
-          const emailKey = Object.keys(r).find((k) => /^email$/i.test(k.trim())) ||
-            Object.keys(r).find((k) => /email/i.test(k));
-          const nameKey = Object.keys(r).find((k) => /^name$/i.test(k.trim())) ||
-            Object.keys(r).find((k) => /name|author/i.test(k));
-          const titleKey = Object.keys(r).find((k) => /title|paper|article/i.test(k));
-          const affilKey = Object.keys(r).find((k) => /affil|univ|org/i.test(k));
-
-          const email = emailKey ? String(r[emailKey] || '').trim().toLowerCase() : '';
-          const name = nameKey ? String(r[nameKey] || '').trim() : '';
-          const paperTitle = titleKey ? String(r[titleKey] || '').trim() : '';
-          const affiliation = affilKey ? String(r[affilKey] || '').trim() : '';
-
-          if (email && email.includes('@') && email.includes('.')) {
-            insertStmt.run(email, name, paperTitle, affiliation);
-            imported++;
-          } else {
-            skipped++;
-          }
-        }
-      });
-
-      insertMany(results);
-      res.json({ ok: true, imported, skipped, totalParsed: results.length });
-    })
-    .on('error', (err) => {
+    // Parse Excel (.xlsx, .xls) or CSV
+    const workbook = XLSX.readFile(filePath, { raw: false });
+    const firstSheetName = workbook.SheetNames[0];
+    if (!firstSheetName) {
       try { fs.unlinkSync(filePath); } catch (_) {}
-      res.status(500).json({ ok: false, error: 'CSV parsing error: ' + err.message });
+      return res.status(400).json({ ok: false, error: 'The uploaded file does not contain any sheets.' });
+    }
+
+    const sheet = workbook.Sheets[firstSheetName];
+    rows = XLSX.utils.sheet_to_json(sheet);
+
+    try { fs.unlinkSync(filePath); } catch (_) {}
+
+    let imported = 0;
+    let skipped = 0;
+
+    const insertStmt = db.prepare(`
+      INSERT INTO contacts (email, name, paper_title, affiliation)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(email) DO UPDATE SET
+        name = CASE WHEN excluded.name != '' THEN excluded.name ELSE contacts.name END,
+        paper_title = CASE WHEN excluded.paper_title != '' THEN excluded.paper_title ELSE contacts.paper_title END,
+        affiliation = CASE WHEN excluded.affiliation != '' THEN excluded.affiliation ELSE contacts.affiliation END
+    `);
+
+    const insertMany = db.transaction((records) => {
+      for (const r of records) {
+        // Find email column flexibly (Email, email, E-mail, Contact Email, etc.)
+        const emailKey = Object.keys(r).find((k) => /^email$/i.test(k.trim())) ||
+          Object.keys(r).find((k) => /email|e-mail|mail/i.test(k));
+        const nameKey = Object.keys(r).find((k) => /^name$/i.test(k.trim())) ||
+          Object.keys(r).find((k) => /name|author|contact/i.test(k));
+        const titleKey = Object.keys(r).find((k) => /title|paper|article|manuscript/i.test(k));
+        const affilKey = Object.keys(r).find((k) => /affil|univ|org|institute/i.test(k));
+
+        const email = emailKey ? String(r[emailKey] || '').trim().toLowerCase() : '';
+        const name = nameKey ? String(r[nameKey] || '').trim() : '';
+        const paperTitle = titleKey ? String(r[titleKey] || '').trim() : '';
+        const affiliation = affilKey ? String(r[affilKey] || '').trim() : '';
+
+        if (email && email.includes('@') && email.includes('.')) {
+          insertStmt.run(email, name, paperTitle, affiliation);
+          imported++;
+        } else {
+          skipped++;
+        }
+      }
     });
+
+    insertMany(rows);
+    res.json({ ok: true, imported, skipped, totalParsed: rows.length });
+  } catch (err) {
+    try { fs.unlinkSync(filePath); } catch (_) {}
+    console.error('File parsing error:', err);
+    res.status(500).json({ ok: false, error: 'File parsing error: ' + err.message });
+  }
 });
 
 // 6. CAMPAIGN CREATION & BATCH QUEUING

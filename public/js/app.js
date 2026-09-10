@@ -312,8 +312,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   function handleFileSelected(file) {
-    if (!file.name.endsWith('.csv')) {
-      alert('Please select a valid .csv file');
+    const isSupported = /\.(csv|xlsx|xls)$/i.test(file.name);
+    if (!isSupported) {
+      alert('Please select a valid Excel (.xlsx, .xls) or CSV (.csv) spreadsheet file');
       return;
     }
     selectedFile = file;
