@@ -181,67 +181,141 @@
     <!-- ================================================================= -->
     <!-- TAB 3: CAMPAIGNS & LAUNCH -->
     <!-- ================================================================= -->
+    <!-- ================================================================= -->
+    <!-- TAB 3: CAMPAIGNS & AUTO-SPLIT BATCHES -->
+    <!-- ================================================================= -->
     <section id="tab-campaigns" class="tab-pane">
-      <div class="two-col-layout">
-        <!-- Launch Form -->
-        <div class="panel-card">
-          <div class="panel-header">
-            <h3>Broadcast New Campaign</h3>
-            <span class="section-desc">Rotates automatically across all active accounts</span>
+      
+      <!-- Auto-Split CSV Campaign Wizard -->
+      <div class="panel-card" style="margin-bottom: 24px;">
+        <div class="panel-header">
+          <div>
+            <h3>📁 Upload CSV &amp; Auto-Split into Batches (Max 50 / Campaign)</h3>
+            <span class="section-desc">Upload any size CSV sheet — auto-deduplicates, derives campaign name from sheet, previews batches, and queues sequentially across your accounts pool.</span>
           </div>
-          <form id="formCreateCampaign">
-            <div class="form-group">
-              <label class="form-label">Campaign Title</label>
-              <input type="text" id="campName" class="form-input" placeholder="e.g. Paripex Sept 2026 Volume 14 Issue 9" required>
+        </div>
+
+        <!-- Step 1: Drop Zone -->
+        <div id="campaignDropZone" class="file-drop-zone" style="cursor: pointer; margin-bottom: 16px;">
+          <div style="font-size: 36px; margin-bottom: 8px;">📑</div>
+          <div style="font-weight: 600; font-size: 15px;">Drag &amp; Drop CSV File to Auto-Generate Batches</div>
+          <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Click to browse (.csv file with unlimited contacts)</div>
+          <input type="file" id="campaignCsvFileInput" accept=".csv" style="display: none;">
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="campaignPreviewLoading" style="display: none; text-align: center; padding: 20px; color: var(--sky);">
+          <span style="font-size: 20px;">⏳</span> Parsing CSV and analyzing contact history in database...
+        </div>
+
+        <!-- Step 2: Pre-Flight Preview Box (Shown after file selected) -->
+        <div id="campaignPreFlightBox" style="display: none; border-top: 1px solid var(--border-color); padding-top: 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h4 style="color: var(--sky); font-size: 16px;">🔍 Pre-Flight Campaign Preview</h4>
+            <button type="button" id="btnCancelPreview" class="btn btn-secondary btn-sm">✕ Choose Different File</button>
+          </div>
+
+          <!-- Summary Metric Badges -->
+          <div class="metrics-strip" style="margin-bottom: 20px;">
+            <div class="metric-card" style="padding: 12px;">
+              <div class="metric-label">Total Rows</div>
+              <div class="metric-value text-sky" id="prevTotalRows">0</div>
+            </div>
+            <div class="metric-card" style="padding: 12px;">
+              <div class="metric-label">Valid Unique</div>
+              <div class="metric-value text-emerald" id="prevValidCount">0</div>
+            </div>
+            <div class="metric-card" style="padding: 12px;">
+              <div class="metric-label">In-Sheet Duplicates</div>
+              <div class="metric-value text-amber" id="prevDuplicateCount">0</div>
+            </div>
+            <div class="metric-card" style="padding: 12px;">
+              <div class="metric-label">Invalid Syntax</div>
+              <div class="metric-value text-rose" id="prevInvalidCount">0</div>
+            </div>
+            <div class="metric-card" style="padding: 12px;">
+              <div class="metric-label">Previously Contacted</div>
+              <div class="metric-value text-purple" id="prevContactedCount">0</div>
+            </div>
+          </div>
+
+          <!-- Configuration Form -->
+          <form id="formLaunchBatches">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Base Campaign Name (Derived from Sheet)</label>
+                <input type="text" id="batchBaseCampaignName" class="form-input" required>
+                <span class="form-help">Batches will be named: [BaseName]_Batch_01, [BaseName]_Batch_02, etc.</span>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Batch Size (Emails per Campaign)</label>
+                <input type="number" id="batchSizeInput" class="form-input" value="50" min="5" max="500" required>
+                <span class="form-help">Default 50 emails per batch for safe multi-account deliverability.</span>
+              </div>
             </div>
 
-            <div class="form-group">
-              <label class="form-label">Select Email Template</label>
-              <select id="campTemplateSelect" class="form-select" required>
-                <option value="">-- Choose Template --</option>
-              </select>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Select Email Template</label>
+                <select id="batchTemplateSelect" class="form-select" required>
+                  <option value="">-- Choose Template --</option>
+                </select>
+              </div>
+              <div class="form-group" style="display: flex; flex-direction: column; justify-content: center;">
+                <label class="checkbox-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 18px;">
+                  <input type="checkbox" id="chkSkipPreviouslyContacted">
+                  <span><b>Exclude contacts already emailed in past campaigns</b></span>
+                </label>
+              </div>
             </div>
 
-            <div class="form-group">
-              <label class="form-label">Target Audience Scope</label>
-              <label class="radio-label">
-                <input type="radio" name="audienceScope" value="all" checked>
-                <span>Broadcast to ALL Active Contacts in Directory</span>
-              </label>
+            <!-- Auto-Split Batches Breakdown Table -->
+            <div style="margin: 20px 0;">
+              <h5 style="margin-bottom: 8px; color: var(--text-secondary);">📦 Generated Campaign Batches:</h5>
+              <div id="batchesListContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px;">
+                <!-- Dynamically populated -->
+              </div>
             </div>
 
-            <div class="card-callout">
-              <strong>💡 Scale-Up Safe Dispatch:</strong>
-              Emails are automatically distributed across your entire sender pool. With 10 accounts at a 60s cooldown, you achieve 1 send every 6 seconds with zero spam flags.
+            <!-- Rendered Email Sample Box -->
+            <div class="panel-card" style="background: var(--bg-surface); border: 1px dashed var(--border-color); margin-bottom: 20px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <strong style="color: var(--sky);">✉️ Live Sample Preview (Recipient #1):</strong>
+                <span id="sampleRecipientEmail" style="font-size: 12px; color: var(--text-muted);"></span>
+              </div>
+              <div id="sampleSubjectLine" style="font-weight: 600; font-size: 13px; margin-bottom: 8px; color: var(--text-primary);">Subject: (Select a template above)</div>
+              <div id="sampleEmailBody" style="font-size: 13px; color: var(--text-secondary); max-height: 160px; overflow-y: auto; background: var(--bg-input); padding: 12px; border-radius: 6px;">
+                Choose a template above to preview merged tags.
+              </div>
             </div>
 
-            <button type="submit" class="btn btn-primary btn-block" style="margin-top: 18px;">
-              🚀 Queue &amp; Start Campaign
+            <button type="submit" id="btnConfirmLaunchBatches" class="btn btn-primary btn-block" style="padding: 14px; font-size: 15px;">
+              🚀 Confirm &amp; Launch All Batches Sequentially (24/7 Across Pool)
             </button>
           </form>
         </div>
+      </div>
 
-        <!-- Recent Campaigns Table -->
-        <div class="panel-card">
-          <div class="panel-header">
-            <h3>Campaign History</h3>
-          </div>
-          <div class="table-responsive">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Name</th>
-                  <th>Template</th>
-                  <th>Status</th>
-                  <th>Progress</th>
-                </tr>
-              </thead>
-              <tbody id="campaignsTableBody">
-                <tr><td colspan="5" class="table-empty">No campaigns executed yet.</td></tr>
-              </tbody>
-            </table>
-          </div>
+      <!-- Campaign History Table -->
+      <div class="panel-card">
+        <div class="panel-header">
+          <h3>Campaign Execution History</h3>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Campaign Batch Name</th>
+                <th>Template</th>
+                <th>Status</th>
+                <th>Progress (Sent / Total)</th>
+              </tr>
+            </thead>
+            <tbody id="campaignsTableBody">
+              <tr><td colspan="5" class="table-empty">No campaigns executed yet.</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </section>

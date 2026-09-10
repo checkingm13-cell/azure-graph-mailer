@@ -9,7 +9,8 @@
     "test:db": "node tests/db-test.js",
     "test:pool": "node tests/pool-test.js",
     "test:auth": "node tests/graph-auth-test.js",
-    "test:send": "node tests/send-real-test.js"
+    "test:send": "node tests/send-real-test.js",
+    "test:batch": "node tests/batch-preview-test.js"
   },
   "keywords": [
     "microsoft-graph",

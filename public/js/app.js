@@ -48,6 +48,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnRefreshLogs = document.getElementById('btnRefreshLogs');
 
   let isWorkerPaused = false;
+  let allLoadedTemplates = [];
+  let currentPreviewData = null;
   let selectedFile = null;
 
   // 1. TAB NAVIGATION
@@ -230,19 +232,32 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await res.json();
       if (!data.ok) return;
 
+      allLoadedTemplates = data.templates || [];
+
       // Dropdown in Campaigns Tab
-      campTemplateSelect.innerHTML = `<option value="">-- Choose Template --</option>` +
-        data.templates.map((t) => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');
+      const tplOptions = `<option value="">-- Choose Template --</option>` +
+        allLoadedTemplates.map((t) => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');
+
+      if (document.getElementById('campTemplateSelect')) {
+        document.getElementById('campTemplateSelect').innerHTML = tplOptions;
+      }
+      const batchTplSelect = document.getElementById('batchTemplateSelect');
+      if (batchTplSelect) {
+        batchTplSelect.innerHTML = tplOptions;
+      }
 
       // Grid in Templates Tab
-      if (data.templates.length === 0) {
+      if (allLoadedTemplates.length === 0) {
         templatesList.innerHTML = `<div class="loading-placeholder">No templates saved yet.</div>`;
       } else {
-        templatesList.innerHTML = data.templates.map((t) => `
+        templatesList.innerHTML = allLoadedTemplates.map((t) => `
           <div class="panel-card" style="margin-bottom: 12px; background: var(--bg-card);">
             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
               <strong>${escapeHtml(t.name)}</strong>
-              <button class="btn btn-secondary btn-sm btn-edit-tpl" data-tpl='${JSON.stringify(t)}'>Edit</button>
+              <div style="display: flex; gap: 6px;">
+                <button class="btn btn-secondary btn-sm btn-edit-tpl" data-tpl='${JSON.stringify(t)}'>Edit</button>
+                <button class="btn btn-secondary btn-sm btn-delete-tpl" data-id="${t.id}" style="color: var(--rose);">Delete</button>
+              </div>
             </div>
             <div style="font-size: 12px; color: var(--sky); margin: 6px 0;">Subject: ${escapeHtml(t.subject)}</div>
           </div>
@@ -256,6 +271,19 @@ document.addEventListener('DOMContentLoaded', () => {
             tplSubject.value = t.subject;
             tplBody.value = t.body_html;
             window.scrollTo({ top: 0, behavior: 'smooth' });
+          });
+        });
+
+        document.querySelectorAll('.btn-delete-tpl').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            if (!confirm('Are you sure you want to delete this email template?')) return;
+            const res = await fetch(`/api/templates/${btn.dataset.id}`, { method: 'DELETE' });
+            const result = await res.json();
+            if (result.ok) {
+              loadTemplates();
+            } else {
+              alert(result.error || 'Failed to delete template');
+            }
           });
         });
       }
@@ -380,38 +408,228 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (_) {}
   }
 
-  // 7. CAMPAIGNS
-  formCreateCampaign.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const name = document.getElementById('campName').value.trim();
-    const templateId = campTemplateSelect.value;
+  // 7. AUTO-SPLIT CSV CAMPAIGN WIZARD WITH PRE-FLIGHT PREVIEW
+  const campaignDropZone = document.getElementById('campaignDropZone');
+  const campaignCsvFileInput = document.getElementById('campaignCsvFileInput');
+  const campaignPreviewLoading = document.getElementById('campaignPreviewLoading');
+  const campaignPreFlightBox = document.getElementById('campaignPreFlightBox');
+  const btnCancelPreview = document.getElementById('btnCancelPreview');
+  const batchBaseCampaignName = document.getElementById('batchBaseCampaignName');
+  const batchSizeInput = document.getElementById('batchSizeInput');
+  const batchTemplateSelect = document.getElementById('batchTemplateSelect');
+  const chkSkipPreviouslyContacted = document.getElementById('chkSkipPreviouslyContacted');
+  const batchesListContainer = document.getElementById('batchesListContainer');
+  const sampleRecipientEmail = document.getElementById('sampleRecipientEmail');
+  const sampleSubjectLine = document.getElementById('sampleSubjectLine');
+  const sampleEmailBody = document.getElementById('sampleEmailBody');
+  const formLaunchBatches = document.getElementById('formLaunchBatches');
+  const btnConfirmLaunchBatches = document.getElementById('btnConfirmLaunchBatches');
 
-    if (!name || !templateId) {
-      alert('Please specify Campaign Title and Template.');
+  const prevTotalRows = document.getElementById('prevTotalRows');
+  const prevValidCount = document.getElementById('prevValidCount');
+  const prevDuplicateCount = document.getElementById('prevDuplicateCount');
+  const prevInvalidCount = document.getElementById('prevInvalidCount');
+  const prevContactedCount = document.getElementById('prevContactedCount');
+
+  if (campaignDropZone && campaignCsvFileInput) {
+    campaignDropZone.addEventListener('click', () => campaignCsvFileInput.click());
+    campaignDropZone.addEventListener('dragover', (e) => { e.preventDefault(); campaignDropZone.classList.add('dragover'); });
+    campaignDropZone.addEventListener('dragleave', () => campaignDropZone.classList.remove('dragover'));
+    campaignDropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      campaignDropZone.classList.remove('dragover');
+      if (e.dataTransfer.files.length > 0) {
+        handleCampaignFileSelected(e.dataTransfer.files[0]);
+      }
+    });
+
+    campaignCsvFileInput.addEventListener('change', () => {
+      if (campaignCsvFileInput.files.length > 0) {
+        handleCampaignFileSelected(campaignCsvFileInput.files[0]);
+      }
+    });
+  }
+
+  if (btnCancelPreview) {
+    btnCancelPreview.addEventListener('click', () => {
+      currentPreviewData = null;
+      campaignPreFlightBox.style.display = 'none';
+      campaignDropZone.style.display = 'block';
+      if (campaignCsvFileInput) campaignCsvFileInput.value = '';
+    });
+  }
+
+  async function handleCampaignFileSelected(file) {
+    if (!/\.(csv|xlsx|xls)$/i.test(file.name)) {
+      alert('Please upload a valid CSV or spreadsheet file (.csv, .xlsx, .xls)');
       return;
     }
 
-    const res = await fetch('/api/campaigns/create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name,
-        templateId,
-        sendToAllActive: true
-      })
-    });
+    campaignPreviewLoading.style.display = 'block';
+    campaignPreFlightBox.style.display = 'none';
 
-    const data = await res.json();
-    if (data.ok) {
-      alert(`🎉 Campaign "${name}" created! ${data.totalQueued} emails queued across the multi-account pool.`);
-      formCreateCampaign.reset();
-      loadCampaigns();
-      refreshTelemetry();
-      document.querySelector('.nav-tab[data-tab="tab-overview"]').click();
-    } else {
-      alert(data.error || 'Failed to create campaign');
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('batchSize', batchSizeInput ? batchSizeInput.value || 50 : 50);
+
+    try {
+      const res = await fetch('/api/campaigns/preview-upload', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      campaignPreviewLoading.style.display = 'none';
+
+      if (!data.ok) {
+        alert(data.error || 'Failed to parse file for preview.');
+        return;
+      }
+
+      currentPreviewData = data;
+      renderPreFlightPreview();
+    } catch (err) {
+      campaignPreviewLoading.style.display = 'none';
+      alert('Error analyzing CSV preview: ' + err.message);
     }
-  });
+  }
+
+  function renderPreFlightPreview() {
+    if (!currentPreviewData) return;
+
+    prevTotalRows.textContent = currentPreviewData.totalRows;
+    prevValidCount.textContent = currentPreviewData.validCount;
+    prevDuplicateCount.textContent = currentPreviewData.duplicateInSheetCount;
+    prevInvalidCount.textContent = currentPreviewData.invalidCount;
+    prevContactedCount.textContent = currentPreviewData.previouslyContactedCount;
+
+    batchBaseCampaignName.value = currentPreviewData.baseCampaignName;
+    batchSizeInput.value = currentPreviewData.batchSize || 50;
+
+    campaignPreFlightBox.style.display = 'block';
+    renderBatchesBreakdown();
+    updateSampleEmailPreview();
+  }
+
+  function renderBatchesBreakdown() {
+    if (!currentPreviewData) return;
+
+    const size = Math.max(1, parseInt(batchSizeInput.value || '50', 10));
+    const skip = chkSkipPreviouslyContacted.checked;
+    let contacts = currentPreviewData.contacts;
+    if (skip) {
+      contacts = contacts.filter((c) => !c.previouslyContacted);
+    }
+
+    const totalBatches = Math.ceil(contacts.length / size) || 1;
+    const baseName = batchBaseCampaignName.value.trim() || currentPreviewData.baseCampaignName;
+
+    batchesListContainer.innerHTML = '';
+    for (let i = 0; i < totalBatches; i++) {
+      const start = i * size;
+      const count = Math.min(size, contacts.length - start);
+      const batchNumStr = String(i + 1).padStart(2, '0');
+      const batchName = `${baseName}_Batch_${batchNumStr}`;
+
+      batchesListContainer.innerHTML += `
+        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; font-size: 12px;">
+          <div style="font-weight: 600; color: var(--sky);">${escapeHtml(batchName)}</div>
+          <div style="color: var(--text-muted); margin-top: 4px;">👥 <strong>${count}</strong> recipients queued</div>
+        </div>
+      `;
+    }
+
+    btnConfirmLaunchBatches.textContent = `🚀 Confirm & Launch All ${totalBatches} Batches (${contacts.length} Total Emails)`;
+  }
+
+  function updateSampleEmailPreview() {
+    if (!currentPreviewData || !currentPreviewData.contacts.length) return;
+
+    const templateId = batchTemplateSelect.value;
+    const firstContact = currentPreviewData.contacts[0];
+    sampleRecipientEmail.textContent = `Recipient: ${firstContact.email} (${firstContact.name || 'Author'})`;
+
+    if (!templateId) {
+      sampleSubjectLine.textContent = 'Subject: (Choose a template above)';
+      sampleEmailBody.innerHTML = 'Choose a template above to preview how the email will look with merged variables.';
+      return;
+    }
+
+    const template = allLoadedTemplates.find((t) => String(t.id) === String(templateId));
+    if (!template) return;
+
+    function merge(str, c) {
+      return (str || '')
+        .replace(/\{\{\s*Name\s*\}\}/gi, c.name || 'Dr. Researcher')
+        .replace(/\{\{\s*Paper\s*Title\s*\}\}/gi, c.paper_title || 'Recent Scientific Advances')
+        .replace(/\{\{\s*Affiliation\s*\}\}/gi, c.affiliation || 'University Department')
+        .replace(/\{\{\s*Date\s*\}\}/gi, new Date().toLocaleDateString());
+    }
+
+    sampleSubjectLine.textContent = `Subject: ${merge(template.subject, firstContact)}`;
+    sampleEmailBody.innerHTML = merge(template.body_html, firstContact);
+  }
+
+  if (batchSizeInput) {
+    batchSizeInput.addEventListener('input', renderBatchesBreakdown);
+  }
+  if (batchBaseCampaignName) {
+    batchBaseCampaignName.addEventListener('input', renderBatchesBreakdown);
+  }
+  if (chkSkipPreviouslyContacted) {
+    chkSkipPreviouslyContacted.addEventListener('change', renderBatchesBreakdown);
+  }
+  if (batchTemplateSelect) {
+    batchTemplateSelect.addEventListener('change', updateSampleEmailPreview);
+  }
+
+  if (formLaunchBatches) {
+    formLaunchBatches.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!currentPreviewData) return;
+
+      const templateId = batchTemplateSelect.value;
+      if (!templateId) {
+        alert('Please select an Email Template to apply across all batches.');
+        return;
+      }
+
+      btnConfirmLaunchBatches.disabled = true;
+      btnConfirmLaunchBatches.textContent = '⏳ Creating Campaigns & Populating 24/7 Queue...';
+
+      const payload = {
+        baseCampaignName: batchBaseCampaignName.value.trim() || currentPreviewData.baseCampaignName,
+        templateId: parseInt(templateId, 10),
+        batchSize: parseInt(batchSizeInput.value || '50', 10),
+        skipPreviouslyContacted: chkSkipPreviouslyContacted.checked,
+        contacts: currentPreviewData.contacts
+      };
+
+      try {
+        const res = await fetch('/api/campaigns/launch-batches', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        btnConfirmLaunchBatches.disabled = false;
+
+        if (data.ok) {
+          alert(`🎉 SUCCESS! Created ${data.totalCampaigns} campaign batches with ${data.totalQueued} emails queued!\n\nThe 24/7 background worker is now dispatching them sequentially across your sender accounts.`);
+          campaignPreFlightBox.style.display = 'none';
+          currentPreviewData = null;
+          if (campaignCsvFileInput) campaignCsvFileInput.value = '';
+          loadCampaigns();
+          refreshTelemetry();
+          document.querySelector('.nav-tab[data-tab="tab-overview"]').click();
+        } else {
+          alert(data.error || 'Failed to launch batches.');
+        }
+      } catch (err) {
+        btnConfirmLaunchBatches.disabled = false;
+        alert('Error launching campaigns: ' + err.message);
+      }
+    });
+  }
 
   async function loadCampaigns() {
     try {
