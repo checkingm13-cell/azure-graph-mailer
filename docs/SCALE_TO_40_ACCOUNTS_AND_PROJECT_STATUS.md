@@ -18,6 +18,7 @@ aliases:
 > **Central Reference Document**: Complete audit of all properly completed components, live production architecture, and the exact step-by-step standard operating procedure (SOP) to add and scale from 1 to 40+ sender identities.
 
 Related Obsidian Notes:
+- [[MICROSOFT_550_5_7_708_ERROR_DIAGNOSIS_AND_FIX]]
 - [[ARCHITECTURE_AND_SYSTEM_DESIGN]]
 - [[M365_SHARED_MAILBOX_SETUP_GUIDE]]
 - [[MULTI_ACCOUNT_WARMUP_AND_ANTI_SPAM]]
