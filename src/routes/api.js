@@ -633,4 +633,65 @@ router.get('/logs', (req, res) => {
   res.json({ ok: true, logs });
 });
 
+// 8. QUICK TEST EMAIL DISPATCH
+router.post('/send-test', async (req, res) => {
+  const { toEmail, name = 'Test Recipient', subject = '✅ Test Email from Azure Mailer', bodyHtml } = req.body;
+  if (!toEmail || !toEmail.includes('@')) {
+    return res.status(400).json({ ok: false, error: 'Valid recipient email address is required.' });
+  }
+
+  const account = AccountPool.getAvailableAccount();
+  if (!account) {
+    return res.status(503).json({ ok: false, error: 'No sender accounts available in pool (all on cooldown or hit limit).' });
+  }
+
+  const content = bodyHtml || `<div style="font-family: sans-serif; padding: 20px; line-height: 1.6; color: #1e293b;">
+    <h2 style="color: #0284c7; margin-top: 0;">✅ Test Email Delivery</h2>
+    <p>Hello <b>${name}</b>,</p>
+    <p>This is a real-time verification email dispatched from your <b>Azure Multi-Account Mailer</b>.</p>
+    <table style="border-collapse: collapse; width: 100%; max-width: 480px; margin: 16px 0; background: #f8fafc; border-radius: 6px; overflow: hidden;">
+      <tr><td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; width: 140px;">Sender Account:</td><td style="padding: 10px; border: 1px solid #e2e8f0;">${account.email}</td></tr>
+      <tr><td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold;">Provider:</td><td style="padding: 10px; border: 1px solid #e2e8f0;">${account.provider}</td></tr>
+      <tr><td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold;">Timestamp:</td><td style="padding: 10px; border: 1px solid #e2e8f0;">${new Date().toISOString()}</td></tr>
+    </table>
+    <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+    <p style="font-size: 12px; color: #64748b;">Journal Paripex - Automated Production Delivery Engine</p>
+  </div>`;
+
+  try {
+    const { sendViaGraph } = require('../services/graphMailer');
+    const { sendViaACS } = require('../services/acsMailer');
+
+    if (account.provider === 'AZURE_ACS') {
+      await sendViaACS({
+        fromEmail: account.email,
+        toEmail: toEmail.trim(),
+        subject,
+        htmlBody: content
+      });
+    } else {
+      await sendViaGraph({
+        fromEmail: account.email,
+        toEmail: toEmail.trim(),
+        subject,
+        htmlBody: content
+      });
+    }
+
+    AccountPool.recordSendSuccess(account.id);
+    db.prepare("INSERT INTO logs (account_id, level, message) VALUES (?, 'INFO', ?)").run(
+      account.id,
+      `Quick test email dispatched to "${toEmail}" via ${account.email}`
+    );
+
+    res.json({ ok: true, message: `Test email dispatched to ${toEmail} via ${account.email}.` });
+  } catch (err) {
+    db.prepare("INSERT INTO logs (account_id, level, message) VALUES (?, 'ERROR', ?)").run(
+      account.id,
+      `Failed to dispatch test email to "${toEmail}": ${err.message}`
+    );
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 module.exports = router;

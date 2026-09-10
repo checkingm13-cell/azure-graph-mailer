@@ -95,20 +95,24 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // 1. TAB NAVIGATION
+  function switchTab(targetId) {
+    document.querySelectorAll('.nav-tab').forEach((t) => t.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach((p) => p.classList.remove('active'));
+
+    const tabBtn = document.querySelector(`.nav-tab[data-tab="${targetId}"]`);
+    if (tabBtn) tabBtn.classList.add('active');
+    document.getElementById(targetId)?.classList.add('active');
+
+    if (targetId === 'tab-accounts') loadAccounts();
+    if (targetId === 'tab-templates') loadTemplates();
+    if (targetId === 'tab-campaigns') { loadTemplates(); loadCampaigns(); }
+    if (targetId === 'tab-contacts') loadContacts();
+    if (targetId === 'tab-logs') loadLogs();
+  }
+
   document.querySelectorAll('.nav-tab').forEach((tab) => {
     tab.addEventListener('click', () => {
-      document.querySelectorAll('.nav-tab').forEach((t) => t.classList.remove('active'));
-      document.querySelectorAll('.tab-pane').forEach((p) => p.classList.remove('active'));
-
-      tab.classList.add('active');
-      const targetId = tab.dataset.tab;
-      document.getElementById(targetId)?.classList.add('active');
-
-      if (targetId === 'tab-accounts') loadAccounts();
-      if (targetId === 'tab-templates') loadTemplates();
-      if (targetId === 'tab-campaigns') { loadTemplates(); loadCampaigns(); }
-      if (targetId === 'tab-contacts') loadContacts();
-      if (targetId === 'tab-logs') loadLogs();
+      switchTab(tab.dataset.tab);
     });
   });
 
@@ -992,6 +996,107 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!str) return '';
     return String(str).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
   }
+
+  // 9. QUICK ACTIONS & QUICK TEST MODAL (Zero-Brain Experience)
+  const modalQuickTest = document.getElementById('modalQuickTest');
+  const btnOpenQuickTest = document.getElementById('btnOpenQuickTest');
+  const btnCloseQuickTest = document.getElementById('btnCloseQuickTest');
+  const btnCancelQuickTest = document.getElementById('btnCancelQuickTest');
+  const formQuickTest = document.getElementById('formQuickTest');
+  const quickTestToEmail = document.getElementById('quickTestToEmail');
+  const quickTestName = document.getElementById('quickTestName');
+  const quickTestSubject = document.getElementById('quickTestSubject');
+  const quickTestResult = document.getElementById('quickTestResult');
+  const btnSubmitQuickTest = document.getElementById('btnSubmitQuickTest');
+
+  function openQuickTestModal() {
+    if (!modalQuickTest) return;
+    quickTestResult.style.display = 'none';
+    modalQuickTest.style.display = 'flex';
+    if (quickTestToEmail) quickTestToEmail.focus();
+  }
+
+  function closeQuickTestModal() {
+    if (modalQuickTest) modalQuickTest.style.display = 'none';
+  }
+
+  if (btnOpenQuickTest) btnOpenQuickTest.addEventListener('click', openQuickTestModal);
+  if (btnCloseQuickTest) btnCloseQuickTest.addEventListener('click', closeQuickTestModal);
+  if (btnCancelQuickTest) btnCancelQuickTest.addEventListener('click', closeQuickTestModal);
+
+  modalQuickTest?.addEventListener('click', (e) => {
+    if (e.target === modalQuickTest) closeQuickTestModal();
+  });
+
+  formQuickTest?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const toEmail = quickTestToEmail.value.trim();
+    const name = quickTestName.value.trim();
+    const subject = quickTestSubject.value.trim();
+
+    btnSubmitQuickTest.disabled = true;
+    btnSubmitQuickTest.textContent = '⏳ Dispatching...';
+    quickTestResult.style.display = 'none';
+
+    try {
+      const res = await fetch('/api/send-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toEmail, name, subject })
+      });
+      const data = await res.json();
+      quickTestResult.style.display = 'block';
+
+      if (data.ok) {
+        quickTestResult.style.background = 'rgba(16, 185, 129, 0.15)';
+        quickTestResult.style.color = 'var(--emerald)';
+        quickTestResult.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+        quickTestResult.innerHTML = `✅ <b>Dispatched!</b> ${escapeHtml(data.message)}<br/><span style="font-size: 11px;">Message handed to Microsoft Graph API. Check recipient inbox/spam.</span>`;
+        refreshTelemetry();
+      } else {
+        quickTestResult.style.background = 'rgba(244, 63, 94, 0.15)';
+        quickTestResult.style.color = 'var(--rose)';
+        quickTestResult.style.border = '1px solid rgba(244, 63, 94, 0.4)';
+        quickTestResult.innerHTML = `❌ <b>Error:</b> ${escapeHtml(data.error)}`;
+      }
+    } catch (err) {
+      quickTestResult.style.display = 'block';
+      quickTestResult.style.background = 'rgba(244, 63, 94, 0.15)';
+      quickTestResult.style.color = 'var(--rose)';
+      quickTestResult.style.border = '1px solid rgba(244, 63, 94, 0.4)';
+      quickTestResult.innerHTML = `❌ <b>Network error:</b> ${escapeHtml(err.message)}`;
+    } finally {
+      btnSubmitQuickTest.disabled = false;
+      btnSubmitQuickTest.textContent = '🚀 Send Test Now';
+    }
+  });
+
+  function downloadSampleCsv() {
+    const csvContent = "Name,email,Paper Title,Affiliation\n" +
+      "Dr. Hamza Memon,checkingm13@gmail.com,Recent Advancements in Machine Learning,World Wide Journals\n" +
+      "Dr. Reeta Shah,editor@paripex.in,Clinical Immunology & Public Health,Medical Research Institute\n" +
+      "Dr. Sharma,author@example.com,Quantum Computing Applications,Indian Science Academy\n";
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'contacts_sample.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  // Quick Action Cards
+  const cardActionLaunch = document.getElementById('cardActionLaunch');
+  const cardActionTest = document.getElementById('cardActionTest');
+  const cardActionSampleCsv = document.getElementById('cardActionSampleCsv');
+  const btnDownloadSampleCsvInner = document.getElementById('btnDownloadSampleCsvInner');
+
+  cardActionLaunch?.addEventListener('click', () => switchTab('tab-campaigns'));
+  cardActionTest?.addEventListener('click', openQuickTestModal);
+  cardActionSampleCsv?.addEventListener('click', downloadSampleCsv);
+  btnDownloadSampleCsvInner?.addEventListener('click', downloadSampleCsv);
 
   // Initial Boot
   refreshTelemetry();
