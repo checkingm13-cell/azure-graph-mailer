@@ -983,26 +983,55 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btnCancelCampaignPreview) btnCancelCampaignPreview.addEventListener('click', closeCampaignPreviewModal);
   modalCampaignPreview?.addEventListener('click', (e) => { if (e.target === modalCampaignPreview) closeCampaignPreviewModal(); });
 
+  // Replace the btnTriggerRerun listener in public/js/app.js
+
   if (btnTriggerRerun) {
     btnTriggerRerun.addEventListener('click', async () => {
       if (!activePreviewCampaignId) return;
       const mode = rerunModeSelect ? rerunModeSelect.value : 'failed_only';
       const senderVal = rerunSenderAccountSelect ? rerunSenderAccountSelect.value : '';
       const modeText = mode === 'failed_only' ? 'failed/errored contacts only' : 'all contacts in this campaign';
+
       const confirmed = confirm(`Are you sure you want to re-run this campaign (${modeText})?`);
       if (!confirmed) return;
-      btnTriggerRerun.disabled = true; btnTriggerRerun.textContent = '⏳ Queuing Re-run...';
+
+      btnTriggerRerun.disabled = true;
+      btnTriggerRerun.textContent = '⏳ Queuing Re-run...';
+
       try {
-        const res = await fetch(`/api/campaigns/${activePreviewCampaignId}/clone`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode, senderAccountId: senderVal ? parseInt(senderVal, 10) : null }) });
+        const res = await fetch(`/api/campaigns/${activePreviewCampaignId}/clone`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode, senderAccountId: senderVal ? parseInt(senderVal, 10) : null })
+        });
+
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          throw new Error(`Server returned status ${res.status} (${res.statusText}) instead of valid JSON.`);
+        }
+
         const data = await res.json();
-        btnTriggerRerun.disabled = false; btnTriggerRerun.textContent = '🚀 Re-run Campaign Now';
-        if (data.ok) { alert(`🎉 SUCCESS!\n${data.message}`); closeCampaignPreviewModal(); loadCampaigns(); refreshTelemetry(); switchTab('tab-overview'); }
-        else { alert(data.error || 'Failed to re-run campaign.'); }
-      } catch (err) { btnTriggerRerun.disabled = false; btnTriggerRerun.textContent = '🚀 Re-run Campaign Now'; alert('Error triggering re-run: ' + err.message); }
+        btnTriggerRerun.disabled = false;
+        btnTriggerRerun.textContent = '🚀 Re-run Campaign Now';
+
+        if (data.ok) {
+          alert(`🎉 SUCCESS!\n${data.message}`);
+          closeCampaignPreviewModal();
+          loadCampaigns();
+          refreshTelemetry();
+          switchTab('tab-overview');
+        } else {
+          alert(data.error || 'Failed to re-run campaign.');
+        }
+      } catch (err) {
+        btnTriggerRerun.disabled = false;
+        btnTriggerRerun.textContent = '🚀 Re-run Campaign Now';
+        alert('Error triggering re-run: ' + err.message);
+      }
     });
   }
 
-  
+
   function downloadSampleCsv() {
     const csvContent = "Name,email,Paper Title,Affiliation\n" + "Dr. Hamza Memon,checkingm13@gmail.com,Recent Advancements in Machine Learning,World Wide Journals\n" + "Dr. Reeta Shah,editor@paripex.in,Clinical Immunology & Public Health,Medical Research Institute\n" + "Dr. Sharma,author@example.com,Quantum Computing Applications,Indian Science Academy\n";
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

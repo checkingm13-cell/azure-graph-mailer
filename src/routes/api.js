@@ -87,6 +87,92 @@ router.post('/worker/pause', (req, res) => {
   res.json({ ok: true, message: 'Worker paused' });
 });
 
+// Add to src/routes/api.js
+
+router.post('/campaigns/:id/clone', (req, res) => {
+  const campId = req.params.id;
+  const { mode = 'failed_only', senderAccountId = null } = req.body;
+
+  const originalCamp = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campId);
+  if (!originalCamp) {
+    return res.status(404).json({ ok: false, error: 'Original campaign not found.' });
+  }
+
+  // Fetch target queue items based on mode
+  let targetQueueItems = [];
+  if (mode === 'failed_only') {
+    targetQueueItems = db.prepare(`
+      SELECT * FROM queue 
+      WHERE campaign_id = ? AND status = 'failed'
+    `).all(campId);
+  } else {
+    targetQueueItems = db.prepare(`
+      SELECT * FROM queue 
+      WHERE campaign_id = ?
+    `).all(campId);
+  }
+
+  if (targetQueueItems.length === 0) {
+    return res.status(400).json({
+      ok: false,
+      error: mode === 'failed_only'
+        ? 'No failed contacts found to re-run in this campaign.'
+        : 'No contacts found in this campaign.'
+    });
+  }
+
+  const template = db.prepare('SELECT * FROM templates WHERE id = ?').get(originalCamp.template_id);
+  if (!template) {
+    return res.status(404).json({ ok: false, error: 'Associated template no longer exists.' });
+  }
+
+  const parsedSenderAccountId = senderAccountId ? parseInt(senderAccountId, 10) : originalCamp.sender_account_id;
+  const newCampName = `${originalCamp.name}_Rerun_${mode === 'failed_only' ? 'Failed' : 'All'}_${Date.now().toString().slice(-4)}`;
+
+  const cloneTx = db.transaction(() => {
+    const campRes = db.prepare(`
+      INSERT INTO campaigns (name, template_id, status, total_count, scheduled_at, sender_account_id)
+      VALUES (?, ?, 'QUEUED', ?, datetime('now'), ?)
+    `).run(newCampName, originalCamp.template_id, targetQueueItems.length, parsedSenderAccountId);
+
+    const newCampaignId = campRes.lastInsertRowid;
+
+    const queueInsert = db.prepare(`
+      INSERT INTO queue (campaign_id, contact_id, email, name, subject, rendered_html, status, scheduled_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'queued', datetime('now'))
+    `);
+
+    for (const item of targetQueueItems) {
+      queueInsert.run(
+        newCampaignId,
+        item.contact_id,
+        item.email,
+        item.name || '',
+        item.subject,
+        item.rendered_html
+      );
+    }
+
+    db.prepare(`
+      INSERT INTO logs (campaign_id, level, message)
+      VALUES (?, 'INFO', ?)
+    `).run(newCampaignId, `Cloned campaign "${newCampName}" created with ${targetQueueItems.length} recipients.`);
+
+    return { newCampaignId, newCampName, count: targetQueueItems.length };
+  });
+
+  try {
+    const result = cloneTx();
+    res.json({
+      ok: true,
+      message: `Re-run campaign "${result.newCampName}" launched with ${result.count} contacts queued!`,
+      campaignId: result.newCampaignId
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: 'Failed to create re-run campaign: ' + err.message });
+  }
+});
+
 router.post('/worker/resume', (req, res) => {
   queueWorker.resume();
   res.json({ ok: true, message: 'Worker resumed' });
