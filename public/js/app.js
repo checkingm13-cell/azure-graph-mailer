@@ -1002,6 +1002,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  
   function downloadSampleCsv() {
     const csvContent = "Name,email,Paper Title,Affiliation\n" + "Dr. Hamza Memon,checkingm13@gmail.com,Recent Advancements in Machine Learning,World Wide Journals\n" + "Dr. Reeta Shah,editor@paripex.in,Clinical Immunology & Public Health,Medical Research Institute\n" + "Dr. Sharma,author@example.com,Quantum Computing Applications,Indian Science Academy\n";
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

@@ -99,7 +99,7 @@ class AccountPool {
    * Adds or updates a sender account in the pool
    * @param {Object} account
    */
-  static upsertAccount({ email, displayName, provider = 'GRAPH_API', dailyLimit = 500, cooldownSeconds = 60 }) {
+  static upsertAccount({ email, displayName, provider = 'GRAPH_API', dailyLimit = 500, cooldownSeconds = 0 }) {
     const stmt = db.prepare(`
       INSERT INTO accounts (email, display_name, provider, daily_limit, cooldown_seconds, is_active)
       VALUES (?, ?, ?, ?, ?, 1)

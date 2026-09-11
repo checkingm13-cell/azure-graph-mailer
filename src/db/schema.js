@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     daily_limit INTEGER NOT NULL DEFAULT 500,
     sent_today INTEGER NOT NULL DEFAULT 0,
     last_sent_at TEXT,
-    cooldown_seconds INTEGER NOT NULL DEFAULT 60,
+    cooldown_seconds INTEGER NOT NULL DEFAULT 0,
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );

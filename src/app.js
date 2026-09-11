@@ -33,8 +33,13 @@ app.get(['/health', '/heartbeat', '/ping'], (req, res) => {
   });
 });
 
-// Seed default sender account if not present
 function seedDefaultAccount() {
+  try {
+    db.prepare("UPDATE accounts SET cooldown_seconds = 0").run();
+  } catch (err) {
+    console.error("[Bootstrap] Failed to reset cooldowns:", err.message);
+  }
+
   if (config.defaultSenderEmail) {
     const existing = db.prepare('SELECT id FROM accounts WHERE email = ?').get(config.defaultSenderEmail);
     if (!existing) {
@@ -44,12 +49,11 @@ function seedDefaultAccount() {
         displayName: 'Dr. Reeta Shah (Chief Editor, Journal Paripex)',
         provider: config.defaultProvider,
         dailyLimit: config.defaultAccountDailyLimit,
-        cooldownSeconds: config.accountCooldownSeconds
+        cooldownSeconds: 0
       });
     }
   }
 
-  // Auto-seed verified Azure Communication Services accounts
   if (config.acsConnectionString) {
     const acsSenders = [
       { email: config.acsSenderEmail || 'DoNotReply@mail.theparipexjournal.com', name: 'Worldwide Journals (DoNotReply)' },
@@ -64,7 +68,7 @@ function seedDefaultAccount() {
           displayName: sender.name,
           provider: 'AZURE_ACS',
           dailyLimit: config.defaultAccountDailyLimit,
-          cooldownSeconds: config.accountCooldownSeconds
+          cooldownSeconds: 0
         });
       }
     }
