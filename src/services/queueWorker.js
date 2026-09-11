@@ -51,7 +51,7 @@ class QueueWorker {
       try {
         // 1. Fetch next queued item that is scheduled for now or in the past
         const item = db.prepare(`
-          SELECT q.*, c.name AS campaign_name, c.status AS campaign_status
+          SELECT q.*, c.name AS campaign_name, c.status AS campaign_status, c.sender_account_id AS campaign_sender_account_id
           FROM queue q
           JOIN campaigns c ON q.campaign_id = c.id
           WHERE q.status = 'queued'
@@ -77,8 +77,8 @@ class QueueWorker {
           `).run(item.campaign_id);
         }
 
-        // 3. Request an available account from the multi-account pool
-        const account = AccountPool.getAvailableAccount();
+        // 3. Request an available account from the multi-account pool (or campaign-specific account)
+        const account = AccountPool.getAvailableAccount(item.campaign_sender_account_id || null);
 
         if (!account) {
           // All accounts are either in cooldown or hit daily limits

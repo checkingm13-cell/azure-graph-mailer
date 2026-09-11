@@ -322,6 +322,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
       badgeAccountCount.textContent = `${data.accounts.length} accounts`;
 
+      // Populate Sender Account Dropdowns across UI
+      const batchSenderSelect = document.getElementById('batchSenderAccountSelect');
+      const quickTestSenderSelect = document.getElementById('quickTestSenderAccount');
+      const rerunSenderSelect = document.getElementById('rerunSenderAccountSelect');
+
+      const optionsHtml = data.accounts.map(a => {
+        const engineLabel = a.provider === 'AZURE_ACS' ? '⚡ Azure ACS' : '🔷 Graph API';
+        return `<option value="${a.id}">[${engineLabel}] ${escapeHtml(a.email)} (${escapeHtml(a.display_name)})</option>`;
+      }).join('');
+
+      if (batchSenderSelect) {
+        const curVal = batchSenderSelect.value;
+        batchSenderSelect.innerHTML = `<option value="">⚡ All Active Accounts Pool (Auto-Rotate)</option>` + optionsHtml;
+        if (curVal) batchSenderSelect.value = curVal;
+      }
+
+      if (quickTestSenderSelect) {
+        const curVal = quickTestSenderSelect.value;
+        quickTestSenderSelect.innerHTML = `<option value="">⚡ Next Available Account in Pool</option>` + optionsHtml;
+        if (curVal) quickTestSenderSelect.value = curVal;
+      }
+
+      if (rerunSenderSelect) {
+        const curVal = rerunSenderSelect.value;
+        rerunSenderSelect.innerHTML = `<option value="">⚡ Original / Auto-Rotate Pool</option>` + optionsHtml;
+        if (curVal) rerunSenderSelect.value = curVal;
+      }
+
       // Render Table in Accounts tab
       if (data.accounts.length === 0) {
         accountsTableBody.innerHTML = `<tr><td colspan="6" class="table-empty">No sender accounts registered yet.</td></tr>`;
@@ -861,6 +889,8 @@ document.addEventListener('DOMContentLoaded', () => {
       btnConfirmLaunchBatches.disabled = true;
       btnConfirmLaunchBatches.textContent = '⏳ Creating Campaigns & Scheduling Queue...';
 
+      const senderAccountIdVal = document.getElementById('batchSenderAccountSelect')?.value;
+
       const payload = {
         baseCampaignName: batchBaseCampaignName.value.trim() || currentPreviewData.baseCampaignName,
         templateId: parseInt(templateId, 10),
@@ -869,7 +899,8 @@ document.addEventListener('DOMContentLoaded', () => {
         scheduleMode: campaignScheduleMode ? campaignScheduleMode.value : 'immediate',
         scheduledStartTime: campaignScheduledStartTime ? campaignScheduledStartTime.value : '',
         staggerMinutes: parseInt(campaignStaggerMinutes ? campaignStaggerMinutes.value || '60' : '60', 10),
-        contacts: currentPreviewData.contacts
+        contacts: currentPreviewData.contacts,
+        senderAccountId: senderAccountIdVal ? parseInt(senderAccountIdVal, 10) : null
       };
 
       try {
@@ -906,7 +937,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!data.ok) return;
 
       if (data.campaigns.length === 0) {
-        campaignsTableBody.innerHTML = `<tr><td colspan="7" class="table-empty">No campaigns executed yet.</td></tr>`;
+        campaignsTableBody.innerHTML = `<tr><td colspan="8" class="table-empty">No campaigns executed yet.</td></tr>`;
       } else {
         campaignsTableBody.innerHTML = data.campaigns.map((c) => {
           let statusBadgeClass = 'badge-queued';
@@ -933,7 +964,7 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
           } else {
             actionsHtml = `
-              <button type="button" class="btn btn-secondary btn-sm btn-clone-camp" data-id="${c.id}" data-name="${escapeHtml(c.name)}" style="padding: 3px 8px; font-size: 11px; background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4); color: var(--sky);">🔄 Re-run / Clone</button>
+              <button type="button" class="btn btn-secondary btn-sm btn-preview-camp" data-id="${c.id}" data-name="${escapeHtml(c.name)}" style="padding: 3px 8px; font-size: 11px; background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4); color: var(--sky);">🔍 Preview / Re-run</button>
             `;
           }
 
@@ -941,11 +972,16 @@ document.addEventListener('DOMContentLoaded', () => {
             ? `Started: ${formatDateTime(c.started_at)}` 
             : (c.scheduled_at ? `Scheduled: ${formatDateTime(c.scheduled_at)}` : '--');
 
+          const senderBadge = c.sender_email
+            ? `<div style="font-size: 11px; font-weight: 600; color: var(--sky);">${escapeHtml(c.sender_email)}</div><span class="account-badge" style="font-size: 9px; padding: 1px 5px;">${c.sender_provider || 'ENGINE'}</span>`
+            : `<span style="font-size: 11px; color: var(--text-muted);">Pool (Auto-Rotate)</span>`;
+
           return `
             <tr>
               <td>#${c.id}</td>
               <td><strong>${escapeHtml(c.name)}</strong></td>
               <td>${escapeHtml(c.template_name || '--')}</td>
+              <td>${senderBadge}</td>
               <td><span style="font-size: 11px; color: var(--text-secondary);">${timeDisplay}</span></td>
               <td><span class="badge ${statusBadgeClass}">${c.status}</span></td>
               <td>${c.sent_count} / ${c.total_count} ${c.failed_count > 0 ? `<span style="color: var(--rose);">(${c.failed_count} err)</span>` : ''}</td>
@@ -954,39 +990,10 @@ document.addEventListener('DOMContentLoaded', () => {
           `;
         }).join('');
 
-        // Wire Action buttons
-        campaignsTableBody.querySelectorAll('.btn-clone-camp').forEach((btn) => {
-          btn.addEventListener('click', async () => {
-            const campId = btn.dataset.id;
-            const campName = btn.dataset.name;
-            const confirmed = confirm(`🔄 Re-run / Clone Campaign "${campName}"?\n\nThis will take the contacts from this campaign and queue a new dispatch run without needing to re-upload the CSV file.`);
-            if (!confirmed) return;
-
-            btn.disabled = true;
-            btn.textContent = '⏳ Queuing...';
-
-            try {
-              const res = await fetch(`/api/campaigns/${campId}/clone`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ mode: 'all' })
-              });
-              const data = await res.json();
-              if (data.ok) {
-                alert(`🎉 SUCCESS!\n\n${data.message}`);
-                loadCampaigns();
-                refreshTelemetry();
-                switchTab('tab-overview');
-              } else {
-                alert(data.error || 'Failed to re-run campaign.');
-                btn.disabled = false;
-                btn.textContent = '🔄 Re-run';
-              }
-            } catch (err) {
-              alert('Error re-running campaign: ' + err.message);
-              btn.disabled = false;
-              btn.textContent = '🔄 Re-run';
-            }
+        // Wire Preview / Re-run Modal Buttons
+        campaignsTableBody.querySelectorAll('.btn-preview-camp').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            openCampaignPreviewModal(btn.dataset.id);
           });
         });
 
@@ -1091,11 +1098,18 @@ document.addEventListener('DOMContentLoaded', () => {
     btnSubmitQuickTest.textContent = '⏳ Dispatching...';
     quickTestResult.style.display = 'none';
 
+    const senderAccountIdVal = document.getElementById('quickTestSenderAccount')?.value;
+
     try {
       const res = await fetch('/api/send-test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ toEmail, name, subject })
+        body: JSON.stringify({ 
+          toEmail, 
+          name, 
+          subject,
+          senderAccountId: senderAccountIdVal ? parseInt(senderAccountIdVal, 10) : null 
+        })
       });
       const data = await res.json();
       quickTestResult.style.display = 'block';
@@ -1123,6 +1137,141 @@ document.addEventListener('DOMContentLoaded', () => {
       btnSubmitQuickTest.textContent = '🚀 Send Test Now';
     }
   });
+
+  // 10. CAMPAIGN PREVIEW & RE-RUN MODAL CONTROLLER
+  const modalCampaignPreview = document.getElementById('modalCampaignPreview');
+  const btnCloseCampaignPreview = document.getElementById('btnCloseCampaignPreview');
+  const btnCancelCampaignPreview = document.getElementById('btnCancelCampaignPreview');
+  const previewModalCampName = document.getElementById('previewModalCampName');
+  const previewModalCampMeta = document.getElementById('previewModalCampMeta');
+  const previewModalTotal = document.getElementById('previewModalTotal');
+  const previewModalSent = document.getElementById('previewModalSent');
+  const previewModalFailed = document.getElementById('previewModalFailed');
+  const previewModalQueued = document.getElementById('previewModalQueued');
+  const previewModalTableBody = document.getElementById('previewModalTableBody');
+  const rerunModeSelect = document.getElementById('rerunModeSelect');
+  const rerunSenderAccountSelect = document.getElementById('rerunSenderAccountSelect');
+  const btnTriggerRerun = document.getElementById('btnTriggerRerun');
+
+  let activePreviewCampaignId = null;
+
+  async function openCampaignPreviewModal(campaignId) {
+    if (!modalCampaignPreview) return;
+    activePreviewCampaignId = campaignId;
+    modalCampaignPreview.style.display = 'flex';
+    previewModalTableBody.innerHTML = '<tr><td colspan="5" class="table-empty">⏳ Loading campaign details and queue snapshot...</td></tr>';
+
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/preview`);
+      const data = await res.json();
+      if (!data.ok) {
+        alert(data.error || 'Failed to load campaign preview.');
+        closeCampaignPreviewModal();
+        return;
+      }
+
+      const c = data.campaign;
+      const s = data.summary;
+
+      previewModalCampName.textContent = c.name;
+      const senderText = c.sender_email ? `${c.sender_email} (${c.sender_provider})` : 'All Active Pool';
+      previewModalCampMeta.textContent = `Template: ${c.template_name || 'Standard'} | Sender: ${senderText} | Status: ${c.status}`;
+
+      previewModalTotal.textContent = s.total || 0;
+      previewModalSent.textContent = s.sent || 0;
+      previewModalFailed.textContent = s.failed || 0;
+      previewModalQueued.textContent = (s.queued || 0) + (s.sending || 0);
+
+      // Pre-select sender account if campaign had one
+      if (rerunSenderAccountSelect && c.sender_account_id) {
+        rerunSenderAccountSelect.value = String(c.sender_account_id);
+      }
+
+      // Populate snapshot table
+      if (!data.sampleItems || data.sampleItems.length === 0) {
+        previewModalTableBody.innerHTML = '<tr><td colspan="5" class="table-empty">No queue records found for this campaign.</td></tr>';
+      } else {
+        previewModalTableBody.innerHTML = data.sampleItems.map(item => {
+          let badgeClass = 'badge-queued';
+          if (item.status === 'sent') badgeClass = 'badge-completed';
+          else if (item.status === 'failed') badgeClass = 'badge-failed';
+          else if (item.status === 'sending') badgeClass = 'badge-sending';
+
+          return `
+            <tr>
+              <td><strong>${escapeHtml(item.email)}</strong></td>
+              <td>${escapeHtml(item.name || '--')}</td>
+              <td><span class="badge ${badgeClass}">${item.status}</span></td>
+              <td>${item.attempts}</td>
+              <td style="color: ${item.status === 'failed' ? 'var(--rose)' : 'var(--text-muted)'}; font-size: 11px;">
+                ${escapeHtml(item.last_error || (item.status === 'sent' ? `Delivered ${formatDateTime(item.sent_at)}` : '--'))}
+              </td>
+            </tr>
+          `;
+        }).join('');
+      }
+
+    } catch (err) {
+      alert('Error fetching preview: ' + err.message);
+      closeCampaignPreviewModal();
+    }
+  }
+
+  function closeCampaignPreviewModal() {
+    if (modalCampaignPreview) modalCampaignPreview.style.display = 'none';
+    activePreviewCampaignId = null;
+  }
+
+  if (btnCloseCampaignPreview) btnCloseCampaignPreview.addEventListener('click', closeCampaignPreviewModal);
+  if (btnCancelCampaignPreview) btnCancelCampaignPreview.addEventListener('click', closeCampaignPreviewModal);
+  modalCampaignPreview?.addEventListener('click', (e) => {
+    if (e.target === modalCampaignPreview) closeCampaignPreviewModal();
+  });
+
+  if (btnTriggerRerun) {
+    btnTriggerRerun.addEventListener('click', async () => {
+      if (!activePreviewCampaignId) return;
+
+      const mode = rerunModeSelect ? rerunModeSelect.value : 'failed_only';
+      const senderVal = rerunSenderAccountSelect ? rerunSenderAccountSelect.value : '';
+
+      const modeText = mode === 'failed_only' ? 'failed/errored contacts only' : 'all contacts in this campaign';
+      const confirmed = confirm(`Are you sure you want to re-run this campaign (${modeText})?`);
+      if (!confirmed) return;
+
+      btnTriggerRerun.disabled = true;
+      btnTriggerRerun.textContent = '⏳ Queuing Re-run...';
+
+      try {
+        const res = await fetch(`/api/campaigns/${activePreviewCampaignId}/clone`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode,
+            senderAccountId: senderVal ? parseInt(senderVal, 10) : null
+          })
+        });
+
+        const data = await res.json();
+        btnTriggerRerun.disabled = false;
+        btnTriggerRerun.textContent = '🚀 Re-run Campaign Now';
+
+        if (data.ok) {
+          alert(`🎉 SUCCESS!\n\n${data.message}`);
+          closeCampaignPreviewModal();
+          loadCampaigns();
+          refreshTelemetry();
+          switchTab('tab-overview');
+        } else {
+          alert(data.error || 'Failed to re-run campaign.');
+        }
+      } catch (err) {
+        btnTriggerRerun.disabled = false;
+        btnTriggerRerun.textContent = '🚀 Re-run Campaign Now';
+        alert('Error triggering re-run: ' + err.message);
+      }
+    });
+  }
 
   function downloadSampleCsv() {
     const csvContent = "Name,email,Paper Title,Affiliation\n" +

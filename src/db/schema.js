@@ -94,6 +94,9 @@ function initSchema(db) {
   // Safe additive migrations for scheduling
   try {
     const campaignCols = db.prepare("PRAGMA table_info(campaigns)").all().map(c => c.name);
+    if (!campaignCols.includes('sender_account_id')) {
+      db.exec("ALTER TABLE campaigns ADD COLUMN sender_account_id INTEGER REFERENCES accounts(id)");
+    }
     if (!campaignCols.includes('scheduled_at')) {
       db.exec("ALTER TABLE campaigns ADD COLUMN scheduled_at TEXT");
     }

@@ -10,17 +10,35 @@ class AccountPool {
   /**
    * Selects the next available sender account based on fair round-robin,
    * quota availability, and cooldown compliance.
+   * @param {number|null} specificAccountId Optional account ID to target
    * @returns {Object|null} account record or null if all accounts are throttled/exhausted
    */
-  static getAvailableAccount() {
+  static getAvailableAccount(specificAccountId = null) {
     this.refreshRollingQuotas();
+
+    if (specificAccountId) {
+      const specificStmt = db.prepare(`
+        SELECT * FROM accounts
+        WHERE id = ?
+          AND is_active = 1
+          AND sent_today < daily_limit
+          AND (
+            cooldown_seconds = 0
+            OR last_sent_at IS NULL
+            OR (strftime('%s', 'now') - strftime('%s', last_sent_at)) >= cooldown_seconds
+          )
+        LIMIT 1
+      `);
+      return specificStmt.get(specificAccountId) || null;
+    }
 
     const stmt = db.prepare(`
       SELECT * FROM accounts
       WHERE is_active = 1
         AND sent_today < daily_limit
         AND (
-          last_sent_at IS NULL
+          cooldown_seconds = 0
+          OR last_sent_at IS NULL
           OR (strftime('%s', 'now') - strftime('%s', last_sent_at)) >= cooldown_seconds
         )
       ORDER BY last_sent_at ASC

@@ -208,12 +208,52 @@ router.post('/contacts/upload', upload.single('file'), (req, res) => {
 // 6. CAMPAIGN CREATION & BATCH QUEUING
 router.get('/campaigns', (req, res) => {
   const campaigns = db.prepare(`
-    SELECT c.*, t.name AS template_name
+    SELECT c.*, t.name AS template_name, a.email AS sender_email, a.provider AS sender_provider
     FROM campaigns c
     LEFT JOIN templates t ON c.template_id = t.id
+    LEFT JOIN accounts a ON c.sender_account_id = a.id
     ORDER BY c.id DESC
   `).all();
   res.json({ ok: true, campaigns });
+});
+
+router.get('/campaigns/:id/preview', (req, res) => {
+  const campId = req.params.id;
+  const camp = db.prepare(`
+    SELECT c.*, t.name AS template_name, a.email AS sender_email, a.provider AS sender_provider
+    FROM campaigns c
+    LEFT JOIN templates t ON c.template_id = t.id
+    LEFT JOIN accounts a ON c.sender_account_id = a.id
+    WHERE c.id = ?
+  `).get(campId);
+
+  if (!camp) return res.status(404).json({ ok: false, error: 'Campaign not found' });
+
+  const summary = db.prepare(`
+    SELECT 
+      COUNT(*) AS total,
+      COUNT(CASE WHEN status = 'sent' THEN 1 END) AS sent,
+      COUNT(CASE WHEN status = 'failed' THEN 1 END) AS failed,
+      COUNT(CASE WHEN status = 'queued' THEN 1 END) AS queued,
+      COUNT(CASE WHEN status = 'sending' THEN 1 END) AS sending
+    FROM queue
+    WHERE campaign_id = ?
+  `).get(campId);
+
+  const sampleItems = db.prepare(`
+    SELECT id, email, name, subject, status, attempts, last_error, sent_at
+    FROM queue
+    WHERE campaign_id = ?
+    ORDER BY id ASC
+    LIMIT 100
+  `).all(campId);
+
+  res.json({
+    ok: true,
+    campaign: camp,
+    summary,
+    sampleItems
+  });
 });
 
 router.post('/campaigns/create', (req, res) => {
@@ -438,7 +478,8 @@ router.post('/campaigns/launch-batches', (req, res) => {
     scheduleMode = 'immediate',
     scheduledStartTime = '',
     staggerMinutes = 60,
-    contacts = []
+    contacts = [],
+    senderAccountId = null
   } = req.body;
 
   if (!baseCampaignName || !templateId) {
@@ -449,6 +490,8 @@ router.post('/campaigns/launch-batches', (req, res) => {
   if (!template) {
     return res.status(404).json({ ok: false, error: 'Template not found.' });
   }
+
+  const parsedSenderAccountId = senderAccountId ? parseInt(senderAccountId, 10) : null;
 
   if (!Array.isArray(contacts) || contacts.length === 0) {
     return res.status(400).json({ ok: false, error: 'No contacts provided to launch.' });
@@ -499,8 +542,8 @@ router.post('/campaigns/launch-batches', (req, res) => {
     const createdCampaigns = [];
 
     const campInsert = db.prepare(`
-      INSERT INTO campaigns (name, template_id, status, total_count, scheduled_at)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO campaigns (name, template_id, status, total_count, scheduled_at, sender_account_id)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
 
     const queueInsert = db.prepare(`
@@ -528,7 +571,7 @@ router.post('/campaigns/launch-batches', (req, res) => {
       const isFuture = startMs > (Date.now() + 5000);
       const initialStatus = isFuture ? 'SCHEDULED' : 'QUEUED';
 
-      const campRes = campInsert.run(batchName, templateId, initialStatus, batchSlice.length, batchScheduledAt);
+      const campRes = campInsert.run(batchName, templateId, initialStatus, batchSlice.length, batchScheduledAt, parsedSenderAccountId);
       const campaignId = campRes.lastInsertRowid;
 
       for (const c of batchSlice) {
@@ -618,7 +661,7 @@ router.post('/campaigns/:id/cancel', (req, res) => {
 // 6C. CLONE / RE-RUN CAMPAIGN (Re-use existing campaign audience)
 router.post('/campaigns/:id/clone', (req, res) => {
   const campId = req.params.id;
-  const { newName, templateId, mode = 'all' } = req.body || {};
+  const { newName, templateId, mode = 'all', senderAccountId = null } = req.body || {};
 
   const origCamp = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campId);
   if (!origCamp) return res.status(404).json({ ok: false, error: 'Campaign not found' });
@@ -627,13 +670,17 @@ router.post('/campaigns/:id/clone', (req, res) => {
   const template = db.prepare('SELECT * FROM templates WHERE id = ?').get(targetTemplateId);
   if (!template) return res.status(404).json({ ok: false, error: 'Template not found' });
 
+  const targetSenderAccountId = senderAccountId !== undefined 
+    ? (senderAccountId ? parseInt(senderAccountId, 10) : null)
+    : origCamp.sender_account_id;
+
   let query = 'SELECT email, name FROM queue WHERE campaign_id = ?';
   if (mode === 'failed_only') {
     query += " AND status = 'failed'";
   }
   const items = db.prepare(query).all(campId);
   if (!items || items.length === 0) {
-    return res.status(400).json({ ok: false, error: 'No contacts found to re-run for this campaign.' });
+    return res.status(400).json({ ok: false, error: `No contacts found to re-run (${mode === 'failed_only' ? 'no failed emails' : 'empty queue'}).` });
   }
 
   // Deduplicate
@@ -654,9 +701,9 @@ router.post('/campaigns/:id/clone', (req, res) => {
 
   const cloneTx = db.transaction(() => {
     const campRes = db.prepare(`
-      INSERT INTO campaigns (name, template_id, status, total_count, scheduled_at)
-      VALUES (?, ?, 'QUEUED', ?, ?)
-    `).run(campaignName, targetTemplateId, uniqueItems.length, nowSql);
+      INSERT INTO campaigns (name, template_id, status, total_count, scheduled_at, sender_account_id)
+      VALUES (?, ?, 'QUEUED', ?, ?, ?)
+    `).run(campaignName, targetTemplateId, uniqueItems.length, nowSql, targetSenderAccountId);
 
     const newCampId = campRes.lastInsertRowid;
 
@@ -723,14 +770,14 @@ router.get('/logs', (req, res) => {
 
 // 8. QUICK TEST EMAIL DISPATCH
 router.post('/send-test', async (req, res) => {
-  const { toEmail, name = 'Test Recipient', subject = '✅ Test Email from Azure Mailer', bodyHtml } = req.body;
+  const { toEmail, name = 'Test Recipient', subject = '✅ Test Email from Azure Mailer', bodyHtml, senderAccountId = null } = req.body;
   if (!toEmail || !toEmail.includes('@')) {
     return res.status(400).json({ ok: false, error: 'Valid recipient email address is required.' });
   }
 
-  const account = AccountPool.getAvailableAccount();
+  const account = AccountPool.getAvailableAccount(senderAccountId ? parseInt(senderAccountId, 10) : null);
   if (!account) {
-    return res.status(503).json({ ok: false, error: 'No sender accounts available in pool (all on cooldown or hit limit).' });
+    return res.status(503).json({ ok: false, error: 'Selected sender account is unavailable (in cooldown or daily quota reached).' });
   }
 
   const content = bodyHtml || `<div style="font-family: sans-serif; padding: 20px; line-height: 1.6; color: #1e293b;">

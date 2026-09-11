@@ -337,12 +337,20 @@
                   <option value="">-- Choose Template --</option>
                 </select>
               </div>
-              <div class="form-group" style="display: flex; flex-direction: column; justify-content: center;">
-                <label class="checkbox-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 18px;">
-                  <input type="checkbox" id="chkSkipPreviouslyContacted">
-                  <span><b>Exclude contacts already emailed in past campaigns</b></span>
-                </label>
+              <div class="form-group">
+                <label class="form-label">Sender Account &amp; Engine</label>
+                <select id="batchSenderAccountSelect" class="form-select">
+                  <option value="">⚡ All Active Accounts Pool (Auto-Rotate)</option>
+                </select>
+                <span class="form-help">Pick an ACS address for bulk or Graph API account. Engine switches automatically!</span>
               </div>
+            </div>
+
+            <div class="form-group" style="margin-top: 6px;">
+              <label class="checkbox-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="chkSkipPreviouslyContacted">
+                <span><b>Exclude contacts already emailed in past campaigns</b></span>
+              </label>
             </div>
 
             <!-- Scheduling Configuration Mode -->
@@ -411,6 +419,7 @@
                 <th>ID</th>
                 <th>Campaign Batch Name</th>
                 <th>Template</th>
+                <th>Sender Account &amp; Engine</th>
                 <th>Scheduled / Started</th>
                 <th>Status</th>
                 <th>Progress (Sent / Total)</th>
@@ -562,6 +571,14 @@
 
       <form id="formQuickTest">
         <div class="form-group">
+          <label class="form-label">Select Sender Account &amp; Engine:</label>
+          <select id="quickTestSenderAccount" class="form-select">
+            <!-- Dynamically populated -->
+          </select>
+          <span class="form-help">Choose between Microsoft Graph or Azure ACS sender accounts</span>
+        </div>
+
+        <div class="form-group">
           <label class="form-label">Send Test Email To:</label>
           <input type="email" id="quickTestToEmail" class="form-input" placeholder="e.g. checkingm13@gmail.com" required>
           <span class="form-help">Enter your personal or test recipient email address.</span>
@@ -586,6 +603,94 @@
           </button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Campaign Preview & Re-run Modal -->
+  <div id="modalCampaignPreview" class="modal-overlay" style="display: none;">
+    <div class="modal-card" style="max-width: 760px; width: 90%;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 24px;">📊</span>
+          <div>
+            <h3 id="previewModalCampName" style="margin: 0; font-size: 17px; color: var(--text-primary);">Campaign Preview &amp; Re-run</h3>
+            <p id="previewModalCampMeta" style="margin: 0; font-size: 12px; color: var(--text-muted);">Inspect execution status and trigger re-runs</p>
+          </div>
+        </div>
+        <button type="button" id="btnCloseCampaignPreview" class="btn btn-secondary btn-sm" style="padding: 4px 10px; border-radius: 6px;">✕</button>
+      </div>
+
+      <!-- Quick Metrics Summary -->
+      <div class="metrics-strip" style="margin-bottom: 16px;">
+        <div class="metric-card" style="padding: 10px;">
+          <div class="metric-label">Total</div>
+          <div class="metric-value text-sky" id="previewModalTotal">0</div>
+        </div>
+        <div class="metric-card" style="padding: 10px;">
+          <div class="metric-label">Delivered</div>
+          <div class="metric-value text-emerald" id="previewModalSent">0</div>
+        </div>
+        <div class="metric-card" style="padding: 10px;">
+          <div class="metric-label">Failed / Errored</div>
+          <div class="metric-value text-rose" id="previewModalFailed">0</div>
+        </div>
+        <div class="metric-card" style="padding: 10px;">
+          <div class="metric-label">Queued / Pending</div>
+          <div class="metric-value text-amber" id="previewModalQueued">0</div>
+        </div>
+      </div>
+
+      <!-- Re-run Configuration Section -->
+      <div style="background: rgba(2, 132, 199, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+        <div style="font-size: 13px; font-weight: 700; color: var(--sky); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">
+          🔄 Re-run This Campaign
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label">Re-run Mode</label>
+            <select id="rerunModeSelect" class="form-select">
+              <option value="failed_only">⚠️ Failed / Errored Contacts Only (Recommended)</option>
+              <option value="all">🔁 All Contacts in Campaign (Full Re-run)</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label">Sender Account &amp; Engine</label>
+            <select id="rerunSenderAccountSelect" class="form-select">
+              <!-- Dynamically populated -->
+            </select>
+          </div>
+        </div>
+        <div style="display: flex; justify-content: flex-end; margin-top: 12px; gap: 8px;">
+          <button type="button" id="btnTriggerRerun" class="btn btn-primary" style="background: linear-gradient(135deg, #0284c7, #0369a1); font-weight: 600;">
+            🚀 Re-run Campaign Now
+          </button>
+        </div>
+      </div>
+
+      <!-- Sample Queue Preview Table -->
+      <div style="font-size: 13px; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px;">
+        📋 Contact Queue Snapshot (Up to 100 contacts)
+      </div>
+      <div class="table-responsive" style="max-height: 220px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px;">
+        <table class="data-table" style="font-size: 12px;">
+          <thead>
+            <tr>
+              <th>Recipient</th>
+              <th>Name</th>
+              <th>Status</th>
+              <th>Attempts</th>
+              <th>Last Error / Note</th>
+            </tr>
+          </thead>
+          <tbody id="previewModalTableBody">
+            <tr><td colspan="5" class="table-empty">Loading contacts...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+        <button type="button" id="btnCancelCampaignPreview" class="btn btn-secondary">Close</button>
+      </div>
     </div>
   </div>
 

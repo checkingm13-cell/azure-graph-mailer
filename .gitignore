@@ -6,3 +6,9 @@ uploads/*
 !uploads/.gitkeep
 .DS_Store
 *.log
+
+diagnostic-delivery.js
+test-final-csv.js
+*.csv
+all_code_text.txt
+*.txt
