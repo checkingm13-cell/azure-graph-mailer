@@ -7,7 +7,7 @@ const router = express.Router();
 const multer = require('multer');
 const fs = require('fs');
 const csv = require('csv-parser');
-const XLSX = require('xlsx');
+const XLSX = require('exceljs');
 const config = require('../config/env');
 const db = require('../db');
 const AccountPool = require('../services/accountPool');
@@ -151,14 +151,14 @@ router.post('/contacts/upload', upload.single('file'), (req, res) => {
     const workbook = XLSX.readFile(filePath, { raw: false });
     const firstSheetName = workbook.SheetNames[0];
     if (!firstSheetName) {
-      try { fs.unlinkSync(filePath); } catch (_) {}
+      try { fs.unlinkSync(filePath); } catch (_) { }
       return res.status(400).json({ ok: false, error: 'The uploaded file does not contain any sheets.' });
     }
 
     const sheet = workbook.Sheets[firstSheetName];
     rows = XLSX.utils.sheet_to_json(sheet);
 
-    try { fs.unlinkSync(filePath); } catch (_) {}
+    try { fs.unlinkSync(filePath); } catch (_) { }
 
     let imported = 0;
     let skipped = 0;
@@ -199,7 +199,7 @@ router.post('/contacts/upload', upload.single('file'), (req, res) => {
     insertMany(rows);
     res.json({ ok: true, imported, skipped, totalParsed: rows.length });
   } catch (err) {
-    try { fs.unlinkSync(filePath); } catch (_) {}
+    try { fs.unlinkSync(filePath); } catch (_) { }
     console.error('File parsing error:', err);
     res.status(500).json({ ok: false, error: 'File parsing error: ' + err.message });
   }
@@ -332,12 +332,12 @@ router.post('/campaigns/preview-upload', upload.single('file'), (req, res) => {
     const workbook = XLSX.readFile(filePath, { raw: false });
     const sheetName = workbook.SheetNames[0];
     if (!sheetName) {
-      try { fs.unlinkSync(filePath); } catch (_) {}
+      try { fs.unlinkSync(filePath); } catch (_) { }
       return res.status(400).json({ ok: false, error: 'Uploaded file has no data sheets.' });
     }
 
     const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
-    try { fs.unlinkSync(filePath); } catch (_) {}
+    try { fs.unlinkSync(filePath); } catch (_) { }
 
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     const seenEmails = new Set();
@@ -462,7 +462,7 @@ router.post('/campaigns/preview-upload', upload.single('file'), (req, res) => {
     });
 
   } catch (err) {
-    try { fs.unlinkSync(filePath); } catch (_) {}
+    try { fs.unlinkSync(filePath); } catch (_) { }
     console.error('Preview error:', err);
     res.status(500).json({ ok: false, error: 'Error generating preview: ' + err.message });
   }
@@ -670,7 +670,7 @@ router.post('/campaigns/:id/clone', (req, res) => {
   const template = db.prepare('SELECT * FROM templates WHERE id = ?').get(targetTemplateId);
   if (!template) return res.status(404).json({ ok: false, error: 'Template not found' });
 
-  const targetSenderAccountId = senderAccountId !== undefined 
+  const targetSenderAccountId = senderAccountId !== undefined
     ? (senderAccountId ? parseInt(senderAccountId, 10) : null)
     : origCamp.sender_account_id;
 
@@ -693,8 +693,8 @@ router.post('/campaigns/:id/clone', (req, res) => {
     }
   }
 
-  const campaignName = (newName && newName.trim()) 
-    ? newName.trim() 
+  const campaignName = (newName && newName.trim())
+    ? newName.trim()
     : `${origCamp.name}_Rerun_${Date.now().toString().slice(-4)}`;
 
   const nowSql = formatSqliteDateTime(new Date());

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,10 +8,12 @@
   <link rel="stylesheet" href="css/style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
 </head>
-<body>
 
+<body>
   <!-- Top Header Bar -->
   <header class="app-header">
     <div class="header-left">
@@ -21,7 +24,9 @@
       </div>
     </div>
     <div class="header-right">
-      <button type="button" id="btnOpenQuickTest" class="btn btn-primary btn-sm" style="background: linear-gradient(135deg, #0284c7, #0369a1); font-weight: 600; box-shadow: 0 2px 8px rgba(2, 132, 199, 0.4);">⚡ Quick Test Email</button>
+      <button type="button" id="btnOpenQuickTest" class="btn btn-primary btn-sm"
+        style="background: linear-gradient(135deg, #0284c7, #0369a1); font-weight: 600; box-shadow: 0 2px 8px rgba(2, 132, 199, 0.4);">⚡
+        Quick Test Email</button>
       <div id="workerStateBadge" class="status-badge active">
         <span class="dot"></span>
         <span id="workerStatusText">WORKER RUNNING</span>
@@ -30,13 +35,35 @@
     </div>
   </header>
 
+  <!-- Diagnostics Overview Ribbon -->
+  <section class="diagnostics-bar">
+    <div class="diag-item">
+      <div class="diag-label">⚡ Engine</div>
+      <div class="diag-value text-emerald">ONLINE (Node.js)</div>
+    </div>
+    <div class="diag-item">
+      <div class="diag-label">💾 Database</div>
+      <div class="diag-value text-sky">CONNECTED (SQLite WAL)</div>
+    </div>
+    <div class="diag-item">
+      <div class="diag-label">👥 Active Pool</div>
+      <div class="diag-value" id="diagActivePool">-- / -- Ready</div>
+    </div>
+    <div class="diag-item">
+      <div class="diag-label">🔄 Background Worker</div>
+      <div class="diag-value" id="diagWorkerStatus">ACTIVE</div>
+    </div>
+    <div class="diag-item">
+      <div class="diag-label">🔋 24h Quota Fuel</div>
+      <div class="diag-value" id="diagQuotaFuel">--%</div>
+      <div class="gauge-bar-bg" style="height: 4px; margin-top: 4px;">
+        <div id="diagQuotaBar" class="gauge-bar-fill" style="width: 0%;"></div>
+      </div>
+    </div>
+  </section>
+
   <!-- Global Metrics Strip -->
   <section class="metrics-strip">
-    <div class="metric-card">
-      <div class="metric-label">Active Sender Pool</div>
-      <div class="metric-value text-sky" id="statActiveAccounts">--</div>
-      <div class="metric-sub" id="statTotalAccounts">-- registered accounts</div>
-    </div>
     <div class="metric-card">
       <div class="metric-label">Daily Capacity (24h)</div>
       <div class="metric-value text-emerald" id="statDailyCapacity">--</div>
@@ -56,54 +83,49 @@
 
   <!-- Main Workspace -->
   <main class="main-container">
-    
-    <!-- Live Campaign Monitor Hero Card (Always Visible Across Workspace) -->
-    <div id="liveCampaignMonitorCard" class="panel-card" style="margin-bottom: 20px; border: 1px solid rgba(56, 189, 248, 0.4); background: linear-gradient(180deg, rgba(14, 165, 233, 0.08) 0%, rgba(17, 24, 39, 0.95) 100%);">
-      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
+    <!-- Live Campaign Monitor Hero Card -->
+    <div id="liveCampaignMonitorCard" class="panel-card"
+      style="margin-bottom: 20px; border: 1px solid rgba(56, 189, 248, 0.4); background: linear-gradient(180deg, rgba(14, 165, 233, 0.08) 0%, rgba(17, 24, 39, 0.95) 100%);">
+      <div
+        style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
         <div style="display: flex; align-items: center; gap: 10px;">
-          <span id="monitorStatusBadge" class="badge badge-queued" style="font-size: 11px; padding: 4px 10px; font-weight: 700;">IDLE</span>
-          <h3 id="monitorCampaignName" style="margin: 0; font-size: 16px; color: var(--text-primary);">No active campaign running</h3>
+          <span id="monitorStatusBadge" class="badge badge-queued"
+            style="font-size: 11px; padding: 4px 10px; font-weight: 700;">IDLE</span>
+          <h3 id="monitorCampaignName" style="margin: 0; font-size: 16px; color: var(--text-primary);">No active
+            campaign running</h3>
         </div>
         <div id="monitorActions" style="display: flex; gap: 8px;">
-          <button type="button" id="btnMonitorPause" class="btn btn-secondary btn-sm" style="display: none; padding: 6px 12px;">⏸️ Pause</button>
-          <button type="button" id="btnMonitorResume" class="btn btn-primary btn-sm" style="display: none; padding: 6px 12px;">▶️ Resume</button>
-          <button type="button" id="btnMonitorCancel" class="btn btn-danger btn-sm" style="display: none; padding: 6px 12px;">✕ Cancel Batch</button>
+          <button type="button" id="btnMonitorPause" class="btn btn-secondary btn-sm"
+            style="display: none; padding: 6px 12px;">⏸️ Pause</button>
+          <button type="button" id="btnMonitorResume" class="btn btn-primary btn-sm"
+            style="display: none; padding: 6px 12px;">▶️ Resume</button>
+          <button type="button" id="btnMonitorCancel" class="btn btn-danger btn-sm"
+            style="display: none; padding: 6px 12px;">✕ Cancel Batch</button>
         </div>
       </div>
-
-      <!-- Live Progress Bar -->
-      <div style="background: rgba(255, 255, 255, 0.08); border-radius: 9999px; height: 10px; overflow: hidden; margin-bottom: 12px;">
-        <div id="monitorProgressBar" style="background: linear-gradient(90deg, var(--sky), var(--emerald)); height: 100%; width: 0%; transition: width 0.4s ease;"></div>
-      </div>
-
-      <!-- Telemetry Row -->
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; font-size: 12px;">
-        <div>
-          <span style="color: var(--text-muted);">Progress:</span>
-          <strong id="monitorProgressText" style="color: var(--text-primary); margin-left: 4px;">0 / 0 (0%)</strong>
-        </div>
-        <div>
-          <span style="color: var(--text-muted);">Sender Account:</span>
-          <strong id="monitorSenderEmail" style="color: var(--sky); margin-left: 4px;">dr.reetashah@theparipexjournal.com</strong>
-        </div>
-        <div>
-          <span style="color: var(--text-muted);">Dynamic ETA:</span>
-          <strong id="monitorEtaText" style="color: var(--emerald); margin-left: 4px;">--</strong>
-        </div>
-        <div>
-          <span style="color: var(--text-muted);">Current Recipient:</span>
-          <strong id="monitorCurrentRecipient" style="color: var(--text-secondary); margin-left: 4px;">--</strong>
+      <div
+        style="background: rgba(255, 255, 255, 0.08); border-radius: 9999px; height: 10px; overflow: hidden; margin-bottom: 12px;">
+        <div id="monitorProgressBar"
+          style="background: linear-gradient(90deg, var(--sky), var(--emerald)); height: 100%; width: 0%; transition: width 0.4s ease;">
         </div>
       </div>
-
-      <!-- Scheduled Queue Timeline (Upcoming Batches) -->
-      <div id="monitorUpcomingContainer" style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08); display: none;">
-        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--purple); margin-bottom: 8px; letter-spacing: 0.05em;">
-          📅 Scheduled Queue Timeline (Upcoming Batches)
-        </div>
-        <div id="monitorUpcomingList" style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px;">
-          <!-- Dynamically populated upcoming batch cards -->
-        </div>
+      <div
+        style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; font-size: 12px;">
+        <div><span style="color: var(--text-muted);">Progress:</span><strong id="monitorProgressText"
+            style="color: var(--text-primary); margin-left: 4px;">0 / 0 (0%)</strong></div>
+        <div><span style="color: var(--text-muted);">Sender Account:</span><strong id="monitorSenderEmail"
+            style="color: var(--sky); margin-left: 4px;">dr.reetashah@theparipexjournal.com</strong></div>
+        <div><span style="color: var(--text-muted);">Dynamic ETA:</span><strong id="monitorEtaText"
+            style="color: var(--emerald); margin-left: 4px;">--</strong></div>
+        <div><span style="color: var(--text-muted);">Current Recipient:</span><strong id="monitorCurrentRecipient"
+            style="color: var(--text-secondary); margin-left: 4px;">--</strong></div>
+      </div>
+      <div id="monitorUpcomingContainer"
+        style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08); display: none;">
+        <div
+          style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--purple); margin-bottom: 8px; letter-spacing: 0.05em;">
+          📅 Scheduled Queue Timeline (Upcoming Batches)</div>
+        <div id="monitorUpcomingList" style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px;"></div>
       </div>
     </div>
 
@@ -117,44 +139,45 @@
       <button class="nav-tab" data-tab="tab-logs">📜 Audit Logs</button>
     </nav>
 
-    <!-- ================================================================= -->
     <!-- TAB 1: OVERVIEW & QUEUE -->
-    <!-- ================================================================= -->
     <section id="tab-overview" class="tab-pane active">
-      <!-- Quick Action Hub (Zero Brain Strain) -->
-      <div class="quick-action-strip" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 24px;">
-        <div class="action-card" id="cardActionLaunch" style="background: linear-gradient(135deg, rgba(2, 132, 199, 0.15) 0%, rgba(15, 23, 42, 0.95) 100%); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 10px; padding: 18px; cursor: pointer; transition: all 0.2s ease;">
+      <div class="quick-action-strip"
+        style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 24px;">
+        <div class="action-card" id="cardActionLaunch"
+          style="background: linear-gradient(135deg, rgba(2, 132, 199, 0.15) 0%, rgba(15, 23, 42, 0.95) 100%); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 10px; padding: 18px; cursor: pointer; transition: all 0.2s ease;">
           <div style="font-size: 26px; margin-bottom: 8px;">🚀</div>
-          <h4 style="margin: 0 0 4px 0; color: var(--text-primary); font-size: 15px; font-weight: 700;">Launch New Campaign</h4>
-          <p style="margin: 0; color: var(--text-secondary); font-size: 12px;">Upload CSV, pick template, and send or schedule in 3 easy steps.</p>
+          <h4 style="margin: 0 0 4px 0; color: var(--text-primary); font-size: 15px; font-weight: 700;">Launch New
+            Campaign</h4>
+          <p style="margin: 0; color: var(--text-secondary); font-size: 12px;">Upload CSV, pick template, and send or
+            schedule in 3 easy steps.</p>
         </div>
-        <div class="action-card" id="cardActionTest" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(15, 23, 42, 0.95) 100%); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 10px; padding: 18px; cursor: pointer; transition: all 0.2s ease;">
+        <div class="action-card" id="cardActionTest"
+          style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(15, 23, 42, 0.95) 100%); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 10px; padding: 18px; cursor: pointer; transition: all 0.2s ease;">
           <div style="font-size: 26px; margin-bottom: 8px;">⚡</div>
-          <h4 style="margin: 0 0 4px 0; color: var(--text-primary); font-size: 15px; font-weight: 700;">Send Quick Test Email</h4>
-          <p style="margin: 0; color: var(--text-secondary); font-size: 12px;">Verify inbox delivery immediately to any address without making a CSV.</p>
+          <h4 style="margin: 0 0 4px 0; color: var(--text-primary); font-size: 15px; font-weight: 700;">Send Quick Test
+            Email</h4>
+          <p style="margin: 0; color: var(--text-secondary); font-size: 12px;">Verify inbox delivery immediately to any
+            address without making a CSV.</p>
         </div>
-        <div class="action-card" id="cardActionSampleCsv" style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(15, 23, 42, 0.95) 100%); border: 1px solid rgba(168, 85, 247, 0.4); border-radius: 10px; padding: 18px; cursor: pointer; transition: all 0.2s ease;">
+        <div class="action-card" id="cardActionSampleCsv"
+          style="background: linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(15, 23, 42, 0.95) 100%); border: 1px solid rgba(168, 85, 247, 0.4); border-radius: 10px; padding: 18px; cursor: pointer; transition: all 0.2s ease;">
           <div style="font-size: 26px; margin-bottom: 8px;">📥</div>
-          <h4 style="margin: 0 0 4px 0; color: var(--text-primary); font-size: 15px; font-weight: 700;">Download Sample CSV</h4>
-          <p style="margin: 0; color: var(--text-secondary); font-size: 12px;">1-Click ready template with Name, Email, and Title columns.</p>
+          <h4 style="margin: 0 0 4px 0; color: var(--text-primary); font-size: 15px; font-weight: 700;">Download Sample
+            CSV</h4>
+          <p style="margin: 0; color: var(--text-secondary); font-size: 12px;">1-Click ready template with Name, Email,
+            and Title columns.</p>
         </div>
       </div>
-
       <div class="section-header">
-        <h2>Live Multi-Account Sender Pool</h2>
-        <span class="section-desc">Fair Round-Robin rotation with rolling 24h limits</span>
+        <h2>Live Multi-Account Sender Pool</h2><span class="section-desc">Fair Round-Robin rotation with rolling 24h
+          limits</span>
       </div>
-
-      <!-- Account Pool Grid -->
       <div id="accountsPoolGrid" class="accounts-grid">
         <div class="loading-placeholder">Loading account pool status...</div>
       </div>
-
-      <!-- Live Pipeline Table -->
       <div class="panel-card" style="margin-top: 24px;">
         <div class="panel-header">
-          <h3>In-Flight Queue Pipeline</h3>
-          <span class="badge badge-queued" id="badgeQueueTotal">0 in pipeline</span>
+          <h3>In-Flight Queue Pipeline</h3><span class="badge badge-queued" id="badgeQueueTotal">0 in pipeline</span>
         </div>
         <div class="table-responsive">
           <table class="data-table">
@@ -170,63 +193,46 @@
               </tr>
             </thead>
             <tbody id="queueTableBody">
-              <tr><td colspan="7" class="table-empty">Queue is empty. Ready for new campaigns.</td></tr>
+              <tr>
+                <td colspan="7" class="table-empty">Queue is empty. Ready for new campaigns.</td>
+              </tr>
             </tbody>
           </table>
         </div>
       </div>
     </section>
 
-    <!-- ================================================================= -->
-    <!-- TAB 2: SENDER ACCOUNTS POOL (1 TO 40+ ACCOUNTS) -->
-    <!-- ================================================================= -->
+    <!-- TAB 2: SENDER ACCOUNTS POOL -->
     <section id="tab-accounts" class="tab-pane">
       <div class="two-col-layout">
-        <!-- Add Account Card -->
         <div class="panel-card">
           <div class="panel-header">
             <h3>Add / Update Sender Account</h3>
           </div>
           <form id="formAddAccount">
-            <div class="form-group">
-              <label class="form-label">Sender Email Address</label>
-              <input type="email" id="accEmail" class="form-input" placeholder="e.g. editor@mail.theparipexjournal.com" required>
-              <span class="form-help">Must be a Shared Mailbox or User Mailbox in your M365 tenant.</span>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Display Name</label>
-              <input type="text" id="accDisplayName" class="form-input" placeholder="e.g. Editorial Office - Paripex" required>
-            </div>
-
+            <div class="form-group"><label class="form-label">Sender Email Address</label><input type="email"
+                id="accEmail" class="form-input" placeholder="e.g. editor@mail.theparipexjournal.com" required><span
+                class="form-help">Must be a Shared Mailbox or User Mailbox in your M365 tenant.</span></div>
+            <div class="form-group"><label class="form-label">Display Name</label><input type="text" id="accDisplayName"
+                class="form-input" placeholder="e.g. Editorial Office - Paripex" required></div>
             <div class="form-row">
-              <div class="form-group">
-                <label class="form-label">Daily Limit (24h)</label>
-                <input type="number" id="accDailyLimit" class="form-input" value="500" min="50" max="2000" required>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Cooldown (Seconds)</label>
-                <input type="number" id="accCooldown" class="form-input" value="60" min="5" max="3600" required>
-              </div>
+              <div class="form-group"><label class="form-label">Daily Limit (24h)</label><input type="number"
+                  id="accDailyLimit" class="form-input" value="500" min="50" max="2000" required></div>
+              <div class="form-group"><label class="form-label">Cooldown (Seconds)</label><input type="number"
+                  id="accCooldown" class="form-input" value="60" min="5" max="3600" required></div>
             </div>
-
-            <div class="form-group">
-              <label class="form-label">Dispatch Engine</label>
-              <select id="accProvider" class="form-select">
+            <div class="form-group"><label class="form-label">Dispatch Engine</label><select id="accProvider"
+                class="form-select">
                 <option value="GRAPH_API">Microsoft Graph API (Default)</option>
                 <option value="AZURE_ACS">Azure Communication Services (ACS)</option>
-              </select>
-            </div>
-
+              </select></div>
             <button type="submit" class="btn btn-primary btn-block">➕ Add Account to Pool</button>
           </form>
         </div>
-
-        <!-- Accounts List Card -->
         <div class="panel-card">
           <div class="panel-header">
-            <h3>Registered Sender Accounts</h3>
-            <span id="badgeAccountCount" class="badge badge-completed">0 accounts</span>
+            <h3>Registered Sender Accounts</h3><span id="badgeAccountCount" class="badge badge-completed">0
+              accounts</span>
           </div>
           <div class="table-responsive">
             <table class="data-table">
@@ -241,7 +247,9 @@
                 </tr>
               </thead>
               <tbody id="accountsTableBody">
-                <tr><td colspan="6" class="table-empty">No accounts registered yet.</td></tr>
+                <tr>
+                  <td colspan="6" class="table-empty">No accounts registered yet.</td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -249,48 +257,41 @@
       </div>
     </section>
 
-    <!-- ================================================================= -->
-    <!-- TAB 3: CAMPAIGNS & LAUNCH -->
-    <!-- ================================================================= -->
-    <!-- ================================================================= -->
     <!-- TAB 3: CAMPAIGNS & AUTO-SPLIT BATCHES -->
-    <!-- ================================================================= -->
     <section id="tab-campaigns" class="tab-pane">
-      
-      <!-- Auto-Split CSV Campaign Wizard -->
       <div class="panel-card" style="margin-bottom: 24px;">
         <div class="panel-header">
           <div>
-            <h3>📁 Upload CSV &amp; Auto-Split into Batches (Max 50 / Campaign)</h3>
-            <span class="section-desc">Upload any size CSV sheet — auto-deduplicates, derives campaign name from sheet, previews batches, and queues sequentially across your accounts pool.</span>
+            <h3>📁 Upload CSV &amp; Auto-Split into Batches (Max 50 / Campaign)</h3><span class="section-desc">Upload
+              any size CSV sheet — auto-deduplicates, derives campaign name from sheet, previews batches, and queues
+              sequentially across your accounts pool.</span>
           </div>
         </div>
-
-        <!-- Step 1: Drop Zone -->
         <div id="campaignDropZone" class="file-drop-zone" style="cursor: pointer; margin-bottom: 12px;">
           <div style="font-size: 36px; margin-bottom: 8px;">📑</div>
-          <div style="font-weight: 600; font-size: 15px;">Step 1: Drag &amp; Drop CSV File to Auto-Generate Batches</div>
-          <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Click to browse (.csv file with unlimited contacts)</div>
+          <div style="font-weight: 600; font-size: 15px;">Step 1: Drag &amp; Drop CSV File to Auto-Generate Batches
+          </div>
+          <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Click to browse (.csv file with
+            unlimited contacts)</div>
           <input type="file" id="campaignCsvFileInput" accept=".csv" style="display: none;">
         </div>
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding: 8px 12px; background: rgba(2, 132, 199, 0.08); border: 1px dashed rgba(56, 189, 248, 0.3); border-radius: 6px; font-size: 12px;">
-          <span style="color: var(--text-secondary);">💡 Need an example format? Columns: <code>Name</code>, <code>email</code>, <code>Paper Title</code></span>
-          <button type="button" id="btnDownloadSampleCsvInner" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 4px 10px;">📥 Download Sample CSV</button>
+        <div
+          style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding: 8px 12px; background: rgba(2, 132, 199, 0.08); border: 1px dashed rgba(56, 189, 248, 0.3); border-radius: 6px; font-size: 12px;">
+          <span style="color: var(--text-secondary);">💡 Need an example format? Columns: <code>Name</code>,
+            <code>email</code>, <code>Paper Title</code></span>
+          <button type="button" id="btnDownloadSampleCsvInner" class="btn btn-secondary btn-sm"
+            style="font-size: 11px; padding: 4px 10px;">📥 Download Sample CSV</button>
         </div>
-
-        <!-- Loading Indicator -->
         <div id="campaignPreviewLoading" style="display: none; text-align: center; padding: 20px; color: var(--sky);">
-          <span style="font-size: 20px;">⏳</span> Parsing CSV and analyzing contact history in database...
-        </div>
+          <span style="font-size: 20px;">⏳</span> Parsing CSV and analyzing contact history in database...</div>
 
-        <!-- Step 2: Pre-Flight Preview Box (Shown after file selected) -->
-        <div id="campaignPreFlightBox" style="display: none; border-top: 1px solid var(--border-color); padding-top: 20px;">
+        <div id="campaignPreFlightBox"
+          style="display: none; border-top: 1px solid var(--border-color); padding-top: 20px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
             <h4 style="color: var(--sky); font-size: 16px;">🔍 Pre-Flight Campaign Preview</h4>
-            <button type="button" id="btnCancelPreview" class="btn btn-secondary btn-sm">✕ Choose Different File</button>
+            <button type="button" id="btnCancelPreview" class="btn btn-secondary btn-sm">✕ Choose Different
+              File</button>
           </div>
-
-          <!-- Summary Metric Badges -->
           <div class="metrics-strip" style="margin-bottom: 20px;">
             <div class="metric-card" style="padding: 12px;">
               <div class="metric-label">Total Rows</div>
@@ -313,105 +314,124 @@
               <div class="metric-value text-purple" id="prevContactedCount">0</div>
             </div>
           </div>
-
-          <!-- Configuration Form -->
           <form id="formLaunchBatches">
-            <div style="font-size: 13px; font-weight: 700; color: var(--sky); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Step 2: Campaign Name &amp; Template</div>
+            <div
+              style="font-size: 13px; font-weight: 700; color: var(--sky); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">
+              Step 2: Campaign Name &amp; Template</div>
             <div class="form-row">
-              <div class="form-group">
-                <label class="form-label">Base Campaign Name (Derived from Sheet)</label>
-                <input type="text" id="batchBaseCampaignName" class="form-input" required>
-                <span class="form-help">Batches will be named: [BaseName]_Batch_01, [BaseName]_Batch_02, etc.</span>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Batch Size (Emails per Campaign)</label>
-                <input type="number" id="batchSizeInput" class="form-input" value="50" min="5" max="500" required>
-                <span class="form-help">Default 50 emails per batch for safe multi-account deliverability.</span>
-              </div>
+              <div class="form-group"><label class="form-label">Base Campaign Name (Derived from Sheet)</label><input
+                  type="text" id="batchBaseCampaignName" class="form-input" required><span class="form-help">Batches
+                  will be named: [BaseName]_Batch_01, [BaseName]_Batch_02, etc.</span></div>
+              <div class="form-group"><label class="form-label">Batch Size (Emails per Campaign)</label><input
+                  type="number" id="batchSizeInput" class="form-input" value="50" min="5" max="500" required><span
+                  class="form-help">Default 50 emails per batch for safe multi-account deliverability.</span></div>
             </div>
-
             <div class="form-row">
-              <div class="form-group">
-                <label class="form-label">Select Email Template</label>
-                <select id="batchTemplateSelect" class="form-select" required>
+              <div class="form-group"><label class="form-label">Select Email Template</label><select
+                  id="batchTemplateSelect" class="form-select" required>
                   <option value="">-- Choose Template --</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Sender Account &amp; Engine</label>
-                <select id="batchSenderAccountSelect" class="form-select">
+                </select></div>
+              <div class="form-group"><label class="form-label">Sender Account &amp; Engine</label><select
+                  id="batchSenderAccountSelect" class="form-select">
                   <option value="">⚡ All Active Accounts Pool (Auto-Rotate)</option>
-                </select>
-                <span class="form-help">Pick an ACS address for bulk or Graph API account. Engine switches automatically!</span>
-              </div>
+                </select><span class="form-help">Pick an ACS address for bulk or Graph API account. Engine switches
+                  automatically!</span></div>
             </div>
+            <div class="form-group" style="margin-top: 6px;"><label class="checkbox-label"
+                style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox"
+                  id="chkSkipPreviouslyContacted"><span><b>Exclude contacts already emailed in past
+                    campaigns</b></span></label></div>
 
-            <div class="form-group" style="margin-top: 6px;">
-              <label class="checkbox-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                <input type="checkbox" id="chkSkipPreviouslyContacted">
-                <span><b>Exclude contacts already emailed in past campaigns</b></span>
-              </label>
-            </div>
-
-            <!-- Scheduling Configuration Mode -->
-            <div style="font-size: 13px; font-weight: 700; color: var(--sky); margin: 20px 0 10px 0; text-transform: uppercase; letter-spacing: 0.5px;">Step 3: Dispatch Timing (Immediate or Scheduled)</div>
-            <div class="form-row" style="background: rgba(255,255,255,0.02); padding: 14px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 16px;">
-              <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label">🗓️ Scheduling Dispatch Mode</label>
-                <select id="campaignScheduleMode" class="form-select">
+            <div
+              style="font-size: 13px; font-weight: 700; color: var(--sky); margin: 20px 0 10px 0; text-transform: uppercase; letter-spacing: 0.5px;">
+              Step 3: Dispatch Timing (Immediate or Scheduled)</div>
+            <div class="form-row"
+              style="background: rgba(255,255,255,0.02); padding: 14px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 16px;">
+              <div class="form-group" style="margin-bottom: 0;"><label class="form-label">🗓️ Scheduling Dispatch
+                  Mode</label><select id="campaignScheduleMode" class="form-select">
                   <option value="immediate">⚡ Immediate Launch (Starts now, runs 24/7)</option>
                   <option value="scheduled">⏰ Specific Future Date &amp; Time (Hold until scheduled time)</option>
                   <option value="staggered">⏳ Staggered Batches (Space 50-email batches by interval)</option>
-                </select>
-                <span class="form-help">Choose between instant dispatch, scheduled future time, or interval staggered.</span>
-              </div>
-              
-              <div class="form-group" id="groupScheduledStartTime" style="margin-bottom: 0; display: none;">
-                <label class="form-label">Target Launch Date &amp; Time</label>
-                <input type="datetime-local" id="campaignScheduledStartTime" class="form-input">
-                <span class="form-help">Batches will stay on hold until this exact time.</span>
-              </div>
-
-              <div class="form-group" id="groupStaggerInterval" style="margin-bottom: 0; display: none;">
-                <label class="form-label">Batch Stagger Interval (Minutes)</label>
-                <input type="number" id="campaignStaggerMinutes" class="form-input" value="60" min="5" max="1440">
-                <span class="form-help">Delay between consecutive batches (e.g. 60 or 120 min).</span>
-              </div>
+                </select><span class="form-help">Choose between instant dispatch, scheduled future time, or interval
+                  staggered.</span></div>
+              <div class="form-group" id="groupScheduledStartTime" style="margin-bottom: 0; display: none;"><label
+                  class="form-label">Target Launch Date &amp; Time</label><input type="datetime-local"
+                  id="campaignScheduledStartTime" class="form-input"><span class="form-help">Batches will stay on hold
+                  until this exact time.</span></div>
+              <div class="form-group" id="groupStaggerInterval" style="margin-bottom: 0; display: none;"><label
+                  class="form-label">Batch Stagger Interval (Minutes)</label><input type="number"
+                  id="campaignStaggerMinutes" class="form-input" value="60" min="5" max="1440"><span
+                  class="form-help">Delay between consecutive batches (e.g. 60 or 120 min).</span></div>
             </div>
 
-            <!-- Auto-Split Batches Breakdown Table -->
-            <div style="font-size: 13px; font-weight: 700; color: var(--sky); margin: 20px 0 10px 0; text-transform: uppercase; letter-spacing: 0.5px;">Step 4: Review Batches &amp; Confirm Launch</div>
+            <div
+              style="font-size: 13px; font-weight: 700; color: var(--sky); margin: 20px 0 10px 0; text-transform: uppercase; letter-spacing: 0.5px;">
+              Step 4: Review Batches &amp; Confirm Launch</div>
             <div style="margin: 14px 0 20px 0;">
-              <h5 style="margin-bottom: 8px; color: var(--text-secondary);">📦 Generated Campaign Batches &amp; Projected Launch Timeline:</h5>
-              <div id="batchesListContainer" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px;">
-                <!-- Dynamically populated -->
-              </div>
+              <h5 style="margin-bottom: 8px; color: var(--text-secondary);">📦 Generated Campaign Batches &amp;
+                Projected Launch Timeline:</h5>
+              <div id="batchesListContainer"
+                style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px;"></div>
             </div>
 
-            <!-- Rendered Email Sample Box -->
-            <div class="panel-card" style="background: var(--bg-surface); border: 1px dashed var(--border-color); margin-bottom: 20px;">
+            <div class="panel-card"
+              style="background: var(--bg-surface); border: 1px dashed var(--border-color); margin-bottom: 20px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <strong style="color: var(--sky);">✉️ Live Sample Preview (Recipient #1):</strong>
-                <span id="sampleRecipientEmail" style="font-size: 12px; color: var(--text-muted);"></span>
-              </div>
-              <div id="sampleSubjectLine" style="font-weight: 600; font-size: 13px; margin-bottom: 8px; color: var(--text-primary);">Subject: (Select a template above)</div>
-              <div id="sampleEmailBody" style="font-size: 13px; color: var(--text-secondary); max-height: 160px; overflow-y: auto; background: var(--bg-input); padding: 12px; border-radius: 6px;">
-                Choose a template above to preview merged tags.
-              </div>
+                <strong style="color: var(--sky);">✉️ Live Sample Preview (Recipient #1):</strong><span
+                  id="sampleRecipientEmail" style="font-size: 12px; color: var(--text-muted);"></span></div>
+              <div id="sampleSubjectLine"
+                style="font-weight: 600; font-size: 13px; margin-bottom: 8px; color: var(--text-primary);">Subject:
+                (Select a template above)</div>
+              <div id="sampleEmailBody"
+                style="font-size: 13px; color: var(--text-secondary); max-height: 160px; overflow-y: auto; background: var(--bg-input); padding: 12px; border-radius: 6px;">
+                Choose a template above to preview merged tags.</div>
             </div>
-
-            <button type="submit" id="btnConfirmLaunchBatches" class="btn btn-primary btn-block" style="padding: 14px; font-size: 15px;">
-              🚀 Confirm &amp; Schedule Batches Across Pool
-            </button>
+            <button type="submit" id="btnConfirmLaunchBatches" class="btn btn-primary btn-block"
+              style="padding: 14px; font-size: 15px;">🚀 Confirm &amp; Schedule Batches Across Pool</button>
           </form>
         </div>
       </div>
 
-      <!-- Campaign History Table -->
+      <!-- ENHANCED Campaign History Table -->
       <div class="panel-card">
         <div class="panel-header">
           <h3>Campaign Execution History</h3>
         </div>
+
+        <!-- Filter & Search Bar -->
+        <div class="filter-bar"
+          style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; align-items: center;">
+          <div class="filter-pills" style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <button class="filter-pill active" data-filter="ALL">All (<span id="countCampAll">0</span>)</button>
+            <button class="filter-pill" data-filter="RUNNING">⚡ Running (<span id="countCampRunning">0</span>)</button>
+            <button class="filter-pill" data-filter="QUEUED">📅 Queued/Scheduled (<span
+                id="countCampQueued">0</span>)</button>
+            <button class="filter-pill" data-filter="COMPLETED">✅ Completed (<span
+                id="countCampCompleted">0</span>)</button>
+            <button class="filter-pill" data-filter="FAILED">❌ Failed (<span id="countCampFailed">0</span>)</button>
+            <button class="filter-pill" data-filter="TODAY">📅 Today (<span id="countCampToday">0</span>)</button>
+          </div>
+          <div style="flex-grow: 1; min-width: 200px;">
+            <input type="text" id="campaignSearchInput" class="form-input"
+              placeholder="🔍 Search by name, template, or sender..." style="width: 100%;">
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <select id="campaignSortSelect" class="form-select" style="width: auto;">
+              <option value="newest">Newest First</option>
+              <option value="running">Running First</option>
+              <option value="scheduled">Scheduled Soonest</option>
+              <option value="oldest">Oldest First</option>
+              <option value="name">Name (A-Z)</option>
+            </select>
+            <select id="campaignPageSizeSelect" class="form-select" style="width: auto;">
+              <option value="50">50 per page</option>
+              <option value="100">100 per page</option>
+              <option value="250">250 per page</option>
+              <option value="all">All</option>
+            </select>
+          </div>
+        </div>
+
         <div class="table-responsive">
           <table class="data-table">
             <thead>
@@ -419,7 +439,7 @@
                 <th>ID</th>
                 <th>Campaign Batch Name</th>
                 <th>Template</th>
-                <th>Sender Account &amp; Engine</th>
+                <th>Sender Account & Engine</th>
                 <th>Scheduled / Started</th>
                 <th>Status</th>
                 <th>Progress (Sent / Total)</th>
@@ -427,97 +447,96 @@
               </tr>
             </thead>
             <tbody id="campaignsTableBody">
-              <tr><td colspan="7" class="table-empty">No campaigns executed yet.</td></tr>
+              <tr>
+                <td colspan="8" class="table-empty">No campaigns executed yet.</td>
+              </tr>
             </tbody>
           </table>
+        </div>
+
+        <!-- Pagination Bar -->
+        <div class="pagination-bar"
+          style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-color);">
+          <div class="page-info" id="campaignPageInfo" style="font-size: 12px; color: var(--text-muted);">Showing 0 of 0
+            campaigns</div>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <button id="btnCampPrev" class="btn btn-secondary btn-sm page-btn" disabled>◀ Prev</button>
+            <span id="campPageNumbers" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">Page 1 /
+              1</span>
+            <button id="btnCampNext" class="btn btn-secondary btn-sm page-btn" disabled>Next ▶</button>
+          </div>
         </div>
       </div>
     </section>
 
-    <!-- ================================================================= -->
     <!-- TAB 4: EMAIL TEMPLATES -->
-    <!-- ================================================================= -->
     <section id="tab-templates" class="tab-pane">
       <div class="two-col-layout">
-        <!-- Create / Edit Template -->
         <div class="panel-card">
           <div class="panel-header">
             <h3>Create / Edit Template</h3>
           </div>
           <form id="formTemplate">
             <input type="hidden" id="tplId">
-            <div class="form-group">
-              <label class="form-label">Template Identifier</label>
-              <input type="text" id="tplName" class="form-input" placeholder="e.g. Call for Papers - Medical Track" required>
-            </div>
-
+            <div class="form-group"><label class="form-label">Template Identifier</label><input type="text" id="tplName"
+                class="form-input" placeholder="e.g. Call for Papers - Medical Track" required></div>
             <div class="form-group">
               <label class="form-label">Subject Line</label>
-              <div class="tag-pills">
-                <span class="tag-pill" data-target="tplSubject" data-tag="{{Name}}">+ {{Name}}</span>
-                <span class="tag-pill" data-target="tplSubject" data-tag="{{Paper Title}}">+ {{Paper Title}}</span>
-              </div>
-              <input type="text" id="tplSubject" class="form-input" placeholder="Invitation: {{Paper Title}} - Journal ParipEx" required>
+              <div class="tag-pills"><span class="tag-pill" data-target="tplSubject" data-tag="{{Name}}">+
+                  {{Name}}</span><span class="tag-pill" data-target="tplSubject" data-tag="{{Paper Title}}">+ {{Paper
+                  Title}}</span></div>
+              <input type="text" id="tplSubject" class="form-input"
+                placeholder="Invitation: {{Paper Title}} - Journal ParipEx" required>
             </div>
-
             <div class="form-group">
               <label class="form-label">Email Body (HTML supported)</label>
-              <div class="tag-pills">
-                <span class="tag-pill" data-target="tplBody" data-tag="{{Name}}">+ {{Name}}</span>
-                <span class="tag-pill" data-target="tplBody" data-tag="{{Paper Title}}">+ {{Paper Title}}</span>
-                <span class="tag-pill" data-target="tplBody" data-tag="{{Affiliation}}">+ {{Affiliation}}</span>
-                <span class="tag-pill" data-target="tplBody" data-tag="{{Date}}">+ {{Date}}</span>
-              </div>
+              <div class="tag-pills"><span class="tag-pill" data-target="tplBody" data-tag="{{Name}}">+
+                  {{Name}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{Paper Title}}">+ {{Paper
+                  Title}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{Affiliation}}">+
+                  {{Affiliation}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{Date}}">+
+                  {{Date}}</span></div>
               <textarea id="tplBody" class="form-textarea font-mono" rows="10" required></textarea>
             </div>
-
             <button type="submit" class="btn btn-primary">💾 Save Template</button>
-            <button type="button" id="btnResetTemplate" class="btn btn-secondary" style="margin-left: 8px;">Clear</button>
+            <button type="button" id="btnResetTemplate" class="btn btn-secondary"
+              style="margin-left: 8px;">Clear</button>
           </form>
         </div>
-
-        <!-- Templates List -->
         <div class="panel-card">
           <div class="panel-header">
             <h3>Saved Templates</h3>
           </div>
-          <div id="templatesList" class="templates-grid">
-            <!-- Dynamically populated -->
-          </div>
+          <div id="templatesList" class="templates-grid"></div>
         </div>
       </div>
     </section>
 
-    <!-- ================================================================= -->
     <!-- TAB 5: CONTACTS DIRECTORY -->
-    <!-- ================================================================= -->
     <section id="tab-contacts" class="tab-pane">
       <div class="two-col-layout">
-        <!-- Excel / CSV Uploader -->
         <div class="panel-card">
           <div class="panel-header">
-            <h3>Import Authors via Excel / CSV</h3>
-            <span class="section-desc">Supports Excel (.xlsx, .xls) and CSV sheets with automatic column detection (Email, Name, Title, Org)</span>
+            <h3>Import Authors via Excel / CSV</h3><span class="section-desc">Supports Excel (.xlsx, .xls) and CSV
+              sheets with automatic column detection</span>
           </div>
           <form id="formUploadCsv">
             <div class="file-drop-zone" id="dropZone">
               <div style="font-size: 32px; margin-bottom: 8px;">📊</div>
               <div style="font-weight: 600;">Drag &amp; Drop Excel (.xlsx) or CSV File Here</div>
-              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">or click to browse from your computer (.xlsx, .xls, .csv)</div>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">or click to browse from your
+                computer (.xlsx, .xls, .csv)</div>
               <input type="file" id="csvFileInput" accept=".csv, .xlsx, .xls" style="display: none;">
             </div>
-            <div id="selectedFileName" style="margin-top: 8px; font-size: 12px; font-family: var(--font-mono); color: var(--sky);"></div>
-            <button type="submit" id="btnUploadCsv" class="btn btn-primary btn-block" style="margin-top: 14px;" disabled>
-              📥 Parse &amp; Save Contacts
-            </button>
+            <div id="selectedFileName"
+              style="margin-top: 8px; font-size: 12px; font-family: var(--font-mono); color: var(--sky);"></div>
+            <button type="submit" id="btnUploadCsv" class="btn btn-primary btn-block" style="margin-top: 14px;"
+              disabled>📥 Parse &amp; Save Contacts</button>
           </form>
         </div>
-
-        <!-- Directory Table -->
         <div class="panel-card">
           <div class="panel-header">
-            <h3>Recent Contacts (Last 100)</h3>
-            <span id="badgeContactTotal" class="badge badge-completed">0 contacts</span>
+            <h3>Recent Contacts (Last 100)</h3><span id="badgeContactTotal" class="badge badge-completed">0
+              contacts</span>
           </div>
           <div class="table-responsive">
             <table class="data-table">
@@ -530,7 +549,9 @@
                 </tr>
               </thead>
               <tbody id="contactsTableBody">
-                <tr><td colspan="4" class="table-empty">No contacts imported yet.</td></tr>
+                <tr>
+                  <td colspan="4" class="table-empty">No contacts imported yet.</td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -538,24 +559,21 @@
       </div>
     </section>
 
-    <!-- ================================================================= -->
     <!-- TAB 6: AUDIT LOGS -->
-    <!-- ================================================================= -->
     <section id="tab-logs" class="tab-pane">
       <div class="panel-card">
         <div class="panel-header">
-          <h3>Real-Time Audit Log Terminal</h3>
-          <button id="btnRefreshLogs" class="btn btn-secondary btn-sm">↻ Refresh</button>
+          <h3>Real-Time Audit Log Terminal</h3><button id="btnRefreshLogs" class="btn btn-secondary btn-sm">↻
+            Refresh</button>
         </div>
         <div id="terminalLogs" class="terminal-window">
           <div class="terminal-line">[SYSTEM] Initializing audit log stream...</div>
         </div>
       </div>
     </section>
-
   </main>
 
-  <!-- Quick Test Email Modal (Zero Brain Strain) -->
+  <!-- Quick Test Email Modal -->
   <div id="modalQuickTest" class="modal-overlay" style="display: none;">
     <div class="modal-card">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
@@ -563,44 +581,30 @@
           <span style="font-size: 24px;">⚡</span>
           <div>
             <h3 style="margin: 0; font-size: 17px; color: var(--text-primary);">Send Quick Test Email</h3>
-            <p style="margin: 0; font-size: 12px; color: var(--text-muted);">Verify delivery directly to your inbox without a CSV file</p>
+            <p style="margin: 0; font-size: 12px; color: var(--text-muted);">Verify delivery directly to your inbox
+              without a CSV file</p>
           </div>
         </div>
-        <button type="button" id="btnCloseQuickTest" class="btn btn-secondary btn-sm" style="padding: 4px 10px; border-radius: 6px;">✕</button>
+        <button type="button" id="btnCloseQuickTest" class="btn btn-secondary btn-sm"
+          style="padding: 4px 10px; border-radius: 6px;">✕</button>
       </div>
-
       <form id="formQuickTest">
-        <div class="form-group">
-          <label class="form-label">Select Sender Account &amp; Engine:</label>
-          <select id="quickTestSenderAccount" class="form-select">
-            <!-- Dynamically populated -->
-          </select>
-          <span class="form-help">Choose between Microsoft Graph or Azure ACS sender accounts</span>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Send Test Email To:</label>
-          <input type="email" id="quickTestToEmail" class="form-input" placeholder="e.g. checkingm13@gmail.com" required>
-          <span class="form-help">Enter your personal or test recipient email address.</span>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Recipient Name (Optional):</label>
-          <input type="text" id="quickTestName" class="form-input" placeholder="e.g. Hamza Memon" value="Hamza Memon">
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Subject:</label>
-          <input type="text" id="quickTestSubject" class="form-input" value="✅ Live Test: Azure Graph Mailer Delivery Check" required>
-        </div>
-
-        <div id="quickTestResult" style="display: none; padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 13px;"></div>
-
+        <div class="form-group"><label class="form-label">Select Sender Account &amp; Engine:</label><select
+            id="quickTestSenderAccount" class="form-select"></select><span class="form-help">Choose between Microsoft
+            Graph or Azure ACS sender accounts</span></div>
+        <div class="form-group"><label class="form-label">Send Test Email To:</label><input type="email"
+            id="quickTestToEmail" class="form-input" placeholder="e.g. checkingm13@gmail.com" required><span
+            class="form-help">Enter your personal or test recipient email address.</span></div>
+        <div class="form-group"><label class="form-label">Recipient Name (Optional):</label><input type="text"
+            id="quickTestName" class="form-input" placeholder="e.g. Hamza Memon" value="Hamza Memon"></div>
+        <div class="form-group"><label class="form-label">Subject:</label><input type="text" id="quickTestSubject"
+            class="form-input" value="✅ Live Test: Azure Graph Mailer Delivery Check" required></div>
+        <div id="quickTestResult"
+          style="display: none; padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; font-size: 13px;"></div>
         <div style="display: flex; gap: 10px; justify-content: flex-end;">
           <button type="button" id="btnCancelQuickTest" class="btn btn-secondary">Cancel</button>
-          <button type="submit" id="btnSubmitQuickTest" class="btn btn-primary" style="background: linear-gradient(135deg, #0284c7, #0369a1); font-weight: 600;">
-            🚀 Send Test Now
-          </button>
+          <button type="submit" id="btnSubmitQuickTest" class="btn btn-primary"
+            style="background: linear-gradient(135deg, #0284c7, #0369a1); font-weight: 600;">🚀 Send Test Now</button>
         </div>
       </form>
     </div>
@@ -613,14 +617,15 @@
         <div style="display: flex; align-items: center; gap: 10px;">
           <span style="font-size: 24px;">📊</span>
           <div>
-            <h3 id="previewModalCampName" style="margin: 0; font-size: 17px; color: var(--text-primary);">Campaign Preview &amp; Re-run</h3>
-            <p id="previewModalCampMeta" style="margin: 0; font-size: 12px; color: var(--text-muted);">Inspect execution status and trigger re-runs</p>
+            <h3 id="previewModalCampName" style="margin: 0; font-size: 17px; color: var(--text-primary);">Campaign
+              Preview &amp; Re-run</h3>
+            <p id="previewModalCampMeta" style="margin: 0; font-size: 12px; color: var(--text-muted);">Inspect execution
+              status and trigger re-runs</p>
           </div>
         </div>
-        <button type="button" id="btnCloseCampaignPreview" class="btn btn-secondary btn-sm" style="padding: 4px 10px; border-radius: 6px;">✕</button>
+        <button type="button" id="btnCloseCampaignPreview" class="btn btn-secondary btn-sm"
+          style="padding: 4px 10px; border-radius: 6px;">✕</button>
       </div>
-
-      <!-- Quick Metrics Summary -->
       <div class="metrics-strip" style="margin-bottom: 16px;">
         <div class="metric-card" style="padding: 10px;">
           <div class="metric-label">Total</div>
@@ -639,39 +644,29 @@
           <div class="metric-value text-amber" id="previewModalQueued">0</div>
         </div>
       </div>
-
-      <!-- Re-run Configuration Section -->
-      <div style="background: rgba(2, 132, 199, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
-        <div style="font-size: 13px; font-weight: 700; color: var(--sky); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">
-          🔄 Re-run This Campaign
-        </div>
+      <div
+        style="background: rgba(2, 132, 199, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+        <div
+          style="font-size: 13px; font-weight: 700; color: var(--sky); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">
+          🔄 Re-run This Campaign</div>
         <div class="form-row">
-          <div class="form-group" style="margin-bottom: 0;">
-            <label class="form-label">Re-run Mode</label>
-            <select id="rerunModeSelect" class="form-select">
+          <div class="form-group" style="margin-bottom: 0;"><label class="form-label">Re-run Mode</label><select
+              id="rerunModeSelect" class="form-select">
               <option value="failed_only">⚠️ Failed / Errored Contacts Only (Recommended)</option>
               <option value="all">🔁 All Contacts in Campaign (Full Re-run)</option>
-            </select>
-          </div>
-          <div class="form-group" style="margin-bottom: 0;">
-            <label class="form-label">Sender Account &amp; Engine</label>
-            <select id="rerunSenderAccountSelect" class="form-select">
-              <!-- Dynamically populated -->
-            </select>
-          </div>
+            </select></div>
+          <div class="form-group" style="margin-bottom: 0;"><label class="form-label">Sender Account &amp;
+              Engine</label><select id="rerunSenderAccountSelect" class="form-select"></select></div>
         </div>
-        <div style="display: flex; justify-content: flex-end; margin-top: 12px; gap: 8px;">
-          <button type="button" id="btnTriggerRerun" class="btn btn-primary" style="background: linear-gradient(135deg, #0284c7, #0369a1); font-weight: 600;">
-            🚀 Re-run Campaign Now
-          </button>
-        </div>
+        <div style="display: flex; justify-content: flex-end; margin-top: 12px; gap: 8px;"><button type="button"
+            id="btnTriggerRerun" class="btn btn-primary"
+            style="background: linear-gradient(135deg, #0284c7, #0369a1); font-weight: 600;">🚀 Re-run Campaign
+            Now</button></div>
       </div>
-
-      <!-- Sample Queue Preview Table -->
-      <div style="font-size: 13px; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px;">
-        📋 Contact Queue Snapshot (Up to 100 contacts)
-      </div>
-      <div class="table-responsive" style="max-height: 220px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px;">
+      <div style="font-size: 13px; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px;">📋 Contact Queue
+        Snapshot (Up to 100 contacts)</div>
+      <div class="table-responsive"
+        style="max-height: 220px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px;">
         <table class="data-table" style="font-size: 12px;">
           <thead>
             <tr>
@@ -683,17 +678,18 @@
             </tr>
           </thead>
           <tbody id="previewModalTableBody">
-            <tr><td colspan="5" class="table-empty">Loading contacts...</td></tr>
+            <tr>
+              <td colspan="5" class="table-empty">Loading contacts...</td>
+            </tr>
           </tbody>
         </table>
       </div>
-
-      <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
-        <button type="button" id="btnCancelCampaignPreview" class="btn btn-secondary">Close</button>
-      </div>
+      <div style="display: flex; justify-content: flex-end; margin-top: 16px;"><button type="button"
+          id="btnCancelCampaignPreview" class="btn btn-secondary">Close</button></div>
     </div>
   </div>
 
   <script src="js/app.js"></script>
 </body>
+
 </html>
