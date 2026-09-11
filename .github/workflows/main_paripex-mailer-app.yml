@@ -1,7 +1,4 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
-# More GitHub Actions for Azure: https://github.com/Azure/actions
-
-name: Build and deploy Node.js app to Azure Web App - paripex-mailer-app
+﻿name: Rapid & Secure Azure Web App Deployment
 
 on:
   push:
@@ -10,42 +7,35 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     permissions:
-      contents: read #This is required for actions/checkout
+      id-token: write
+      contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      # 1. Code Checkout
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Set up Node.js version
-        uses: actions/setup-node@v3
+      # 2. Setup Node.js (Node 20.x is highly optimized for Azure App Service)
+      - name: Set up Node.js LTS
+        uses: actions/setup-node@v4
         with:
-          node-version: '24.x'
+          node-version: '20'
+          cache: 'npm'
 
-      - name: Install dependencies
+      # 3. Secure & Clean Dependency Installation
+      - name: Install Dependencies
         run: |
-          npm install --omit=dev
+          npm ci --omit=dev
 
-      - name: Upload artifact for deployment job
-        uses: actions/upload-artifact@v4
-        with:
-          name: node-app
-          path: .
+      # 4. Security Audit (Non-blocking)
+      - name: Security Check
+        run: |
+          npm audit --audit-level=high || echo "⚠️ Security warnings found"
 
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-    permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
-
-    steps:
-      - name: Download artifact from build job
-        uses: actions/download-artifact@v4
-        with:
-          name: node-app
-      
+      # 5. Azure Authentication via OIDC
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -53,8 +43,8 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_ADDF7064233A4843AD97AC6BDD366422 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_B86E2BDB93B14E92B6BD707FD34B6FE2 }}
 
-      - name: 'Deploy to Azure Web App'
-        id: deploy-to-webapp
+      # 6. Direct & Rapid Deployment to Azure
+      - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'paripex-mailer-app'
