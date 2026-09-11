@@ -6,8 +6,8 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const fs = require('fs');
-const csv = require('csv-parser');
-const XLSX = require('exceljs');
+const path = require('path');
+const ExcelJS = require('exceljs');
 const config = require('../config/env');
 const db = require('../db');
 const AccountPool = require('../services/accountPool');
@@ -21,6 +21,53 @@ function formatSqliteDateTime(d) {
 }
 
 const upload = multer({ dest: 'uploads/' });
+
+// Helper function to extract rows from Excel or CSV using ExcelJS
+async function parseSpreadsheetRows(filePath, originalName = '') {
+  const workbook = new ExcelJS.Workbook();
+  const ext = path.extname(originalName || filePath).toLowerCase();
+
+  if (ext === '.csv') {
+    await workbook.csv.readFile(filePath);
+  } else {
+    await workbook.xlsx.readFile(filePath);
+  }
+
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) {
+    return [];
+  }
+
+  const rows = [];
+  const headers = [];
+
+  const headerRow = worksheet.getRow(1);
+  headerRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+    headers[colNumber] = String(cell.value || '').trim();
+  });
+
+  worksheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    if (rowNumber === 1) return; // Skip headers
+
+    const rowObj = {};
+    row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+      const headerName = headers[colNumber];
+      if (headerName) {
+        let cellVal = cell.value;
+        if (cellVal && typeof cellVal === 'object') {
+          cellVal = cellVal.result || cellVal.text || cellVal.hyperlink || '';
+        }
+        rowObj[headerName] = cellVal;
+      }
+    });
+
+    if (Object.keys(rowObj).length > 0) {
+      rows.push(rowObj);
+    }
+  });
+
+  return rows;
+}
 
 // 1. TELEMETRY & STATUS
 router.get('/status', (req, res) => {
@@ -45,7 +92,7 @@ router.post('/worker/resume', (req, res) => {
   res.json({ ok: true, message: 'Worker resumed' });
 });
 
-// 3. ACCOUNT POOL MANAGEMENT (1 to 40+ Accounts)
+// 3. ACCOUNT POOL MANAGEMENT
 router.get('/accounts', (req, res) => {
   const accounts = AccountPool.getAllAccounts();
   res.json({ ok: true, accounts });
@@ -112,13 +159,11 @@ router.post('/templates', (req, res) => {
 
 router.delete('/templates/:id', (req, res) => {
   const tplId = req.params.id;
-  // Check if template exists
   const existing = db.prepare('SELECT id FROM templates WHERE id = ?').get(tplId);
   if (!existing) {
     return res.status(404).json({ ok: false, error: 'Template not found.' });
   }
 
-  // Check if any campaign is currently using it
   const activeCamp = db.prepare("SELECT COUNT(*) AS count FROM campaigns WHERE template_id = ? AND status IN ('QUEUED', 'RUNNING')").get(tplId);
   if (activeCamp.count > 0) {
     return res.status(400).json({ ok: false, error: 'Cannot delete template while active campaigns are using it.' });
@@ -128,7 +173,7 @@ router.delete('/templates/:id', (req, res) => {
   res.json({ ok: true, message: 'Template deleted successfully.' });
 });
 
-// 5. CONTACTS & CSV IMPORT
+// 5. CONTACTS & CSV / EXCEL IMPORT
 router.get('/contacts', (req, res) => {
   const limit = parseInt(req.query.limit || '100', 10);
   const contacts = db.prepare('SELECT * FROM contacts ORDER BY id DESC LIMIT ?').all(limit);
@@ -136,29 +181,21 @@ router.get('/contacts', (req, res) => {
   res.json({ ok: true, total, contacts });
 });
 
-router.post('/contacts/upload', upload.single('file'), (req, res) => {
+router.post('/contacts/upload', upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ ok: false, error: 'No Excel or CSV file uploaded.' });
   }
 
   const filePath = req.file.path;
-  const originalName = (req.file.originalname || '').toLowerCase();
+  const originalName = req.file.originalname || '';
 
   try {
-    let rows = [];
-
-    // Parse Excel (.xlsx, .xls) or CSV
-    const workbook = XLSX.readFile(filePath, { raw: false });
-    const firstSheetName = workbook.SheetNames[0];
-    if (!firstSheetName) {
-      try { fs.unlinkSync(filePath); } catch (_) { }
-      return res.status(400).json({ ok: false, error: 'The uploaded file does not contain any sheets.' });
-    }
-
-    const sheet = workbook.Sheets[firstSheetName];
-    rows = XLSX.utils.sheet_to_json(sheet);
-
+    const rows = await parseSpreadsheetRows(filePath, originalName);
     try { fs.unlinkSync(filePath); } catch (_) { }
+
+    if (!rows || rows.length === 0) {
+      return res.status(400).json({ ok: false, error: 'The uploaded spreadsheet contains no data rows.' });
+    }
 
     let imported = 0;
     let skipped = 0;
@@ -174,7 +211,6 @@ router.post('/contacts/upload', upload.single('file'), (req, res) => {
 
     const insertMany = db.transaction((records) => {
       for (const r of records) {
-        // Find email column flexibly (Email, email, E-mail, Contact Email, etc.)
         const emailKey = Object.keys(r).find((k) => /^email$/i.test(k.trim())) ||
           Object.keys(r).find((k) => /email|e-mail|mail/i.test(k));
         const nameKey = Object.keys(r).find((k) => /^name$/i.test(k.trim())) ||
@@ -205,7 +241,7 @@ router.post('/contacts/upload', upload.single('file'), (req, res) => {
   }
 });
 
-// 6. CAMPAIGN CREATION & BATCH QUEUING
+// 6. CAMPAIGNS & AUTO-SPLIT BATCHES
 router.get('/campaigns', (req, res) => {
   const campaigns = db.prepare(`
     SELECT c.*, t.name AS template_name, a.email AS sender_email, a.provider AS sender_provider
@@ -256,69 +292,8 @@ router.get('/campaigns/:id/preview', (req, res) => {
   });
 });
 
-router.post('/campaigns/create', (req, res) => {
-  const { name, templateId, contactIds, sendToAllActive = false } = req.body;
-
-  if (!name || !templateId) {
-    return res.status(400).json({ ok: false, error: 'Campaign name and templateId are required.' });
-  }
-
-  const template = db.prepare('SELECT * FROM templates WHERE id = ?').get(templateId);
-  if (!template) {
-    return res.status(404).json({ ok: false, error: 'Template not found.' });
-  }
-
-  // Fetch target contacts
-  let contacts = [];
-  if (sendToAllActive) {
-    contacts = db.prepare("SELECT * FROM contacts WHERE status = 'ACTIVE'").all();
-  } else if (Array.isArray(contactIds) && contactIds.length > 0) {
-    const placeholders = contactIds.map(() => '?').join(',');
-    contacts = db.prepare(`SELECT * FROM contacts WHERE id IN (${placeholders})`).all(...contactIds);
-  } else {
-    // Default to last 500 contacts
-    contacts = db.prepare("SELECT * FROM contacts WHERE status = 'ACTIVE' ORDER BY id DESC LIMIT 500").all();
-  }
-
-  if (contacts.length === 0) {
-    return res.status(400).json({ ok: false, error: 'No active contacts found for campaign.' });
-  }
-
-  const createCampaignTx = db.transaction(() => {
-    // 1. Create Campaign
-    const campRes = db.prepare(`
-      INSERT INTO campaigns (name, template_id, status, total_count)
-      VALUES (?, ?, 'QUEUED', ?)
-    `).run(name, templateId, contacts.length);
-
-    const campaignId = campRes.lastInsertRowid;
-
-    // 2. Populate Queue with pre-rendered templates
-    const queueStmt = db.prepare(`
-      INSERT INTO queue (campaign_id, contact_id, email, name, subject, rendered_html, status)
-      VALUES (?, ?, ?, ?, ?, ?, 'queued')
-    `);
-
-    for (const c of contacts) {
-      const renderedSub = renderTemplate(template.subject, c);
-      const renderedBody = renderTemplate(template.body_html, c);
-      queueStmt.run(campaignId, c.id, c.email, c.name, renderedSub, renderedBody);
-    }
-
-    db.prepare(`
-      INSERT INTO logs (campaign_id, level, message)
-      VALUES (?, 'INFO', ?)
-    `).run(campaignId, `Campaign "${name}" created with ${contacts.length} recipients queued for multi-account dispatch.`);
-
-    return campaignId;
-  });
-
-  const campaignId = createCampaignTx();
-  res.json({ ok: true, campaignId, totalQueued: contacts.length });
-});
-
 // PRE-FLIGHT CSV/EXCEL PREVIEW & AUTO-SPLIT CALCULATION
-router.post('/campaigns/preview-upload', upload.single('file'), (req, res) => {
+router.post('/campaigns/preview-upload', upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ ok: false, error: 'No CSV or spreadsheet file uploaded.' });
   }
@@ -329,15 +304,12 @@ router.post('/campaigns/preview-upload', upload.single('file'), (req, res) => {
   const batchSize = Math.max(1, parseInt(req.body.batchSize || '50', 10));
 
   try {
-    const workbook = XLSX.readFile(filePath, { raw: false });
-    const sheetName = workbook.SheetNames[0];
-    if (!sheetName) {
-      try { fs.unlinkSync(filePath); } catch (_) { }
-      return res.status(400).json({ ok: false, error: 'Uploaded file has no data sheets.' });
-    }
-
-    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+    const rows = await parseSpreadsheetRows(filePath, originalName);
     try { fs.unlinkSync(filePath); } catch (_) { }
+
+    if (!rows || rows.length === 0) {
+      return res.status(400).json({ ok: false, error: 'Uploaded file has no data rows.' });
+    }
 
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     const seenEmails = new Set();
@@ -345,7 +317,6 @@ router.post('/campaigns/preview-upload', upload.single('file'), (req, res) => {
     let invalidCount = 0;
     let duplicateInSheetCount = 0;
 
-    // Prepare statement to check previous campaign contact history
     const historyStmt = db.prepare(`
       SELECT c.name AS campaign_name, q.sent_at, q.status
       FROM queue q
@@ -379,8 +350,6 @@ router.post('/campaigns/preview-upload', upload.single('file'), (req, res) => {
       }
 
       seenEmails.add(rawEmail);
-
-      // Check history in database
       const history = historyStmt.get(rawEmail);
 
       validContacts.push({
@@ -397,7 +366,6 @@ router.post('/campaigns/preview-upload', upload.single('file'), (req, res) => {
 
     const previouslyContactedCount = validContacts.filter(c => c.previouslyContacted !== null).length;
 
-    // Scheduling configuration & projection
     const scheduleMode = req.body.scheduleMode || 'immediate';
     const scheduledStartTime = req.body.scheduledStartTime || '';
     const staggerMinutes = Math.max(1, parseInt(req.body.staggerMinutes || '60', 10));
@@ -410,7 +378,6 @@ router.post('/campaigns/preview-upload', upload.single('file'), (req, res) => {
       }
     }
 
-    // Calculate auto-split batches with timeline projection
     const batches = [];
     const totalBatches = Math.ceil(validContacts.length / batchSize) || 1;
     for (let i = 0; i < totalBatches; i++) {
@@ -428,7 +395,7 @@ router.post('/campaigns/preview-upload', upload.single('file'), (req, res) => {
         startMs = Date.now() + i * 2000;
       }
 
-      const durationSeconds = Math.round(batchContacts.length * (config.globalSendIntervalMs / 1000));
+      const durationSeconds = Math.round(batchContacts.length * ((config.globalSendIntervalMs || 2500) / 1000));
       const endMs = startMs + (durationSeconds * 1000);
 
       batches.push({
@@ -468,7 +435,7 @@ router.post('/campaigns/preview-upload', upload.single('file'), (req, res) => {
   }
 });
 
-// LAUNCH AUTO-SPLIT BATCHES SEQUENTIALLY OR SCHEDULED
+// LAUNCH BATCHES
 router.post('/campaigns/launch-batches', (req, res) => {
   const {
     baseCampaignName,
@@ -497,7 +464,6 @@ router.post('/campaigns/launch-batches', (req, res) => {
     return res.status(400).json({ ok: false, error: 'No contacts provided to launch.' });
   }
 
-  // Filter out previously contacted if user checked the box
   let filteredContacts = contacts;
   if (skipPreviouslyContacted) {
     filteredContacts = contacts.filter(c => !c.previouslyContacted);
@@ -519,7 +485,6 @@ router.post('/campaigns/launch-batches', (req, res) => {
   }
 
   const launchTx = db.transaction(() => {
-    // 1. Ensure all contacts are persisted into master contacts table (Zero Duplicates)
     const contactUpsert = db.prepare(`
       INSERT INTO contacts (email, name, paper_title, affiliation)
       VALUES (?, ?, ?, ?)
@@ -530,14 +495,12 @@ router.post('/campaigns/launch-batches', (req, res) => {
       RETURNING id
     `);
 
-    // Prepare map of email -> contact_id
     const contactIdMap = new Map();
     for (const c of filteredContacts) {
       const row = contactUpsert.get(c.email, c.name || '', c.paper_title || '', c.affiliation || '');
       contactIdMap.set(c.email, row.id);
     }
 
-    // 2. Split into batches
     const totalBatches = Math.ceil(filteredContacts.length / numericBatchSize);
     const createdCampaigns = [];
 
@@ -584,7 +547,7 @@ router.post('/campaigns/launch-batches', (req, res) => {
       db.prepare(`
         INSERT INTO logs (campaign_id, level, message)
         VALUES (?, 'INFO', ?)
-      `).run(campaignId, `Auto-split batch "${batchName}" created with ${batchSlice.length} recipients. Mode: ${scheduleMode}, Scheduled: ${batchScheduledAt}.`);
+      `).run(campaignId, `Auto-split batch "${batchName}" created with ${batchSlice.length} recipients.`);
 
       createdCampaigns.push({
         campaignId,
@@ -609,7 +572,7 @@ router.post('/campaigns/launch-batches', (req, res) => {
   });
 });
 
-// 6B. CAMPAIGN CONTROLS: PAUSE, RESUME, CANCEL & MONITOR
+// PAUSE, RESUME, CANCEL, RE-RUN & AUDIT LOGS
 router.post('/campaigns/:id/pause', (req, res) => {
   const campId = req.params.id;
   const camp = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campId);
@@ -620,8 +583,8 @@ router.post('/campaigns/:id/pause', (req, res) => {
   }
 
   db.prepare("UPDATE campaigns SET status = 'PAUSED' WHERE id = ?").run(campId);
-  db.prepare("INSERT INTO logs (campaign_id, level, message) VALUES (?, 'WARN', ?)").run(campId, `Campaign "${camp.name}" paused by user.`);
-  res.json({ ok: true, message: `Campaign "${camp.name}" paused successfully.` });
+  db.prepare("INSERT INTO logs (campaign_id, level, message) VALUES (?, 'WARN', ?)").run(campId, `Campaign "${camp.name}" paused.`);
+  res.json({ ok: true, message: `Campaign "${camp.name}" paused.` });
 });
 
 router.post('/campaigns/:id/resume', (req, res) => {
@@ -630,13 +593,13 @@ router.post('/campaigns/:id/resume', (req, res) => {
   if (!camp) return res.status(404).json({ ok: false, error: 'Campaign not found' });
 
   if (camp.status !== 'PAUSED') {
-    return res.status(400).json({ ok: false, error: `Campaign is not paused (status: ${camp.status}).` });
+    return res.status(400).json({ ok: false, error: `Campaign is not paused.` });
   }
 
   const nextStatus = camp.started_at ? 'RUNNING' : 'QUEUED';
   db.prepare("UPDATE campaigns SET status = ? WHERE id = ?").run(nextStatus, campId);
-  db.prepare("INSERT INTO logs (campaign_id, level, message) VALUES (?, 'INFO', ?)").run(campId, `Campaign "${camp.name}" resumed successfully.`);
-  res.json({ ok: true, message: `Campaign "${camp.name}" resumed successfully.` });
+  db.prepare("INSERT INTO logs (campaign_id, level, message) VALUES (?, 'INFO', ?)").run(campId, `Campaign "${camp.name}" resumed.`);
+  res.json({ ok: true, message: `Campaign "${camp.name}" resumed.` });
 });
 
 router.post('/campaigns/:id/cancel', (req, res) => {
@@ -644,117 +607,16 @@ router.post('/campaigns/:id/cancel', (req, res) => {
   const camp = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campId);
   if (!camp) return res.status(404).json({ ok: false, error: 'Campaign not found' });
 
-  if (camp.status === 'COMPLETED') {
-    return res.status(400).json({ ok: false, error: 'Cannot cancel a completed campaign.' });
-  }
-
   const cancelTx = db.transaction(() => {
     db.prepare("UPDATE campaigns SET status = 'CANCELLED', completed_at = datetime('now') WHERE id = ?").run(campId);
     db.prepare("UPDATE queue SET status = 'failed', last_error = 'Cancelled by user' WHERE campaign_id = ? AND status = 'queued'").run(campId);
-    db.prepare("INSERT INTO logs (campaign_id, level, message) VALUES (?, 'WARN', ?)").run(campId, `Campaign "${camp.name}" cancelled by user.`);
+    db.prepare("INSERT INTO logs (campaign_id, level, message) VALUES (?, 'WARN', ?)").run(campId, `Campaign "${camp.name}" cancelled.`);
   });
 
   cancelTx();
-  res.json({ ok: true, message: `Campaign "${camp.name}" cancelled successfully.` });
+  res.json({ ok: true, message: `Campaign "${camp.name}" cancelled.` });
 });
 
-// 6C. CLONE / RE-RUN CAMPAIGN (Re-use existing campaign audience)
-router.post('/campaigns/:id/clone', (req, res) => {
-  const campId = req.params.id;
-  const { newName, templateId, mode = 'all', senderAccountId = null } = req.body || {};
-
-  const origCamp = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campId);
-  if (!origCamp) return res.status(404).json({ ok: false, error: 'Campaign not found' });
-
-  const targetTemplateId = templateId || origCamp.template_id;
-  const template = db.prepare('SELECT * FROM templates WHERE id = ?').get(targetTemplateId);
-  if (!template) return res.status(404).json({ ok: false, error: 'Template not found' });
-
-  const targetSenderAccountId = senderAccountId !== undefined
-    ? (senderAccountId ? parseInt(senderAccountId, 10) : null)
-    : origCamp.sender_account_id;
-
-  let query = 'SELECT email, name FROM queue WHERE campaign_id = ?';
-  if (mode === 'failed_only') {
-    query += " AND status = 'failed'";
-  }
-  const items = db.prepare(query).all(campId);
-  if (!items || items.length === 0) {
-    return res.status(400).json({ ok: false, error: `No contacts found to re-run (${mode === 'failed_only' ? 'no failed emails' : 'empty queue'}).` });
-  }
-
-  // Deduplicate
-  const uniqueItems = [];
-  const seen = new Set();
-  for (const it of items) {
-    if (!seen.has(it.email.toLowerCase())) {
-      seen.add(it.email.toLowerCase());
-      uniqueItems.push(it);
-    }
-  }
-
-  const campaignName = (newName && newName.trim())
-    ? newName.trim()
-    : `${origCamp.name}_Rerun_${Date.now().toString().slice(-4)}`;
-
-  const nowSql = formatSqliteDateTime(new Date());
-
-  const cloneTx = db.transaction(() => {
-    const campRes = db.prepare(`
-      INSERT INTO campaigns (name, template_id, status, total_count, scheduled_at, sender_account_id)
-      VALUES (?, ?, 'QUEUED', ?, ?, ?)
-    `).run(campaignName, targetTemplateId, uniqueItems.length, nowSql, targetSenderAccountId);
-
-    const newCampId = campRes.lastInsertRowid;
-
-    const queueInsert = db.prepare(`
-      INSERT INTO queue (campaign_id, contact_id, email, name, subject, rendered_html, status, scheduled_at)
-      VALUES (?, ?, ?, ?, ?, ?, 'queued', ?)
-    `);
-
-    for (const it of uniqueItems) {
-      const contact = db.prepare('SELECT id, paper_title, affiliation FROM contacts WHERE email = ?').get(it.email);
-      const cObj = {
-        name: it.name || '',
-        paper_title: contact?.paper_title || '',
-        affiliation: contact?.affiliation || ''
-      };
-      const renderedSubject = renderTemplate(template.subject, cObj);
-      const renderedBody = renderTemplate(template.body_html, cObj);
-      queueInsert.run(newCampId, contact?.id || null, it.email, it.name || '', renderedSubject, renderedBody, nowSql);
-    }
-
-    db.prepare(`
-      INSERT INTO logs (campaign_id, level, message)
-      VALUES (?, 'INFO', ?)
-    `).run(newCampId, `Campaign "${campaignName}" created via Re-run/Clone of Campaign #${campId} (${uniqueItems.length} recipients).`);
-
-    return { newCampId, campaignName, count: uniqueItems.length };
-  });
-
-  const result = cloneTx();
-  res.json({
-    ok: true,
-    message: `Campaign "${result.campaignName}" cloned successfully with ${result.count} recipients queued!`,
-    campaignId: result.newCampId,
-    name: result.campaignName,
-    totalQueued: result.count
-  });
-});
-
-router.get('/campaigns/active-monitor', (req, res) => {
-  const status = queueWorker.getStatus();
-  res.json({
-    ok: true,
-    activeCampaign: status.activeCampaign,
-    upcomingCampaigns: status.upcomingCampaigns,
-    queue: status.queue,
-    workerRunning: status.isRunning,
-    workerPaused: status.isPaused
-  });
-});
-
-// 7. AUDIT LOGS
 router.get('/logs', (req, res) => {
   const limit = parseInt(req.query.limit || '150', 10);
   const logs = db.prepare(`
@@ -768,7 +630,7 @@ router.get('/logs', (req, res) => {
   res.json({ ok: true, logs });
 });
 
-// 8. QUICK TEST EMAIL DISPATCH
+// QUICK TEST EMAIL
 router.post('/send-test', async (req, res) => {
   const { toEmail, name = 'Test Recipient', subject = '✅ Test Email from Azure Mailer', bodyHtml, senderAccountId = null } = req.body;
   if (!toEmail || !toEmail.includes('@')) {
@@ -777,20 +639,13 @@ router.post('/send-test', async (req, res) => {
 
   const account = AccountPool.getAvailableAccount(senderAccountId ? parseInt(senderAccountId, 10) : null);
   if (!account) {
-    return res.status(503).json({ ok: false, error: 'Selected sender account is unavailable (in cooldown or daily quota reached).' });
+    return res.status(503).json({ ok: false, error: 'Selected sender account is unavailable.' });
   }
 
-  const content = bodyHtml || `<div style="font-family: sans-serif; padding: 20px; line-height: 1.6; color: #1e293b;">
-    <h2 style="color: #0284c7; margin-top: 0;">✅ Test Email Delivery</h2>
+  const content = bodyHtml || `<div style="font-family: sans-serif; padding: 20px;">
+    <h2>✅ Test Email Delivery</h2>
     <p>Hello <b>${name}</b>,</p>
-    <p>This is a real-time verification email dispatched from your <b>Azure Multi-Account Mailer</b>.</p>
-    <table style="border-collapse: collapse; width: 100%; max-width: 480px; margin: 16px 0; background: #f8fafc; border-radius: 6px; overflow: hidden;">
-      <tr><td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold; width: 140px;">Sender Account:</td><td style="padding: 10px; border: 1px solid #e2e8f0;">${account.email}</td></tr>
-      <tr><td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold;">Provider:</td><td style="padding: 10px; border: 1px solid #e2e8f0;">${account.provider}</td></tr>
-      <tr><td style="padding: 10px; border: 1px solid #e2e8f0; font-weight: bold;">Timestamp:</td><td style="padding: 10px; border: 1px solid #e2e8f0;">${new Date().toISOString()}</td></tr>
-    </table>
-    <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
-    <p style="font-size: 12px; color: #64748b;">Journal Paripex - Automated Production Delivery Engine</p>
+    <p>Dispatched via <b>${account.email}</b> (${account.provider})</p>
   </div>`;
 
   try {
@@ -814,17 +669,8 @@ router.post('/send-test', async (req, res) => {
     }
 
     AccountPool.recordSendSuccess(account.id);
-    db.prepare("INSERT INTO logs (account_id, level, message) VALUES (?, 'INFO', ?)").run(
-      account.id,
-      `Quick test email dispatched to "${toEmail}" via ${account.email}`
-    );
-
     res.json({ ok: true, message: `Test email dispatched to ${toEmail} via ${account.email}.` });
   } catch (err) {
-    db.prepare("INSERT INTO logs (account_id, level, message) VALUES (?, 'ERROR', ?)").run(
-      account.id,
-      `Failed to dispatch test email to "${toEmail}": ${err.message}`
-    );
     res.status(500).json({ ok: false, error: err.message });
   }
 });
