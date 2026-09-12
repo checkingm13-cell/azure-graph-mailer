@@ -81,6 +81,12 @@ CREATE TABLE IF NOT EXISTS logs (
     timestamp TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 7. SETTINGS: Dynamic runtime key-value configuration
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 -- Performance Indexes
 CREATE INDEX IF NOT EXISTS idx_queue_status_id ON queue(status, id);
 CREATE INDEX IF NOT EXISTS idx_queue_sent_at ON queue(status, sent_at);

@@ -12,6 +12,17 @@ const { sendViaOCI } = require('./ociMailer');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+function getSendIntervalMs() {
+  try {
+    const row = db.prepare("SELECT value FROM settings WHERE key = 'send_interval_ms'").get();
+    if (row && row.value) {
+      const parsed = parseInt(row.value, 10);
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+  } catch (e) {}
+  return config.globalSendIntervalMs;
+}
+
 class QueueWorker {
   constructor() {
     this.isRunning = false;
@@ -246,8 +257,8 @@ class QueueWorker {
         this.currentTask = null;
         this.lastDispatchedAt = Date.now();
 
-        // 6. Global Pacing sleep (2.5s = 24/min max per global loop)
-        await sleep(config.globalSendIntervalMs);
+        // 6. Global Pacing sleep
+        await sleep(getSendIntervalMs());
 
       } catch (loopErr) {
         console.error('[QueueWorker] Unexpected error in worker tick:', loopErr);
@@ -267,16 +278,12 @@ class QueueWorker {
       FROM queue
     `).get();
 
-    // Fetch active running or paused campaign
+    // Fetch primary active campaign
     const activeCamp = db.prepare(`
       SELECT c.*, t.name AS template_name
       FROM campaigns c
       LEFT JOIN templates t ON c.template_id = t.id
-      WHERE c.status IN ('RUNNING', 'PAUSED')
-      ORDER BY 
-        CASE WHEN c.status = 'RUNNING' THEN 0 ELSE 1 END,
-        c.started_at DESC, 
-        c.id DESC
+      WHERE c.status = 'RUNNING'
       LIMIT 1
     `).get();
 
@@ -287,7 +294,7 @@ class QueueWorker {
       const progressPct = activeCamp.total_count > 0 
         ? Math.min(100, Math.round((processed / activeCamp.total_count) * 100)) 
         : 0;
-      const etaSeconds = Math.round(remaining * (config.globalSendIntervalMs / 1000));
+      const etaSeconds = Math.round(remaining * (getSendIntervalMs() / 1000));
 
       activeCampaign = {
         id: activeCamp.id,
@@ -328,6 +335,7 @@ class QueueWorker {
     return {
       isRunning: this.isRunning,
       isPaused: this.isPaused,
+      sendIntervalMs: getSendIntervalMs(),
       currentTask: this.currentTask,
       lastDispatchedAt: this.lastDispatchedAt,
       queue: queueCounts,

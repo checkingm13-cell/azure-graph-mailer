@@ -65,10 +65,50 @@ document.addEventListener('DOMContentLoaded', () => {
   let campPageSize = 50;
   let campCurrentPage = 1;
 
-  let isWorkerPaused = false;
-  let allLoadedTemplates = [];
-  let currentPreviewData = null;
-  let selectedFile = null;
+  // Dynamic Pacing Delay Controls
+  const inputSendInterval = document.getElementById('inputSendInterval');
+  const btnSaveInterval = document.getElementById('btnSaveInterval');
+
+  async function loadSettings() {
+    try {
+      const res = await fetch('/api/settings');
+      const data = await res.json();
+      if (data.ok && inputSendInterval) {
+        inputSendInterval.value = data.sendIntervalMs;
+      }
+    } catch (e) {}
+  }
+  loadSettings();
+
+  if (btnSaveInterval) {
+    btnSaveInterval.addEventListener('click', async () => {
+      const val = parseInt(inputSendInterval.value, 10);
+      if (isNaN(val) || val < 10) return alert('Please enter a valid delay in milliseconds (min 10ms)');
+      btnSaveInterval.disabled = true;
+      btnSaveInterval.textContent = 'Saving...';
+      try {
+        const res = await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sendIntervalMs: val })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          btnSaveInterval.textContent = 'Saved!';
+          setTimeout(() => {
+            btnSaveInterval.textContent = 'Save';
+            btnSaveInterval.disabled = false;
+          }, 1500);
+        } else {
+          alert(data.error || 'Failed to save');
+          btnSaveInterval.disabled = false;
+        }
+      } catch (e) {
+        alert(e.message);
+        btnSaveInterval.disabled = false;
+      }
+    });
+  }
 
   function formatTimeUntil(dateStr) {
     if (!dateStr) return '--';
@@ -141,6 +181,10 @@ document.addEventListener('DOMContentLoaded', () => {
         workerStateBadge.className = 'status-badge active';
         workerStatusText.textContent = 'WORKER ACTIVE';
         btnToggleWorker.textContent = '⏸️ Pause Worker';
+      }
+
+      if (worker.sendIntervalMs && inputSendInterval && document.activeElement !== inputSendInterval) {
+        inputSendInterval.value = worker.sendIntervalMs;
       }
 
       // Diagnostics Ribbon Updates

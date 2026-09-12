@@ -178,6 +178,28 @@ router.post('/worker/resume', (req, res) => {
   res.json({ ok: true, message: 'Worker resumed' });
 });
 
+// RUNTIME DYNAMIC SETTINGS
+router.get('/settings', (req, res) => {
+  const row = db.prepare("SELECT value FROM settings WHERE key = 'send_interval_ms'").get();
+  res.json({
+    ok: true,
+    sendIntervalMs: row ? parseInt(row.value, 10) : config.globalSendIntervalMs
+  });
+});
+
+router.post('/settings', (req, res) => {
+  const { sendIntervalMs } = req.body;
+  const val = parseInt(sendIntervalMs, 10);
+  if (isNaN(val) || val < 10) {
+    return res.status(400).json({ ok: false, error: 'Valid delay (ms >= 10) is required.' });
+  }
+  db.prepare(`
+    INSERT INTO settings (key, value) VALUES ('send_interval_ms', ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `).run(String(val));
+  res.json({ ok: true, sendIntervalMs: val, message: `Pacing delay updated to ${val}ms.` });
+});
+
 // 3. ACCOUNT POOL MANAGEMENT
 router.get('/accounts', (req, res) => {
   const accounts = AccountPool.getAllAccounts();
