@@ -22,7 +22,14 @@ const config = {
 
   // Azure Communication Services (Optional)
   acsConnectionString: process.env.AZURE_COMMUNICATION_CONNECTION_STRING || '',
-  acsSenderEmail: process.env.ACS_SENDER_EMAIL || ''
+  acsSenderEmail: process.env.ACS_SENDER_EMAIL || '',
+
+  // Oracle Cloud Infrastructure (OCI) Email Delivery
+  ociSmtpHost: process.env.OCI_SMTP_HOST || 'smtp.email.ap-mumbai-1.oci.oraclecloud.com',
+  ociSmtpPort: parseInt(process.env.OCI_SMTP_PORT || '587', 10),
+  ociSmtpUser: process.env.OCI_SMTP_USER || '',
+  ociSmtpPass: process.env.OCI_SMTP_PASS || '',
+  ociSenderEmail: process.env.OCI_SENDER_EMAIL || 'newsletter@education.yourpaperedition.com'
 };
 
 module.exports = Object.freeze(config);

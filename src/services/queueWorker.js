@@ -8,6 +8,7 @@ const config = require('../config/env');
 const AccountPool = require('./accountPool');
 const { sendViaGraph } = require('./graphMailer');
 const { sendViaACS } = require('./acsMailer');
+const { sendViaOCI } = require('./ociMailer');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -111,6 +112,13 @@ class QueueWorker {
 
           if (account.provider === 'AZURE_ACS') {
             await sendViaACS({
+              fromEmail: account.email,
+              toEmail: item.email,
+              subject: item.subject,
+              htmlBody: item.rendered_html
+            });
+          } else if (account.provider === 'OCI') {
+            await sendViaOCI({
               fromEmail: account.email,
               toEmail: item.email,
               subject: item.subject,

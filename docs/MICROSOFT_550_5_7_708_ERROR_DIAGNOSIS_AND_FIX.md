@@ -39,7 +39,10 @@ Related Obsidian Notes:
   ```
 * **Why This Happens**:
   Microsoft places all **new customer tenants and trial tenants** into a restricted **"Low Reputation IP Pool"** by default. This perimeter anti-spam filter blocks outbound email relay to external consumer domains (`@gmail.com`, `@yahoo.com`, etc.) to prevent newly created tenants from spamming.
-* **Is it a Bug in Code?**: **NO (0% application bug)**. This is a Microsoft-enforced server-side administrative hold.
+* **Why Manual Sending Works but Automated Graph API Script Fails**:
+  * **Manual (Outlook on the Web / Outlook Desktop)**: When a human logs in with a browser/app and clicks "Send", Exchange treats it as an *interactive authenticated user session*. Interactive messages are routed through Microsoft's regular, high-reputation human egress pool.
+  * **Automated (`azure-graph-mailer` via Graph API)**: The script authenticates in the background using Azure Application Permissions (`ClientSecretCredential` with `Mail.Send`). Because there is no human UI session, Exchange Online categorizes this as *unattended/automated daemon traffic*. Automated traffic from new or unestablished tenants is strictly subjected to the low-reputation outbound perimeter gate, immediately triggering NDR `550 5.7.708`.
+* **Is it a Bug in Code?**: **NO (0% application bug)**. The Node.js application, token acquisition, and Graph API calls are 100% correct. This is purely a Microsoft-enforced server-side administrative hold.
 * **Resolution**: Submit an automated IP exception request via Microsoft 365 Admin Center Support (standard 1-2 hour resolution).
 
 ---

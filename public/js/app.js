@@ -297,7 +297,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const quickTestSenderSelect = document.getElementById('quickTestSenderAccount');
       const rerunSenderSelect = document.getElementById('rerunSenderAccountSelect');
       const optionsHtml = data.accounts.map(a => {
-        const engineLabel = a.provider === 'AZURE_ACS' ? '⚡ Azure ACS' : '🔷 Graph API';
+        const engineLabel = a.provider === 'AZURE_ACS' ? '⚡ Azure ACS' : (a.provider === 'OCI' ? '🏛️ Oracle OCI' : '🔷 Graph API');
         return `<option value="${a.id}">[${engineLabel}] ${escapeHtml(a.email)} (${escapeHtml(a.display_name)})</option>`;
       }).join('');
 

@@ -821,9 +821,17 @@ router.post('/send-test', async (req, res) => {
   try {
     const { sendViaGraph } = require('../services/graphMailer');
     const { sendViaACS } = require('../services/acsMailer');
+    const { sendViaOCI } = require('../services/ociMailer');
 
     if (account.provider === 'AZURE_ACS') {
       await sendViaACS({
+        fromEmail: account.email,
+        toEmail: toEmail.trim(),
+        subject,
+        htmlBody: content
+      });
+    } else if (account.provider === 'OCI') {
+      await sendViaOCI({
         fromEmail: account.email,
         toEmail: toEmail.trim(),
         subject,
