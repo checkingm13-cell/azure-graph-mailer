@@ -191,7 +191,29 @@ class QueueWorker {
         } catch (dispatchErr) {
           console.error(`[QueueWorker] ❌ Failed to dispatch to "${item.email}":`, dispatchErr.message);
 
-          if (dispatchErr.isThrottled || dispatchErr.statusCode === 429) {
+          const isOciThrottled = dispatchErr.message && (
+            dispatchErr.message.includes('455') || 
+            dispatchErr.message.toLowerCase().includes('per minute reached')
+          );
+
+          if (isOciThrottled) {
+            console.warn(`[QueueWorker] ⚠️ OCI 455 Rate Limit reached (10/min) on ${account.email}. Applying 60s cooldown and requeuing "${item.email}"...`);
+            AccountPool.putOnCooldown(account.id, 60);
+
+            db.prepare(`
+              UPDATE queue
+              SET status = 'queued',
+                  account_id = NULL,
+                  last_error = 'OCI 455 rate limit (10/min) - waiting 60s to resume'
+              WHERE id = ?
+            `).run(item.id);
+
+            db.prepare(`
+              INSERT INTO logs (campaign_id, account_id, level, message)
+              VALUES (?, ?, 'WARN', ?)
+            `).run(item.campaign_id, account.id, `OCI 455 Throttle: Pausing ${account.email} for 60s. Message safely requeued.`);
+
+          } else if (dispatchErr.isThrottled || dispatchErr.statusCode === 429) {
             // Microsoft Graph Rate Limit reached (30 msg/min cap)
             const waitSeconds = dispatchErr.retryAfter || 120;
             console.warn(`[QueueWorker] ⚠️ Account ${account.email} throttled by Microsoft Graph. Applying ${waitSeconds}s cooldown and rotating accounts.`);

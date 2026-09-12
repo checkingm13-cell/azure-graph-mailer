@@ -38,6 +38,10 @@
         <span style="font-size:11px; color:#64748b;">ms</span>
         <button type="button" id="btnSaveInterval" class="btn btn-primary btn-sm" style="padding:3px 8px; font-size:11px;">Save</button>
       </div>
+      <div style="display:inline-flex; align-items:center; gap:4px; margin-left:6px;">
+        <button type="button" id="btnPresetSandbox" class="btn btn-secondary btn-sm" style="padding:2px 7px; font-size:10px; font-weight:600; color:#fbbf24; border-color:#d97706;" title="1-Click OCI Trial Sandbox Pacing (6.5s delay / 10 per min safe rate)">🛡️ 10/min Sandbox</button>
+        <button type="button" id="btnPresetEnterprise" class="btn btn-secondary btn-sm" style="padding:2px 7px; font-size:10px; font-weight:600; color:#34d399; border-color:#059669;" title="1-Click OCI Enterprise Pacing (100ms full speed)">⚡ Enterprise</button>
+      </div>
     </div>
   </header>
 
@@ -490,7 +494,8 @@
             <div class="form-group">
               <label class="form-label">Subject Line</label>
               <div class="tag-pills"><span class="tag-pill" data-target="tplSubject" data-tag="{{Name}}">+
-                  {{Name}}</span><span class="tag-pill" data-target="tplSubject" data-tag="{{Paper Title}}">+ {{Paper
+                  {{Name}}</span><span class="tag-pill" data-target="tplSubject" data-tag="{{domain}}" title="Recipient email domain">+
+                  {{domain}}</span><span class="tag-pill" data-target="tplSubject" data-tag="{{Paper Title}}">+ {{Paper
                   Title}}</span></div>
               <input type="text" id="tplSubject" class="form-input"
                 placeholder="Invitation: {{Paper Title}} - Journal ParipEx" required>
@@ -498,7 +503,9 @@
             <div class="form-group">
               <label class="form-label">Email Body (HTML supported)</label>
               <div class="tag-pills"><span class="tag-pill" data-target="tplBody" data-tag="{{Name}}">+
-                  {{Name}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{Paper Title}}">+ {{Paper
+                  {{Name}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{domain}}" title="Auto-extracts recipient domain (e.g. stanford.edu)">+
+                  {{domain}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{email}}">+
+                  {{email}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{Paper Title}}">+ {{Paper
                   Title}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{Affiliation}}">+
                   {{Affiliation}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{Date}}">+
                   {{Date}}</span></div>

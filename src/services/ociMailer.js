@@ -43,7 +43,9 @@ async function sendViaOCI({ fromEmail, toEmail, subject, htmlBody }) {
     subject: subject,
     html: htmlBody,
     headers: {
-      'X-Mailer': 'Azure-Graph-Mailer-OCI-Engine'
+      'X-Mailer': 'Azure-Graph-Mailer-OCI-Engine',
+      'List-Unsubscribe': '<mailto:unsubscribe@education.yourpaperedition.com>, <https://education.yourpaperedition.com/unsubscribe>',
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
     }
   };
 

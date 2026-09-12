@@ -110,6 +110,59 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // 1-Click OCI Pacing Presets
+  const btnPresetSandbox = document.getElementById('btnPresetSandbox');
+  const btnPresetEnterprise = document.getElementById('btnPresetEnterprise');
+
+  async function applyPacingPreset(val, btn) {
+    if (inputSendInterval) inputSendInterval.value = val;
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sendIntervalMs: val })
+      });
+      const data = await res.json();
+      if (data.ok && btnSaveInterval) {
+        btnSaveInterval.textContent = 'Saved!';
+        setTimeout(() => { btnSaveInterval.textContent = 'Save'; }, 1200);
+      }
+    } catch (e) {}
+    if (btn) btn.disabled = false;
+  }
+
+  if (btnPresetSandbox) {
+    btnPresetSandbox.addEventListener('click', () => applyPacingPreset(6500, btnPresetSandbox));
+  }
+  if (btnPresetEnterprise) {
+    btnPresetEnterprise.addEventListener('click', () => applyPacingPreset(100, btnPresetEnterprise));
+  }
+
+  // Auto-presets on provider dropdown change
+  const accProviderSelect = document.getElementById('accProvider');
+  const accDailyLimitInput = document.getElementById('accDailyLimit');
+  const accCooldownInput = document.getElementById('accCooldown');
+  const accEmailInput = document.getElementById('accEmail');
+
+  if (accProviderSelect) {
+    accProviderSelect.addEventListener('change', () => {
+      if (accProviderSelect.value === 'OCI') {
+        if (accDailyLimitInput) accDailyLimitInput.value = 10000;
+        if (accCooldownInput) accCooldownInput.value = 0;
+        if (accEmailInput && !accEmailInput.value) {
+          accEmailInput.placeholder = 'newsletter@education.yourpaperedition.com';
+        }
+      } else if (accProviderSelect.value === 'GRAPH_API') {
+        if (accDailyLimitInput) accDailyLimitInput.value = 500;
+        if (accCooldownInput) accCooldownInput.value = 60;
+      } else if (accProviderSelect.value === 'AZURE_ACS') {
+        if (accDailyLimitInput) accDailyLimitInput.value = 500;
+        if (accCooldownInput) accCooldownInput.value = 60;
+      }
+    });
+  }
+
   function formatTimeUntil(dateStr) {
     if (!dateStr) return '--';
     const cleanStr = dateStr.includes('Z') || dateStr.includes('+') ? dateStr : dateStr.replace(' ', 'T') + 'Z';
