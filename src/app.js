@@ -69,6 +69,29 @@ function seedDefaultAccount() {
       }
     }
   }
+
+  // 3. Seed Production OCI Email Delivery accounts (5 Verified Domains)
+  const ociSenders = [
+    { email: 'research@education.researchandrise.com', name: 'Research & Rise Academic' },
+    { email: 'editor@publication.onlypaperpublication.com', name: 'Paper Publication Editorial' },
+    { email: 'academic@education.yourseducationmatter.com', name: 'Education Matters Journal' },
+    { email: 'editorial@education.yourpaperpublication.com', name: 'Paper Publication Review Board' },
+    { email: 'newsletter@education.yourpaperedition.com', name: 'Paper Edition Education Newsletter' }
+  ];
+
+  for (const sender of ociSenders) {
+    const existing = db.prepare('SELECT id FROM accounts WHERE email = ?').get(sender.email);
+    if (!existing) {
+      console.log(`[Bootstrap] Seeding Verified OCI account: ${sender.email}`);
+      AccountPool.upsertAccount({
+        email: sender.email,
+        displayName: sender.name,
+        provider: 'OCI',
+        dailyLimit: 10000,
+        cooldownSeconds: 0
+      });
+    }
+  }
 }
 
 // Seed default template if templates empty

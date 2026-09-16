@@ -9,7 +9,18 @@ const upsert = db.prepare(`
     is_active = 1
 `);
 
-upsert.run('newsletter@education.yourpaperedition.com', 'Paper Edition Education Newsletter');
+const senders = [
+  { email: 'research@education.researchandrise.com', name: 'Research & Rise Academic' },
+  { email: 'editor@publication.onlypaperpublication.com', name: 'Paper Publication Editorial' },
+  { email: 'academic@education.yourseducationmatter.com', name: 'Education Matters Journal' },
+  { email: 'editorial@education.yourpaperpublication.com', name: 'Paper Publication Review Board' },
+  { email: 'newsletter@education.yourpaperedition.com', name: 'Paper Edition Education Newsletter' }
+];
 
-console.log('✅ Registered OCI Accounts in Local DB:');
-console.log(db.prepare("SELECT id, email, provider, is_active, daily_limit FROM accounts WHERE provider = 'OCI'").all());
+for (const s of senders) {
+  upsert.run(s.email, s.name);
+  console.log(`✅ Registered in Mailer DB: ${s.email} (${s.name})`);
+}
+
+console.log('\n--- ALL ACTIVE OCI ACCOUNTS IN LOCAL DB ---');
+console.table(db.prepare("SELECT id, email, display_name, provider, is_active, daily_limit FROM accounts WHERE provider = 'OCI'").all());

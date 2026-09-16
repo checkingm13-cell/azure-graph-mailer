@@ -123,6 +123,50 @@ function initSchema(db) {
     if (!accountCols.includes('cooldown_until')) {
       db.exec("ALTER TABLE accounts ADD COLUMN cooldown_until TEXT");
     }
+    if (!accountCols.includes('status')) {
+      db.exec("ALTER TABLE accounts ADD COLUMN status TEXT DEFAULT 'ACTIVE'");
+    }
+    if (!accountCols.includes('health_score')) {
+      db.exec("ALTER TABLE accounts ADD COLUMN health_score INTEGER DEFAULT 100");
+    }
+    if (!accountCols.includes('sending_speed')) {
+      db.exec("ALTER TABLE accounts ADD COLUMN sending_speed TEXT DEFAULT 'BALANCED'");
+    }
+    if (!accountCols.includes('custom_interval_ms')) {
+      db.exec("ALTER TABLE accounts ADD COLUMN custom_interval_ms INTEGER DEFAULT 2500");
+    }
+    if (!accountCols.includes('failure_count')) {
+      db.exec("ALTER TABLE accounts ADD COLUMN failure_count INTEGER DEFAULT 0");
+    }
+    if (!accountCols.includes('bounce_count')) {
+      db.exec("ALTER TABLE accounts ADD COLUMN bounce_count INTEGER DEFAULT 0");
+    }
+    if (!accountCols.includes('complaint_count')) {
+      db.exec("ALTER TABLE accounts ADD COLUMN complaint_count INTEGER DEFAULT 0");
+    }
+
+    if (!campaignCols.includes('mode')) {
+      db.exec("ALTER TABLE campaigns ADD COLUMN mode TEXT DEFAULT 'SMART'");
+    }
+    if (!campaignCols.includes('pinned_account_id')) {
+      db.exec("ALTER TABLE campaigns ADD COLUMN pinned_account_id INTEGER REFERENCES accounts(id)");
+    }
+    if (!campaignCols.includes('fallback_allowed')) {
+      db.exec("ALTER TABLE campaigns ADD COLUMN fallback_allowed INTEGER DEFAULT 1");
+    }
+    if (!campaignCols.includes('sending_speed')) {
+      db.exec("ALTER TABLE campaigns ADD COLUMN sending_speed TEXT DEFAULT 'BALANCED'");
+    }
+    if (!campaignCols.includes('custom_interval_ms')) {
+      db.exec("ALTER TABLE campaigns ADD COLUMN custom_interval_ms INTEGER DEFAULT 2500");
+    }
+
+    if (!queueCols.includes('provider_message_id')) {
+      db.exec("ALTER TABLE queue ADD COLUMN provider_message_id TEXT");
+    }
+    if (!queueCols.includes('accepted_at')) {
+      db.exec("ALTER TABLE queue ADD COLUMN accepted_at TEXT");
+    }
 
     db.exec("CREATE INDEX IF NOT EXISTS idx_queue_schedule ON queue(status, scheduled_at, id);");
   } catch (err) {
