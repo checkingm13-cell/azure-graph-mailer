@@ -190,9 +190,13 @@ router.get('/queue', (req, res) => {
   const items = db.prepare(`
     SELECT 
       q.id, q.email, q.name, q.subject, q.status, q.attempts, q.scheduled_at, q.sent_at, q.last_error,
-      a.email AS assigned_sender_email, a.provider AS assigned_provider
+      a.email AS assigned_sender_email, a.provider AS assigned_provider,
+      c.name AS campaign_name,
+      t.name AS template_name
     FROM queue q
     LEFT JOIN accounts a ON q.account_id = a.id
+    LEFT JOIN campaigns c ON q.campaign_id = c.id
+    LEFT JOIN templates t ON c.template_id = t.id
     ORDER BY 
       CASE 
         WHEN q.status = 'sending' THEN 1
@@ -378,7 +382,7 @@ router.patch('/accounts/:id/toggle', (req, res) => {
   res.json({ ok: true, is_active: newStatus });
 });
 
-// Reset single account quota (sent_today = 0, clear cooldown)
+// Reset single account quota (sent_today = 0, clear cooldown, clear historical window)
 router.post('/accounts/:id/reset', (req, res) => {
   const account = db.prepare('SELECT id, email FROM accounts WHERE id = ?').get(req.params.id);
   if (!account) return res.status(404).json({ ok: false, error: 'Account not found' });
@@ -392,6 +396,13 @@ router.post('/accounts/:id/reset', (req, res) => {
     WHERE id = ?
   `).run(req.params.id);
 
+  // Clear 24-hour sent records for this account so rolling count stays at 0
+  db.prepare(`
+    UPDATE queue 
+    SET sent_at = datetime('now', '-25 hours') 
+    WHERE account_id = ? AND status = 'sent'
+  `).run(req.params.id);
+
   res.json({ ok: true, message: `Reset sent count to 0 for ${account.email}.` });
 });
 
@@ -403,6 +414,13 @@ router.post('/accounts/reset-all', (req, res) => {
         last_sent_at = NULL, 
         cooldown_until = NULL, 
         status = 'ACTIVE'
+  `).run();
+
+  // Clear 24-hour sent records so rolling recalculation stays at 0
+  db.prepare(`
+    UPDATE queue 
+    SET sent_at = datetime('now', '-25 hours') 
+    WHERE status = 'sent'
   `).run();
 
   res.json({ ok: true, message: `Reset sent counters to 0 for all ${info.changes} account(s).` });

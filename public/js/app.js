@@ -477,8 +477,10 @@ document.addEventListener('DOMContentLoaded', () => {
             <td>#${item.id}</td>
             <td><strong>${escapeHtml(item.email)}</strong></td>
             <td>${escapeHtml(item.name || '--')}</td>
-            <td><span class="account-badge">${escapeHtml(item.assigned_sender_email || 'Auto-Rotate')}</span></td>
-            <td title="${escapeHtml(item.subject)}">${escapeHtml(item.subject ? (item.subject.length > 35 ? item.subject.slice(0, 35) + '...' : item.subject) : '--')}</td>
+            <td><strong style="color: var(--sky); font-size: 11px;">${escapeHtml(item.campaign_name || '--')}</strong></td>
+            <td><span style="font-size: 11px; color: var(--text-secondary);">${escapeHtml(item.template_name || 'Rotated Template')}</span></td>
+            <td><span class="account-badge">${escapeHtml(item.assigned_sender_email || 'Auto-Rotate Pool')}</span></td>
+            <td title="${escapeHtml(item.subject)}">${escapeHtml(item.subject ? (item.subject.length > 30 ? item.subject.slice(0, 30) + '...' : item.subject) : '--')}</td>
             <td><span class="badge ${badgeClass}">${item.status.toUpperCase()}</span></td>
             <td>${item.attempts || 0}</td>
           </tr>
