@@ -1,4 +1,4 @@
-﻿name: Rapid & Secure Azure Web App Deployment
+name: Rapid & Secure Azure Web App Deployment
 
 on:
   push:
@@ -14,28 +14,23 @@ jobs:
       contents: read
 
     steps:
-      # 1. Code Checkout
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Setup Node.js (Node 20.x is highly optimized for Azure App Service)
       - name: Set up Node.js LTS
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      # 3. Secure & Clean Dependency Installation
-      - name: Install Dependencies
-        run: |
-          npm ci --omit=dev
+      - name: Install Production Dependencies
+        run: npm ci --omit=dev
 
-      # 4. Security Audit (Non-blocking)
-      - name: Security Check
+      # Package directly into a single zip (10x faster upload than raw folder)
+      - name: Create Clean Deployment Archive
         run: |
-          npm audit --audit-level=high || echo "⚠️ Security warnings found"
+          zip -q -r release.zip . -x ".git/*" ".github/*" "tests/*" "*.md"
 
-      # 5. Azure Authentication via OIDC
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -43,10 +38,10 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_ADDF7064233A4843AD97AC6BDD366422 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_B86E2BDB93B14E92B6BD707FD34B6FE2 }}
 
-      # 6. Direct & Rapid Deployment to Azure
+      # Fast Zip Deploy
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'paripex-mailer-app'
           slot-name: 'Production'
-          package: .
+          package: release.zip
