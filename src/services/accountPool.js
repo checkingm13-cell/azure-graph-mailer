@@ -152,10 +152,11 @@ class AccountPool {
    * @param {number|string} id
    * @param {Object} updates
    */
-  static updateAccountById(id, { displayName, provider, dailyLimit, cooldownSeconds, isActive } = {}) {
+  static updateAccountById(id, { email, displayName, provider, dailyLimit, cooldownSeconds, isActive } = {}) {
     const existing = db.prepare('SELECT * FROM accounts WHERE id = ?').get(id);
     if (!existing) return null;
 
+    const nextEmail = email !== undefined && email.trim() ? email.toLowerCase().trim() : existing.email;
     const nextDisplayName = displayName !== undefined ? displayName.trim() : existing.display_name;
     const nextProvider = provider !== undefined ? provider : existing.provider;
     const nextDailyLimit = dailyLimit !== undefined ? parseInt(dailyLimit, 10) : existing.daily_limit;
@@ -164,13 +165,14 @@ class AccountPool {
 
     db.prepare(`
       UPDATE accounts
-      SET display_name = ?,
+      SET email = ?,
+          display_name = ?,
           provider = ?,
           daily_limit = ?,
           cooldown_seconds = ?,
           is_active = ?
       WHERE id = ?
-    `).run(nextDisplayName, nextProvider, nextDailyLimit, nextCooldown, nextIsActive, id);
+    `).run(nextEmail, nextDisplayName, nextProvider, nextDailyLimit, nextCooldown, nextIsActive, id);
 
     return db.prepare('SELECT * FROM accounts WHERE id = ?').get(id);
   }

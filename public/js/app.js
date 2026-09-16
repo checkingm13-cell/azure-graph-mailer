@@ -318,14 +318,37 @@ document.addEventListener('DOMContentLoaded', () => {
             if (btnMonitorCancel) { btnMonitorCancel.style.display = 'inline-block'; btnMonitorCancel.dataset.id = activeCamp.id; }
             if (activeCamp.etaSeconds > 0) {
               monitorEtaText.textContent = activeCamp.etaSeconds < 60 ? `~${activeCamp.etaSeconds}s remaining` : `~${Math.ceil(activeCamp.etaSeconds / 60)} min remaining`;
-            } else { monitorEtaText.textContent = 'Finishing batch...'; }
-          } else if (activeCamp.status === 'PAUSED') {
-            monitorStatusBadge.className = 'badge badge-paused';
-            monitorStatusBadge.textContent = '⏸️ PAUSED';
-            if (btnMonitorPause) btnMonitorPause.style.display = 'none';
-            if (btnMonitorResume) { btnMonitorResume.style.display = 'inline-block'; btnMonitorResume.dataset.id = activeCamp.id; }
-            if (btnMonitorCancel) { btnMonitorCancel.style.display = 'inline-block'; btnMonitorCancel.dataset.id = activeCamp.id; }
-            monitorEtaText.textContent = 'Paused by user';
+          // Fetch and display Operational Reason: "Why is my campaign waiting?"
+          const reasonCard = document.getElementById('monitorReasonCard');
+          const reasonText = document.getElementById('monitorReasonText');
+          const countdownBadge = document.getElementById('monitorCountdownBadge');
+          const countdownSec = document.getElementById('monitorCountdownSeconds');
+          const nextAccountHint = document.getElementById('monitorNextAccountHint');
+          const nextAccountName = document.getElementById('monitorNextAccountName');
+
+          if (reasonCard && activeCamp.id) {
+            fetch(`/api/campaigns/${activeCamp.id}/status-reason`)
+              .then(r => r.json())
+              .then(diag => {
+                if (diag.ok && diag.reason) {
+                  reasonCard.style.display = 'block';
+                  reasonText.textContent = diag.reason;
+                  if (diag.secondsRemaining && diag.secondsRemaining > 0) {
+                    countdownBadge.style.display = 'inline-block';
+                    countdownSec.textContent = diag.secondsRemaining;
+                  } else {
+                    countdownBadge.style.display = 'none';
+                  }
+                  if (diag.nextAvailableAccount) {
+                    nextAccountHint.style.display = 'block';
+                    nextAccountName.textContent = diag.nextAvailableAccount;
+                  } else {
+                    nextAccountHint.style.display = 'none';
+                  }
+                } else {
+                  reasonCard.style.display = 'none';
+                }
+              }).catch(() => { reasonCard.style.display = 'none'; });
           }
         } else if (upcoming.length > 0) {
           const nextCamp = upcoming[0];
@@ -340,6 +363,8 @@ document.addEventListener('DOMContentLoaded', () => {
           if (btnMonitorPause) btnMonitorPause.style.display = 'none';
           if (btnMonitorResume) btnMonitorResume.style.display = 'none';
           if (btnMonitorCancel) { btnMonitorCancel.style.display = 'inline-block'; btnMonitorCancel.dataset.id = nextCamp.id; }
+          const reasonCard = document.getElementById('monitorReasonCard');
+          if (reasonCard) reasonCard.style.display = 'none';
         } else {
           monitorCampaignName.textContent = 'No active campaign running';
           monitorProgressBar.style.width = '0%';
@@ -352,6 +377,8 @@ document.addEventListener('DOMContentLoaded', () => {
           if (btnMonitorPause) btnMonitorPause.style.display = 'none';
           if (btnMonitorResume) btnMonitorResume.style.display = 'none';
           if (btnMonitorCancel) btnMonitorCancel.style.display = 'none';
+          const reasonCard = document.getElementById('monitorReasonCard');
+          if (reasonCard) reasonCard.style.display = 'none';
         }
 
         // Upcoming Scheduled Queue Timeline
@@ -512,9 +539,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (editAccountId) editAccountId.value = acc.id;
     if (accEmailInput) {
       accEmailInput.value = acc.email;
-      accEmailInput.disabled = true;
+      accEmailInput.disabled = false;
+      accEmailInput.readOnly = false;
     }
-    if (accEmailHelp) accEmailHelp.innerHTML = '<span style="color: var(--amber); font-weight: 600;">⚠️ Email address is locked during edit to preserve queue logs.</span>';
+    if (accEmailHelp) accEmailHelp.textContent = 'Edit email address, display name, daily limit, or speed settings.';
     if (accDisplayNameInput) accDisplayNameInput.value = acc.display_name || '';
     if (accDailyLimitInput) accDailyLimitInput.value = acc.daily_limit;
     if (accCooldownInput) accCooldownInput.value = acc.cooldown_seconds;
@@ -642,22 +670,53 @@ document.addEventListener('DOMContentLoaded', () => {
         accountsPoolGrid.innerHTML = allLoadedAccounts.map((a) => {
           const pct = Math.min(100, Math.round((a.sent_today / a.daily_limit) * 100));
           const isCooldown = a.cooldown_remaining_sec > 0;
+          const serviceName = a.provider === 'AZURE_ACS' ? 'Azure Email' : (a.provider === 'OCI' ? 'Oracle Email' : 'Microsoft 365');
+          const healthScore = a.computed_health_score || a.health_score || 100;
+          const healthLabel = healthScore >= 90 ? 'Healthy' : (healthScore >= 70 ? 'Good' : 'Needs Review');
+          const humanStatus = a.human_status || (isCooldown ? 'Temporarily paused' : (a.is_active ? 'Ready' : 'Disabled'));
+          const statusDot = a.status_color === 'rose' ? '✕' : (isCooldown ? '⏸' : (a.is_active ? '●' : '○'));
+          const statusColor = a.status_color === 'rose' ? 'var(--rose)' : (isCooldown ? 'var(--amber)' : (a.is_active ? 'var(--emerald)' : 'var(--text-muted)'));
+
           return `
-            <div class="account-card">
-              <div class="account-card-header">
-                <div>
-                  <div class="account-email">${escapeHtml(a.email)}</div>
-                  <div style="font-size: 10px; color: var(--text-muted);">${escapeHtml(a.display_name)}</div>
+            <div class="account-card" style="border-radius: 10px; padding: 14px; background: var(--bg-card); border: 1px solid var(--border-color); display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="color: ${statusColor}; font-weight: 700; font-size: 13px;">${statusDot}</span>
+                    <span style="font-weight: 600; font-size: 12px; color: ${statusColor};">${humanStatus}</span>
+                  </div>
+                  <span class="account-badge" style="font-size: 10px; font-weight: 600;">${serviceName}</span>
                 </div>
-                <div style="display: flex; align-items: center; gap: 6px;">
-                  <span class="account-badge">${a.provider}</span>
-                  <button class="btn btn-secondary btn-xs btn-edit-account-card" data-id="${a.id}" title="Edit daily limit & settings" style="padding: 2px 7px; font-size: 10px;">✏️ Edit</button>
+
+                <div style="margin-bottom: 10px;">
+                  <div style="font-weight: 700; font-size: 13px; color: var(--text-primary);">${escapeHtml(a.display_name || a.email.split('@')[0])}</div>
+                  <div style="font-size: 11px; color: var(--sky); font-family: var(--font-mono);">${escapeHtml(a.email)}</div>
+                </div>
+
+                <!-- Account Health -->
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; margin-bottom: 4px;">
+                  <span style="color: var(--text-muted);">Account Health</span>
+                  <span style="font-weight: 600; color: ${healthScore >= 80 ? 'var(--emerald)' : 'var(--amber)'};">${healthLabel} (${healthScore}/100)</span>
+                </div>
+                <div class="gauge-bar-bg" style="height: 4px; margin-bottom: 10px;">
+                  <div class="gauge-bar-fill" style="width: ${healthScore}%; background-color: ${healthScore >= 80 ? 'var(--emerald)' : 'var(--amber)'};"></div>
+                </div>
+
+                <!-- Daily Sending Limit & Available Today -->
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; margin-bottom: 4px;">
+                  <span style="color: var(--text-muted);">Available Today</span>
+                  <strong style="color: var(--text-primary);">${(a.remaining_today !== undefined ? a.remaining_today : (a.daily_limit - a.sent_today)).toLocaleString()} / ${a.daily_limit.toLocaleString()}</strong>
+                </div>
+                <div class="gauge-bar-bg" style="height: 6px; margin-bottom: 8px;">
+                  <div class="gauge-bar-fill" style="width: ${pct}%; background-color: ${pct > 90 ? 'var(--rose)' : 'var(--sky)'};"></div>
                 </div>
               </div>
-              <div class="gauge-bar-bg"><div class="gauge-bar-fill" style="width: ${pct}%; background-color: ${pct > 90 ? 'var(--rose)' : 'var(--emerald)'};"></div></div>
-              <div class="account-stats-row">
-                <span>Quota: ${a.sent_today} / ${a.daily_limit}</span>
-                <span>${isCooldown ? `⏳ Cooldown: ${a.cooldown_remaining_sec}s` : '🟢 Ready'}</span>
+
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); font-size: 11px;">
+                <span style="color: ${isCooldown ? 'var(--amber)' : 'var(--text-muted)'};">
+                  ${isCooldown ? `⏳ Resumes in ${a.cooldown_remaining_sec}s` : `Speed: ${a.sending_speed || 'Balanced'}`}
+                </span>
+                <button class="btn btn-secondary btn-xs btn-edit-account-card" data-id="${a.id}" style="padding: 3px 8px; font-size: 11px;">Manage</button>
               </div>
             </div>
           `;
@@ -685,6 +744,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (id) {
       const payload = {
+        email: accEmailInput.value.trim(),
         displayName: accDisplayNameInput.value.trim(),
         dailyLimit,
         cooldownSeconds: isNaN(cooldownSeconds) ? 0 : cooldownSeconds,
@@ -774,7 +834,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (_) { }
   }
 
-  formTemplate.addEventListener('submit', async (e) => {
+    formTemplate.addEventListener('submit', async (e) => {
     e.preventDefault();
     const payload = { id: tplId.value || null, name: tplName.value.trim(), subject: tplSubject.value.trim(), bodyHtml: tplBody.value.trim() };
     const res = await fetch('/api/templates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -783,6 +843,79 @@ document.addEventListener('DOMContentLoaded', () => {
     else { alert(data.error || 'Failed to save template'); }
   });
   btnResetTemplate.addEventListener('click', () => { formTemplate.reset(); tplId.value = ''; });
+
+  // Quick Preset Link Buttons
+  document.querySelectorAll('.btn-preset-link').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const url = btn.dataset.url;
+      const text = btn.dataset.text;
+      const htmlSnippet = `<a href="${url}">${text}</a>`;
+      insertTextAtCursor(tplBody, htmlSnippet);
+    });
+  });
+
+  // Modal Dynamic Link Builder
+  const btnOpenLinkBuilder = document.getElementById('btnOpenLinkBuilder');
+  const modalLinkBuilder = document.getElementById('modalLinkBuilder');
+  const btnCloseLinkBuilder = document.getElementById('btnCloseLinkBuilder');
+  const btnCancelLinkBuilder = document.getElementById('btnCancelLinkBuilder');
+  const formLinkBuilder = document.getElementById('formLinkBuilder');
+  const linkBuilderText = document.getElementById('linkBuilderText');
+  const linkBuilderPath = document.getElementById('linkBuilderPath');
+  const linkBuilderPreviewCode = document.getElementById('linkBuilderPreviewCode');
+
+  function updateLinkBuilderPreview() {
+    const text = linkBuilderText.value.trim() || 'Link Text';
+    let path = linkBuilderPath.value.trim() || '/';
+    if (!path.startsWith('/')) path = '/' + path;
+    const generatedHtml = `<a href="https://{{senderDomain}}${path}">${text}</a>`;
+    if (linkBuilderPreviewCode) linkBuilderPreviewCode.textContent = generatedHtml;
+    return generatedHtml;
+  }
+
+  function insertTextAtCursor(textarea, text) {
+    if (!textarea) return;
+    const start = textarea.selectionStart || textarea.value.length;
+    const end = textarea.selectionEnd || textarea.value.length;
+    textarea.value = textarea.value.substring(0, start) + text + textarea.value.substring(end);
+    textarea.focus();
+    textarea.setSelectionRange(start + text.length, start + text.length);
+  }
+
+  if (btnOpenLinkBuilder) {
+    btnOpenLinkBuilder.addEventListener('click', () => {
+      modalLinkBuilder.style.display = 'flex';
+      if (!linkBuilderText.value) linkBuilderText.value = 'Submit Your Manuscript';
+      if (!linkBuilderPath.value) linkBuilderPath.value = '/submit-manuscript';
+      updateLinkBuilderPreview();
+      linkBuilderText.focus();
+    });
+  }
+
+  if (btnCloseLinkBuilder) btnCloseLinkBuilder.addEventListener('click', () => modalLinkBuilder.style.display = 'none');
+  if (btnCancelLinkBuilder) btnCancelLinkBuilder.addEventListener('click', () => modalLinkBuilder.style.display = 'none');
+
+  if (linkBuilderText) linkBuilderText.addEventListener('input', updateLinkBuilderPreview);
+  if (linkBuilderPath) linkBuilderPath.addEventListener('input', updateLinkBuilderPreview);
+
+  document.querySelectorAll('.btn-add-param').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const param = btn.dataset.param;
+      const cur = linkBuilderPath.value.trim();
+      const separator = cur.includes('?') ? '&' : '?';
+      linkBuilderPath.value = cur + separator + param;
+      updateLinkBuilderPreview();
+    });
+  });
+
+  if (formLinkBuilder) {
+    formLinkBuilder.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const snippet = updateLinkBuilderPreview();
+      insertTextAtCursor(tplBody, snippet);
+      modalLinkBuilder.style.display = 'none';
+    });
+  }
 
   // 6. CSV CONTACT UPLOAD
   dropZone.addEventListener('click', () => csvFileInput.click());
@@ -957,7 +1090,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const template = allLoadedTemplates.find((t) => String(t.id) === String(templateId));
     if (!template) return;
     function merge(str, c) {
-      return (str || '').replace(/\{\{\s*Name\s*\}\}/gi, c.name || 'Dr. Researcher').replace(/\{\{\s*Paper\s*Title\s*\}\}/gi, c.paper_title || 'Recent Scientific Advances').replace(/\{\{\s*Affiliation\s*\}\}/gi, c.affiliation || 'University Department').replace(/\{\{\s*Date\s*\}\}/gi, new Date().toLocaleDateString());
+      const activeSender = document.getElementById('batchSenderAccountSelect')?.selectedOptions[0]?.text || 'dr.reetashah@theparipexjournal.com';
+      const senderDomain = activeSender.includes('@') ? activeSender.split('@')[1].replace(/[^a-zA-Z0-9.-]/g, '') : 'theparipexjournal.com';
+      let out = (str || '')
+        .replace(/\{\{\s*Name\s*\}\}/gi, c.name || 'Dr. Researcher')
+        .replace(/\{\{\s*Paper\s*Title\s*\}\}/gi, c.paper_title || 'Recent Scientific Advances')
+        .replace(/\{\{\s*Affiliation\s*\}\}/gi, c.affiliation || 'University Department')
+        .replace(/\{\{\s*senderDomain\s*\}\}/gi, senderDomain)
+        .replace(/\{\{\s*sender_domain\s*\}\}/gi, senderDomain)
+        .replace(/\{\{\s*senderEmail\s*\}\}/gi, activeSender)
+        .replace(/\{\{\s*Date\s*\}\}/gi, new Date().toLocaleDateString());
+
+      // Auto-rewrite relative links in UI preview
+      out = out.replace(/href=["'](\/(?!\/)[^"']*)["']/gi, (match, path) => `href="https://${senderDomain}${path}"`);
+      return out;
     }
     sampleSubjectLine.textContent = `Subject: ${merge(template.subject, firstContact)}`;
     sampleEmailBody.innerHTML = merge(template.body_html, firstContact);
@@ -986,6 +1132,29 @@ document.addEventListener('DOMContentLoaded', () => {
   if (campaignScheduledStartTime) campaignScheduledStartTime.addEventListener('input', renderBatchesBreakdown);
   if (campaignStaggerMinutes) campaignStaggerMinutes.addEventListener('input', renderBatchesBreakdown);
 
+  // Strategy & Speed Presets UX bindings
+  const strategyRadios = document.querySelectorAll('input[name="sendingStrategyRadio"]');
+  const controlledOptions = document.getElementById('controlledStrategyOptions');
+  const speedPresetRadios = document.querySelectorAll('input[name="sendingSpeedPreset"]');
+  const customIntervalBox = document.getElementById('customIntervalBox');
+  const inputCustomIntervalSec = document.getElementById('inputCustomIntervalSec');
+
+  strategyRadios.forEach(r => {
+    r.addEventListener('change', () => {
+      if (controlledOptions) {
+        controlledOptions.style.display = r.value === 'CONTROLLED' ? 'block' : 'none';
+      }
+    });
+  });
+
+  speedPresetRadios.forEach(r => {
+    r.addEventListener('change', () => {
+      if (customIntervalBox) {
+        customIntervalBox.style.display = r.value === 'CUSTOM' ? 'flex' : 'none';
+      }
+    });
+  });
+
   if (formLaunchBatches) {
     formLaunchBatches.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -993,23 +1162,42 @@ document.addEventListener('DOMContentLoaded', () => {
       const templateId = batchTemplateSelect.value;
       if (!templateId) { alert('Please select an Email Template to apply across all batches.'); return; }
       btnConfirmLaunchBatches.disabled = true; btnConfirmLaunchBatches.textContent = '⏳ Creating Campaigns & Scheduling Queue...';
+      
       const senderAccountIdVal = document.getElementById('batchSenderAccountSelect')?.value;
+      const selectedStrategy = document.querySelector('input[name="sendingStrategyRadio"]:checked')?.value || 'SMART';
+      const fallbackAllowed = document.getElementById('chkFallbackAllowed') ? document.getElementById('chkFallbackAllowed').checked : true;
+      const selectedSpeedPreset = document.querySelector('input[name="sendingSpeedPreset"]:checked')?.value || 'BALANCED';
+      
+      let customMs = 2500;
+      if (selectedSpeedPreset === 'SAFE') customMs = 6500;
+      else if (selectedSpeedPreset === 'BALANCED') customMs = 2500;
+      else if (selectedSpeedPreset === 'FAST') customMs = 1000;
+      else if (selectedSpeedPreset === 'CUSTOM' && inputCustomIntervalSec) {
+        customMs = Math.round(parseFloat(inputCustomIntervalSec.value || '2.5') * 1000);
+      }
+
       const payload = {
         baseCampaignName: batchBaseCampaignName.value.trim() || currentPreviewData.baseCampaignName,
-        templateId: parseInt(templateId, 10), batchSize: parseInt(batchSizeInput.value || '50', 10),
+        templateId: parseInt(templateId, 10),
+        batchSize: parseInt(batchSizeInput.value || '50', 10),
         skipPreviouslyContacted: chkSkipPreviouslyContacted.checked,
         scheduleMode: campaignScheduleMode ? campaignScheduleMode.value : 'immediate',
         scheduledStartTime: campaignScheduledStartTime ? campaignScheduledStartTime.value : '',
         staggerMinutes: parseInt(campaignStaggerMinutes ? campaignStaggerMinutes.value || '60' : '60', 10),
         contacts: currentPreviewData.contacts,
-        senderAccountId: senderAccountIdVal ? parseInt(senderAccountIdVal, 10) : null
+        senderAccountId: selectedStrategy === 'CONTROLLED' && senderAccountIdVal ? parseInt(senderAccountIdVal, 10) : null,
+        mode: selectedStrategy,
+        fallbackAllowed: fallbackAllowed,
+        sendingSpeed: selectedSpeedPreset,
+        customIntervalMs: customMs
       };
+
       try {
         const res = await fetch('/api/campaigns/launch-batches', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         const data = await res.json();
         btnConfirmLaunchBatches.disabled = false;
         if (data.ok) {
-          alert(`🎉 SUCCESS! Created ${data.totalCampaigns} campaign batches with ${data.totalQueued} emails queued!\nMode: ${data.scheduleMode.toUpperCase()}. The background scheduler will dispatch each batch right on time.`);
+          alert(`🎉 SUCCESS! Created ${data.totalCampaigns} campaign batches with ${data.totalQueued} emails queued!\nMode: ${selectedStrategy === 'SMART' ? 'Smart Send' : 'Controlled Send'}.\nThe background scheduler will dispatch each batch right on time.`);
           campaignPreFlightBox.style.display = 'none'; currentPreviewData = null;
           if (campaignCsvFileInput) campaignCsvFileInput.value = '';
           loadCampaigns(); refreshTelemetry();

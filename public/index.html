@@ -130,6 +130,21 @@
         <div><span style="color: var(--text-muted);">Current Recipient:</span><strong id="monitorCurrentRecipient"
             style="color: var(--text-secondary); margin-left: 4px;">--</strong></div>
       </div>
+      <!-- Diagnostic Operational Reason Card ("Why is my campaign waiting?") -->
+      <div id="monitorReasonCard" style="display: none; margin-top: 14px; padding: 12px 14px; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px;">
+        <div style="display: flex; align-items: flex-start; gap: 10px;">
+          <div style="font-size: 18px; line-height: 1;">💡</div>
+          <div style="flex-grow: 1;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+              <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--amber); letter-spacing: 0.05em;">Dispatch Status &amp; Reason</span>
+              <span id="monitorCountdownBadge" class="badge badge-paused" style="font-size: 11px; display: none;">Resumes in <span id="monitorCountdownSeconds">0</span>s</span>
+            </div>
+            <p id="monitorReasonText" style="margin: 0; font-size: 13px; color: var(--text-primary); line-height: 1.4;">Campaign is currently waiting.</p>
+            <div id="monitorNextAccountHint" style="font-size: 11px; color: var(--text-secondary); margin-top: 4px; display: none;">Next available sending account: <strong id="monitorNextAccountName" style="color: var(--sky);">--</strong></div>
+          </div>
+        </div>
+      </div>
+
       <div id="monitorUpcomingContainer"
         style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08); display: none;">
         <div
@@ -360,45 +375,106 @@
             </div>
           </div>
           <form id="formLaunchBatches">
-            <div
-              style="font-size: 13px; font-weight: 700; color: var(--sky); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">
-              Step 2: Campaign Name &amp; Template</div>
+            <!-- Step 2: Campaign Identity & Template -->
+            <div style="font-size: 13px; font-weight: 700; color: var(--sky); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">
+              Step 2: Campaign Name &amp; Message Template</div>
             <div class="form-row">
-              <div class="form-group"><label class="form-label">Base Campaign Name (Derived from Sheet)</label><input
-                  type="text" id="batchBaseCampaignName" class="form-input" required><span class="form-help">Batches
-                  will be named: [BaseName]_Batch_01, [BaseName]_Batch_02, etc.</span></div>
-              <div class="form-group"><label class="form-label">Batch Size (Emails per Campaign)</label><input
+              <div class="form-group"><label class="form-label">Campaign Name</label><input
+                  type="text" id="batchBaseCampaignName" class="form-input" required placeholder="e.g. Call_For_Papers_Volume_14"><span class="form-help">Batches
+                  will be labeled sequentially: [Name]_Batch_01, [Name]_Batch_02...</span></div>
+              <div class="form-group"><label class="form-label">Batch Size (Emails per Batch)</label><input
                   type="number" id="batchSizeInput" class="form-input" value="50" min="5" max="500" required><span
-                  class="form-help">Default 50 emails per batch for safe multi-account deliverability.</span></div>
+                  class="form-help">Default 50 emails per batch for safe multi-account dispatch.</span></div>
             </div>
             <div class="form-row">
-              <div class="form-group"><label class="form-label">Select Email Template</label><select
+              <div class="form-group" style="flex-grow: 1;"><label class="form-label">Select Email Template</label><select
                   id="batchTemplateSelect" class="form-select" required>
                   <option value="">-- Choose Template --</option>
                 </select></div>
-              <div class="form-group"><label class="form-label">Sender Account &amp; Engine</label><select
-                  id="batchSenderAccountSelect" class="form-select">
-                  <option value="">⚡ All Active Accounts Pool (Auto-Rotate)</option>
-                </select><span class="form-help">Pick an ACS address for bulk or Graph API account. Engine switches
-                  automatically!</span></div>
             </div>
-            <div class="form-group" style="margin-top: 6px;"><label class="checkbox-label"
+            <div class="form-group" style="margin-top: 4px; margin-bottom: 18px;"><label class="checkbox-label"
                 style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox"
                   id="chkSkipPreviouslyContacted"><span><b>Exclude contacts already emailed in past
                     campaigns</b></span></label></div>
 
-            <div
-              style="font-size: 13px; font-weight: 700; color: var(--sky); margin: 20px 0 10px 0; text-transform: uppercase; letter-spacing: 0.5px;">
-              Step 3: Dispatch Timing (Immediate or Scheduled)</div>
+            <!-- Step 3: WHO & HOW FAST (Sender Strategy & Sending Speed) -->
+            <div style="font-size: 13px; font-weight: 700; color: var(--sky); margin: 20px 0 12px 0; text-transform: uppercase; letter-spacing: 0.5px;">
+              Step 3: Who Should Send &amp; Sending Speed</div>
+            
+            <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 18px;">
+              <label class="form-label" style="font-size: 13px; margin-bottom: 8px;">Who should send these emails?</label>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-bottom: 14px;">
+                <label style="display: flex; align-items: flex-start; gap: 10px; background: rgba(56, 189, 248, 0.06); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 12px; cursor: pointer;">
+                  <input type="radio" name="sendingStrategyRadio" value="SMART" checked style="margin-top: 3px;">
+                  <div>
+                    <strong style="color: var(--sky); font-size: 14px; display: block;">⚡ Smart Send (Recommended)</strong>
+                    <span style="font-size: 12px; color: var(--text-secondary); line-height: 1.4; display: block;">System automatically picks healthy sender accounts, balances quotas, and rotates automatically.</span>
+                  </div>
+                </label>
+                <label style="display: flex; align-items: flex-start; gap: 10px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; cursor: pointer;">
+                  <input type="radio" name="sendingStrategyRadio" value="CONTROLLED" style="margin-top: 3px;">
+                  <div>
+                    <strong style="color: var(--text-primary); font-size: 14px; display: block;">🎯 Controlled Send</strong>
+                    <span style="font-size: 12px; color: var(--text-secondary); line-height: 1.4; display: block;">You explicitly select one primary account to handle this campaign.</span>
+                  </div>
+                </label>
+              </div>
+
+              <!-- Controlled Strategy Options (Hidden by default until Controlled is clicked) -->
+              <div id="controlledStrategyOptions" style="display: none; padding: 12px; background: rgba(0,0,0,0.25); border: 1px dashed var(--border-color); border-radius: 6px; margin-bottom: 14px;">
+                <div class="form-group" style="margin-bottom: 10px;">
+                  <label class="form-label">Primary Sending Account</label>
+                  <select id="batchSenderAccountSelect" class="form-select">
+                    <option value="">⚡ All Active Accounts Pool (Auto-Rotate)</option>
+                  </select>
+                </div>
+                <label class="checkbox-label" style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px;">
+                  <input type="checkbox" id="chkFallbackAllowed" checked>
+                  <span><strong>Use other available accounts if this account reaches its limit</strong></span>
+                </label>
+              </div>
+
+              <label class="form-label" style="font-size: 13px; margin-bottom: 8px;">How fast should we send? (Sending Speed)</label>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 12px;">
+                <label class="speed-preset-card" style="display: block; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; cursor: pointer; text-align: center;">
+                  <input type="radio" name="sendingSpeedPreset" value="SAFE" style="margin-bottom: 4px;">
+                  <div style="font-weight: 700; color: var(--amber); font-size: 13px;">🛡️ Safe</div>
+                  <div style="font-size: 11px; color: var(--text-muted);">6.5s delay (~10/min)</div>
+                </label>
+                <label class="speed-preset-card" style="display: block; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 8px; padding: 10px; cursor: pointer; text-align: center;">
+                  <input type="radio" name="sendingSpeedPreset" value="BALANCED" checked style="margin-bottom: 4px;">
+                  <div style="font-weight: 700; color: var(--sky); font-size: 13px;">⚖️ Balanced</div>
+                  <div style="font-size: 11px; color: var(--text-muted);">2.5s delay (Standard)</div>
+                </label>
+                <label class="speed-preset-card" style="display: block; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; cursor: pointer; text-align: center;">
+                  <input type="radio" name="sendingSpeedPreset" value="FAST" style="margin-bottom: 4px;">
+                  <div style="font-weight: 700; color: var(--emerald); font-size: 13px;">⚡ Fast</div>
+                  <div style="font-size: 11px; color: var(--text-muted);">1.0s delay (High-rate)</div>
+                </label>
+                <label class="speed-preset-card" style="display: block; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; cursor: pointer; text-align: center;">
+                  <input type="radio" name="sendingSpeedPreset" value="CUSTOM" style="margin-bottom: 4px;">
+                  <div style="font-weight: 700; color: var(--purple); font-size: 13px;">🛠️ Custom</div>
+                  <div style="font-size: 11px; color: var(--text-muted);">Custom interval</div>
+                </label>
+              </div>
+
+              <div id="customIntervalBox" style="display: none; padding: 10px 12px; background: rgba(0,0,0,0.25); border-radius: 6px; font-size: 12px; align-items: center; gap: 8px;">
+                <span>Send one email every:</span>
+                <input type="number" id="inputCustomIntervalSec" value="2.5" step="0.5" min="0.1" style="width: 70px; padding: 4px 8px; font-size: 12px; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px;">
+                <span>seconds</span>
+              </div>
+            </div>
+
+            <!-- Step 4: Dispatch Timing (WHEN) -->
+            <div style="font-size: 13px; font-weight: 700; color: var(--sky); margin: 20px 0 10px 0; text-transform: uppercase; letter-spacing: 0.5px;">
+              Step 4: Dispatch Schedule &amp; Launch</div>
             <div class="form-row"
               style="background: rgba(255,255,255,0.02); padding: 14px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 16px;">
-              <div class="form-group" style="margin-bottom: 0;"><label class="form-label">🗓️ Scheduling Dispatch
-                  Mode</label><select id="campaignScheduleMode" class="form-select">
-                  <option value="immediate">⚡ Immediate Launch (Starts now, runs 24/7)</option>
-                  <option value="scheduled">⏰ Specific Future Date &amp; Time (Hold until scheduled time)</option>
-                  <option value="staggered">⏳ Staggered Batches (Space 50-email batches by interval)</option>
-                </select><span class="form-help">Choose between instant dispatch, scheduled future time, or interval
-                  staggered.</span></div>
+              <div class="form-group" style="margin-bottom: 0;"><label class="form-label">🗓️ When should we send?</label><select id="campaignScheduleMode" class="form-select">
+                  <option value="immediate">⚡ Start Now (Send immediately and run 24/7)</option>
+                  <option value="scheduled">⏰ Schedule for Later (Hold until specific future time)</option>
+                  <option value="staggered">⏳ Staggered Batches (Space batches by interval)</option>
+                </select><span class="form-help">Choose between immediate launch or scheduled target launch.</span></div>
               <div class="form-group" id="groupScheduledStartTime" style="margin-bottom: 0; display: none;"><label
                   class="form-label">Target Launch Date &amp; Time</label><input type="datetime-local"
                   id="campaignScheduledStartTime" class="form-input"><span class="form-help">Batches will stay on hold
@@ -409,9 +485,6 @@
                   class="form-help">Delay between consecutive batches (e.g. 60 or 120 min).</span></div>
             </div>
 
-            <div
-              style="font-size: 13px; font-weight: 700; color: var(--sky); margin: 20px 0 10px 0; text-transform: uppercase; letter-spacing: 0.5px;">
-              Step 4: Review Batches &amp; Confirm Launch</div>
             <div style="margin: 14px 0 20px 0;">
               <h5 style="margin-bottom: 8px; color: var(--text-secondary);">📦 Generated Campaign Batches &amp;
                 Projected Launch Timeline:</h5>
@@ -535,19 +608,39 @@
               <input type="text" id="tplSubject" class="form-input"
                 placeholder="Invitation: {{Paper Title}} - Journal ParipEx" required>
             </div>
-            <div class="form-group">
-              <label class="form-label">Email Body (HTML supported)</label>
-              <div class="tag-pills"><span class="tag-pill" data-target="tplBody" data-tag="{{Name}}">+
-                  {{Name}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{domain}}" title="Auto-extracts recipient domain (e.g. stanford.edu)">+
-                  {{domain}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{senderDomain}}" title="Sender mailbox domain - auto resolves relative links">+
-                  {{senderDomain}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{senderEmail}}" title="Sender mailbox email">+
-                  {{senderEmail}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{email}}">+
-                  {{email}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{Paper Title}}">+ {{Paper
-                  Title}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{Affiliation}}">+
-                  {{Affiliation}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{Date}}">+
-                  {{Date}}</span></div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <label class="form-label" style="margin-bottom: 0;">Email Body (HTML supported)</label>
+                <button type="button" id="btnOpenLinkBuilder" class="btn btn-secondary btn-xs" style="background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.4); color: var(--emerald); font-weight: 600; padding: 3px 8px; font-size: 11px;">
+                  🔗 Insert Dynamic Link Template
+                </button>
+              </div>
+              <div class="tag-pills">
+                <span class="tag-pill" data-target="tplBody" data-tag="{{Name}}">+ {{Name}}</span>
+                <span class="tag-pill" data-target="tplBody" data-tag="{{senderDomain}}" title="Sender mailbox domain">+ {{senderDomain}}</span>
+                <span class="tag-pill" data-target="tplBody" data-tag="{{senderEmail}}" title="Sender email address">+ {{senderEmail}}</span>
+                <span class="tag-pill" data-target="tplBody" data-tag="https://{{senderDomain}}/submit-paper" style="background: rgba(56, 189, 248, 0.12); border-color: rgba(56, 189, 248, 0.35); color: var(--sky);" title="Full dynamic URL template">+ 🌐 https://{{senderDomain}}/...</span>
+                <span class="tag-pill" data-target="tplBody" data-tag="{{domain}}" title="Recipient domain">+ {{domain}}</span>
+                <span class="tag-pill" data-target="tplBody" data-tag="{{email}}">+ {{email}}</span>
+                <span class="tag-pill" data-target="tplBody" data-tag="{{Paper Title}}">+ {{Paper Title}}</span>
+                <span class="tag-pill" data-target="tplBody" data-tag="{{Affiliation}}">+ {{Affiliation}}</span>
+                <span class="tag-pill" data-target="tplBody" data-tag="{{Date}}">+ {{Date}}</span>
+              </div>
+
+              <!-- Interactive Dynamic Link Quick Bar -->
+              <div style="margin-bottom: 8px; padding: 10px 12px; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 6px; font-size: 12px;">
+                <div style="font-weight: 600; color: var(--sky); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+                  <span>🎯 Quick Link Presets (Auto-adapts to sender domain):</span>
+                </div>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                  <button type="button" class="btn btn-secondary btn-xs btn-preset-link" data-url="https://{{senderDomain}}/submit-manuscript" data-text="Submit Your Manuscript" style="padding: 2px 7px; font-size: 11px;">📝 Submit Manuscript</button>
+                  <button type="button" class="btn btn-secondary btn-xs btn-preset-link" data-url="https://{{senderDomain}}/author-guidelines" data-text="View Author Guidelines" style="padding: 2px 7px; font-size: 11px;">📖 Author Guidelines</button>
+                  <button type="button" class="btn btn-secondary btn-xs btn-preset-link" data-url="https://{{senderDomain}}/editorial-board" data-text="Editorial Advisory Board" style="padding: 2px 7px; font-size: 11px;">👥 Editorial Board</button>
+                  <button type="button" class="btn btn-secondary btn-xs btn-preset-link" data-url="https://{{senderDomain}}/track-paper" data-text="Track Manuscript Status" style="padding: 2px 7px; font-size: 11px;">🔍 Track Paper</button>
+                  <button type="button" class="btn btn-secondary btn-xs btn-preset-link" data-url="https://{{senderDomain}}/unsubscribe?email={{email}}" data-text="Unsubscribe" style="padding: 2px 7px; font-size: 11px; color: var(--text-muted);">🔕 Unsubscribe</button>
+                </div>
+              </div>
+
               <textarea id="tplBody" class="form-textarea font-mono" rows="10" required></textarea>
-            </div>
             <button type="submit" class="btn btn-primary">💾 Save Template</button>
             <button type="button" id="btnResetTemplate" class="btn btn-secondary"
               style="margin-left: 8px;">Clear</button>
@@ -737,6 +830,49 @@
       </div>
       <div style="display: flex; justify-content: flex-end; margin-top: 16px;"><button type="button"
           id="btnCancelCampaignPreview" class="btn btn-secondary">Close</button></div>
+    </div>
+  </div>
+
+  <!-- MODAL: Dynamic Link Template Builder -->
+  <div id="modalLinkBuilder" class="modal-overlay" style="display: none;">
+    <div class="modal-card" style="max-width: 520px;">
+      <div class="modal-header">
+        <h3 style="color: var(--sky); display: flex; align-items: center; gap: 8px;">🔗 Custom Dynamic Link Builder</h3>
+        <button type="button" id="btnCloseLinkBuilder" class="modal-close">&times;</button>
+      </div>
+      <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 14px;">
+        Build a customized link template. The system will automatically prepend the active sender mailbox domain (e.g. <code>https://theparipexjournal.com/...</code>).
+      </p>
+      <form id="formLinkBuilder">
+        <div class="form-group">
+          <label class="form-label">Link Text (What the reader sees)</label>
+          <input type="text" id="linkBuilderText" class="form-input" placeholder="e.g. Submit Manuscript Online" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Target Path (Relative to Sender Domain)</label>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="font-family: var(--font-mono); font-size: 12px; color: var(--emerald); background: rgba(16, 185, 129, 0.1); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.2);">https://{{senderDomain}}</span>
+            <input type="text" id="linkBuilderPath" class="form-input font-mono" placeholder="/submit?ref=cfp2026" required>
+          </div>
+          <span class="form-help">Type any endpoint, e.g. <code>/author-login</code> or <code>/journal/upload</code></span>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Optional Tracking / Query Parameters</label>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px;">
+            <button type="button" class="btn btn-secondary btn-xs btn-add-param" data-param="email={{email}}">+ Recipient Email</button>
+            <button type="button" class="btn btn-secondary btn-xs btn-add-param" data-param="paper={{Paper Title}}">+ Paper Title</button>
+            <button type="button" class="btn btn-secondary btn-xs btn-add-param" data-param="utm_source=email">+ UTM Source</button>
+          </div>
+        </div>
+        <div class="panel-card" style="background: var(--bg-input); padding: 10px; border: 1px dashed var(--border-color); margin-bottom: 16px;">
+          <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">Generated HTML Preview:</div>
+          <code id="linkBuilderPreviewCode" style="font-size: 12px; color: var(--sky); word-break: break-all;">&lt;a href="https://{{senderDomain}}/submit"&gt;Submit Manuscript Online&lt;/a&gt;</code>
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <button type="button" id="btnCancelLinkBuilder" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="background: linear-gradient(135deg, #10b981, #059669);">➕ Insert Link Into Template</button>
+        </div>
+      </form>
     </div>
   </div>
 

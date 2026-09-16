@@ -348,8 +348,9 @@ router.post('/accounts', (req, res) => {
 });
 
 router.put('/accounts/:id', (req, res) => {
-  const { displayName, provider, dailyLimit, cooldownSeconds, isActive } = req.body;
+  const { email, displayName, provider, dailyLimit, cooldownSeconds, isActive } = req.body;
   const updated = AccountPool.updateAccountById(req.params.id, {
+    email,
     displayName,
     provider,
     dailyLimit: dailyLimit !== undefined ? parseInt(dailyLimit, 10) : undefined,

@@ -880,8 +880,18 @@ body {
     font-size: 11px;
   }
 
+  .speed-preset-card:hover {
+    border-color: var(--sky) !important;
+    background: rgba(56, 189, 248, 0.08) !important;
+  }
+
+  .speed-preset-card input[type="radio"]:checked + div {
+    color: var(--sky);
+  }
+
   .accounts-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
   }
 
   .modal-card {
@@ -906,10 +916,20 @@ body {
 
   .header-right .btn {
     flex: 1 1 auto;
+    font-size: 11px;
+    padding: 6px 10px;
   }
 
   .status-badge {
     font-size: 10px;
     padding: 4px 8px;
+  }
+
+  .speed-preset-card {
+    padding: 8px 6px !important;
+  }
+
+  .app-header {
+    padding: 12px 14px;
   }
 }
