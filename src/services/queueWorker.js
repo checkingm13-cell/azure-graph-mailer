@@ -286,13 +286,19 @@ class QueueWorker {
           } else {
             const maxAttempts = 3;
             const isPermanent = item.attempts + 1 >= maxAttempts || dispatchErr.statusCode === 404;
+            
+            // Exponential backoff delay for transient network/server hiccups (15s, 60s, 300s)
+            const backoffSec = [15, 60, 300][Math.min(item.attempts || 0, 2)] || 60;
+            const nextScheduledAt = isPermanent ? null : new Date(Date.now() + backoffSec * 1000).toISOString().replace('T', ' ').slice(0, 19);
 
             db.prepare(`
               UPDATE queue
               SET status = ?,
+                  scheduled_at = COALESCE(?, scheduled_at),
+                  account_id = NULL,
                   last_error = ?
               WHERE id = ?
-            `).run(isPermanent ? 'failed' : 'queued', dispatchErr.message, item.id);
+            `).run(isPermanent ? 'failed' : 'queued', nextScheduledAt, dispatchErr.message, item.id);
 
             if (isPermanent) {
               db.prepare(`

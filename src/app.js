@@ -20,8 +20,17 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Favicon handler (avoids 404 in console when browser requests favicon)
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 
-// Static frontend dashboard
-app.use(express.static(path.resolve(__dirname, '../public')));
+// Optional Zero-Trust API Key Authentication Middleware
+const adminApiKey = process.env.ADMIN_API_KEY || '';
+app.use('/api', (req, res, next) => {
+  if (!adminApiKey) return next(); // Open access if no ADMIN_API_KEY set
+  // Public read-only telemetry endpoints for monitoring
+  if (req.path === '/status' || req.path === '/health' || req.path === '/heartbeat') return next();
+
+  const clientKey = req.headers['x-api-key'] || (req.headers.authorization ? req.headers.authorization.replace(/^Bearer\s+/i, '') : '');
+  if (clientKey === adminApiKey) return next();
+  return res.status(401).json({ ok: false, error: 'Unauthorized: Valid Admin API Key required.' });
+});
 
 // Mount API routes
 app.use('/api', apiRoutes);

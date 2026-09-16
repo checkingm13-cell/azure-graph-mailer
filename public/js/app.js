@@ -1260,7 +1260,19 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!template) return;
     function merge(str, c) {
       const activeSender = document.getElementById('batchSenderAccountSelect')?.selectedOptions[0]?.text || 'dr.reetashah@theparipexjournal.com';
-      const senderDomain = activeSender.includes('@') ? activeSender.split('@')[1].replace(/[^a-zA-Z0-9.-]/g, '') : 'theparipexjournal.com';
+      let rawDomain = activeSender.includes('@') ? activeSender.split('@')[1].replace(/[^a-zA-Z0-9.-]/g, '') : 'theparipexjournal.com';
+      
+      // Extract apex domain
+      const parts = rawDomain.split('.');
+      let senderDomain = rawDomain;
+      const twoPartTlds = ['co.uk', 'co.in', 'org.uk', 'gov.in', 'net.in', 'ac.in', 'edu.in', 'com.au', 'com.br'];
+      const lastTwo = parts.slice(-2).join('.');
+      if (twoPartTlds.includes(lastTwo) && parts.length >= 3) {
+        senderDomain = parts.slice(-3).join('.');
+      } else if (parts.length > 2) {
+        senderDomain = parts.slice(-2).join('.');
+      }
+
       let out = (str || '')
         .replace(/\{\{\s*Name\s*\}\}/gi, c.name || 'Dr. Researcher')
         .replace(/\{\{\s*Paper\s*Title\s*\}\}/gi, c.paper_title || 'Recent Scientific Advances')
@@ -1268,10 +1280,13 @@ document.addEventListener('DOMContentLoaded', () => {
         .replace(/\{\{\s*senderDomain\s*\}\}/gi, senderDomain)
         .replace(/\{\{\s*sender_domain\s*\}\}/gi, senderDomain)
         .replace(/\{\{\s*senderEmail\s*\}\}/gi, activeSender)
+        .replace(/\{\{\s*sender_email\s*\}\}/gi, activeSender)
         .replace(/\{\{\s*Date\s*\}\}/gi, new Date().toLocaleDateString());
 
-      // Auto-rewrite relative links in UI preview
-      out = out.replace(/href=["'](\/(?!\/)[^"']*)["']/gi, (match, path) => `href="https://${senderDomain}${path}"`);
+      // Safe anchor-only link rewriting in preview
+      out = out.replace(/<a\b([^>]*?)\bhref=["'](\/(?!\/)[^"']*)["']([^>]*)>/gi, (match, prefix, path, suffix) => {
+        return `<a${prefix}href="https://${senderDomain}${path}"${suffix}>`;
+      });
       return out;
     }
     const rotationNote = isRotation ? ` [Rotating across ${document.querySelectorAll('.chk-rotate-tpl:checked').length} templates - Sample 1 shown]` : '';
@@ -1389,7 +1404,7 @@ document.addEventListener('DOMContentLoaded', () => {
         batchSize: parseInt(batchSizeInput.value || '50', 10),
         skipPreviouslyContacted: chkSkipPreviouslyContacted.checked,
         scheduleMode: campaignScheduleMode ? campaignScheduleMode.value : 'immediate',
-        scheduledStartTime: campaignScheduledStartTime ? campaignScheduledStartTime.value : '',
+        scheduledStartTime: (campaignScheduledStartTime && campaignScheduledStartTime.value) ? new Date(campaignScheduledStartTime.value).toISOString() : '',
         staggerMinutes: parseInt(campaignStaggerMinutes ? campaignStaggerMinutes.value || '60' : '60', 10),
         contacts: currentPreviewData.contacts,
         senderAccountId: (!isNaN(parsedSenderId) && parsedSenderId) ? parsedSenderId : null,

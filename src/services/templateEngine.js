@@ -3,17 +3,25 @@
  */
 
 /**
- * Extracts apex root domain from domain or email, stripping subdomains (e.g. mail.theparipexjournal.com -> theparipexjournal.com)
+ * Extracts apex root domain from domain or email, stripping subdomains 
+ * (e.g. mail.theparipexjournal.com -> theparipexjournal.com, education.yourpaperedition.com -> yourpaperedition.com)
  */
 function extractApexDomain(domainOrEmail) {
   if (!domainOrEmail || typeof domainOrEmail !== 'string') return '';
   let domain = domainOrEmail.includes('@') ? domainOrEmail.split('@')[1] : domainOrEmail;
-  domain = domain.trim().toLowerCase();
+  domain = domain.trim().toLowerCase().replace(/^https?:\/\//i, '').split('/')[0];
   const parts = domain.split('.');
   if (parts.length <= 2) return domain;
-  const twoPartTlds = ['co.uk', 'co.in', 'org.uk', 'gov.in', 'net.in', 'ac.in', 'edu.in', 'com.au', 'co.nz'];
+  
+  // Known two-part public suffix ccTLDs
+  const twoPartTlds = [
+    'co.uk', 'co.in', 'org.uk', 'gov.in', 'net.in', 'ac.in', 'edu.in', 'com.au', 'net.au', 'org.au',
+    'co.nz', 'net.nz', 'org.nz', 'com.br', 'net.br', 'org.br', 'co.za', 'com.sg', 'edu.sg', 'com.my',
+    'co.jp', 'ne.jp', 'ac.jp', 'com.ph', 'edu.ph', 'com.mx', 'org.mx', 'co.kr', 'ne.kr'
+  ];
+  
   const lastTwo = parts.slice(-2).join('.');
-  if (twoPartTlds.includes(lastTwo)) {
+  if (twoPartTlds.includes(lastTwo) && parts.length >= 3) {
     return parts.slice(-3).join('.');
   }
   return parts.slice(-2).join('.');
@@ -56,25 +64,27 @@ function renderTemplate(templateStr, data = {}) {
     senderemail: senderEmail,
     senderEmail: senderEmail,
     'paper title': data.paper_title || data.paperTitle || '',
+    papertitle: data.paper_title || data.paperTitle || '',
     affiliation: data.affiliation || '',
     date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
   };
 
-  // Replace {{tag}}, {tag}, and [tag] variations (e.g. [FNAME], {{Name}})
+  // Replace {{tag}}, {tag}, and [tag] variations (e.g. [FNAME], {{Name}}, {{senderDomain}})
   for (const [key, value] of Object.entries(map)) {
     const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regex = new RegExp(`\\{\\{\\s*${escapedKey}\\s*\\}\\}|\\{\\s*${escapedKey}\\s*\\}|\\[\\s*${escapedKey}\\s*\\]`, 'gi');
     result = result.replace(regex, value);
   }
 
-  // Auto-rewrite relative links (e.g. href="/submit-paper" -> href="https://${senderDomain}/submit-paper")
+  // Safe anchor-only link rewriting (e.g. <a href="/submit-paper"> -> <a href="https://${senderDomain}/submit-paper">)
+  // Ensures images (<img src="...">) and scripts (<script src="...">) are never modified
   if (senderDomain) {
-    result = result.replace(/href=["'](\/(?!\/)[^"']*)["']/gi, (match, path) => {
-      return `href="https://${senderDomain}${path}"`;
+    result = result.replace(/<a\b([^>]*?)\bhref=["'](\/(?!\/)[^"']*)["']([^>]*)>/gi, (match, prefix, path, suffix) => {
+      return `<a${prefix}href="https://${senderDomain}${path}"${suffix}>`;
     });
   }
 
   return result;
 }
 
-module.exports = { renderTemplate };
+module.exports = { renderTemplate, extractApexDomain };
