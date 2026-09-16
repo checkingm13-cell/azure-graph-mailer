@@ -672,8 +672,19 @@ document.addEventListener('DOMContentLoaded', () => {
           btn.addEventListener('click', async (e) => {
             e.stopPropagation();
             if (!confirm('Reset today\'s sent counter to 0 for this account?')) return;
-            await fetch(`/api/accounts/${btn.dataset.id}/reset`, { method: 'POST' });
-            loadAccounts(); refreshTelemetry();
+            try {
+              const res = await fetch(`/api/accounts/${btn.dataset.id}/reset`, { method: 'POST' });
+              const data = await res.json();
+              if (data.ok) {
+                alert('✅ ' + (data.message || 'Account quota reset successfully!'));
+                loadAccounts();
+                refreshTelemetry();
+              } else {
+                alert('❌ Failed to reset: ' + (data.error || 'Unknown server error'));
+              }
+            } catch (err) {
+              alert('❌ Network error: ' + err.message);
+            }
           });
         });
         document.querySelectorAll('.btn-toggle-account').forEach((btn) => {
@@ -759,8 +770,19 @@ document.addEventListener('DOMContentLoaded', () => {
           btn.addEventListener('click', async (e) => {
             e.stopPropagation();
             if (!confirm('Reset today\'s sent counter to 0 for this account?')) return;
-            await fetch(`/api/accounts/${btn.dataset.id}/reset`, { method: 'POST' });
-            loadAccounts(); refreshTelemetry();
+            try {
+              const res = await fetch(`/api/accounts/${btn.dataset.id}/reset`, { method: 'POST' });
+              const data = await res.json();
+              if (data.ok) {
+                alert('✅ ' + (data.message || 'Account quota reset successfully!'));
+                loadAccounts();
+                refreshTelemetry();
+              } else {
+                alert('❌ Failed to reset: ' + (data.error || 'Unknown server error'));
+              }
+            } catch (err) {
+              alert('❌ Network error: ' + err.message);
+            }
           });
         });
       }
