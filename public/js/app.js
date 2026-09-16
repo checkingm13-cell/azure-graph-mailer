@@ -1208,9 +1208,19 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   if (formLaunchBatches) {
-    formLaunchBatches.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (!currentPreviewData) return;
+    const handleLaunchSubmit = async (e) => {
+      if (e) e.preventDefault();
+      if (!currentPreviewData) {
+        alert('⚠️ No CSV preview data loaded. Please re-upload your CSV file first.');
+        return;
+      }
+
+      const campaignNameVal = (batchBaseCampaignName ? batchBaseCampaignName.value.trim() : '') || currentPreviewData.baseCampaignName;
+      if (!campaignNameVal) {
+        alert('⚠️ Please enter a Campaign Name.');
+        if (batchBaseCampaignName) batchBaseCampaignName.focus();
+        return;
+      }
 
       const isRotation = chkEnableTemplateRotation && chkEnableTemplateRotation.checked;
       let templateId = null;
@@ -1219,20 +1229,22 @@ document.addEventListener('DOMContentLoaded', () => {
       if (isRotation) {
         const checkedBoxes = Array.from(document.querySelectorAll('.chk-rotate-tpl:checked'));
         if (checkedBoxes.length < 2) {
-          alert('Please select at least 2 templates to enable Template Rotation, or uncheck the rotation option.');
+          alert('⚠️ Please select at least 2 templates to enable Template Rotation, or uncheck the rotation option.');
           return;
         }
         templateIds = checkedBoxes.map(b => parseInt(b.value, 10));
         templateId = templateIds[0];
       } else {
-        templateId = batchTemplateSelect.value ? parseInt(batchTemplateSelect.value, 10) : null;
+        templateId = batchTemplateSelect && batchTemplateSelect.value ? parseInt(batchTemplateSelect.value, 10) : null;
         if (!templateId) {
-          alert('Please select an Email Template to apply across all batches.');
+          alert('⚠️ Please select an Email Template from the dropdown before confirming.');
+          if (batchTemplateSelect) batchTemplateSelect.focus();
           return;
         }
       }
 
-      btnConfirmLaunchBatches.disabled = true; btnConfirmLaunchBatches.textContent = '⏳ Creating Campaigns & Scheduling Queue...';
+      btnConfirmLaunchBatches.disabled = true;
+      btnConfirmLaunchBatches.textContent = '⏳ Creating Campaigns & Scheduling Queue...';
       
       const senderAccountIdVal = document.getElementById('batchSenderAccountSelect')?.value;
       const selectedStrategy = document.querySelector('input[name="sendingStrategyRadio"]:checked')?.value || 'SMART';
@@ -1248,6 +1260,9 @@ document.addEventListener('DOMContentLoaded', () => {
         customMs = Math.round(parseFloat(inputCustomIntervalSec.value || '2.5') * 1000);
       }
 
+      // Resolve sender: only use explicit account ID when Controlled + a real account is picked
+      const parsedSenderId = (selectedStrategy === 'CONTROLLED' && senderAccountIdVal) ? parseInt(senderAccountIdVal, 10) : null;
+
       const payload = {
         baseCampaignName: batchBaseCampaignName.value.trim() || currentPreviewData.baseCampaignName,
         templateId: templateId,
@@ -1259,16 +1274,19 @@ document.addEventListener('DOMContentLoaded', () => {
         scheduledStartTime: campaignScheduledStartTime ? campaignScheduledStartTime.value : '',
         staggerMinutes: parseInt(campaignStaggerMinutes ? campaignStaggerMinutes.value || '60' : '60', 10),
         contacts: currentPreviewData.contacts,
-        senderAccountId: selectedStrategy === 'CONTROLLED' && senderAccountIdVal ? parseInt(senderAccountIdVal, 10) : null,
+        senderAccountId: (!isNaN(parsedSenderId) && parsedSenderId) ? parsedSenderId : null,
         mode: selectedStrategy,
         fallbackAllowed: fallbackAllowed,
         sendingSpeed: selectedSpeedPreset,
         customIntervalMs: customMs
       };
 
+      console.log('[Launch] Submitting campaign payload:', JSON.stringify({ ...payload, contacts: `[${payload.contacts.length} contacts]` }));
+
       try {
         const res = await fetch('/api/campaigns/launch-batches', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         const data = await res.json();
+        console.log('[Launch] Server response:', data);
         btnConfirmLaunchBatches.disabled = false;
         if (data.ok) {
           alert(`🎉 SUCCESS! Created ${data.totalCampaigns} campaign batches with ${data.totalQueued} emails queued!\nMode: ${selectedStrategy === 'SMART' ? 'Smart Send' : 'Controlled Send'}.\nThe background scheduler will dispatch each batch right on time.`);
@@ -1277,8 +1295,15 @@ document.addEventListener('DOMContentLoaded', () => {
           loadCampaigns(); refreshTelemetry();
           document.querySelector('.nav-tab[data-tab="tab-overview"]').click();
         } else { alert(data.error || 'Failed to launch batches.'); }
-      } catch (err) { btnConfirmLaunchBatches.disabled = false; alert('Error launching campaigns: ' + err.message); }
-    });
+      } catch (err) { console.error('[Launch] Error:', err); btnConfirmLaunchBatches.disabled = false; alert('Error launching campaigns: ' + err.message); }
+    };
+
+    formLaunchBatches.addEventListener('submit', handleLaunchSubmit);
+    if (btnConfirmLaunchBatches) {
+      btnConfirmLaunchBatches.addEventListener('click', (e) => {
+        handleLaunchSubmit(e);
+      });
+    }
   }
 
   // 8. ENHANCED CAMPAIGNS TABLE (Filter, Search, Sort, Pagination)
