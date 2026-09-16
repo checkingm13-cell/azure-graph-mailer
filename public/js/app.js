@@ -769,6 +769,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       const data = await res.json();
       if (data.ok) {
+        alert(`✅ Account "${payload.email || 'Sender'}" updated successfully!`);
         resetAccountForm();
         loadAccounts();
         refreshTelemetry();
