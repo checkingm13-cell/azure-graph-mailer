@@ -17,6 +17,9 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Favicon handler (avoids 404 in console when browser requests favicon)
+app.get('/favicon.ico', (req, res) => res.status(204).end());
+
 // Static frontend dashboard
 app.use(express.static(path.resolve(__dirname, '../public')));
 

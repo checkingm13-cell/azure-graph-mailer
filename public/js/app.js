@@ -1631,17 +1631,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const previewModalFailed = document.getElementById('previewModalFailed');
   const previewModalQueued = document.getElementById('previewModalQueued');
   const previewModalTableBody = document.getElementById('previewModalTableBody');
-  // 11. CAMPAIGN PREVIEW & RE-RUN MODAL
-  const modalCampaignPreview = document.getElementById('modalCampaignPreview');
-  const btnCloseCampaignPreview = document.getElementById('btnCloseCampaignPreview');
-  const btnCancelCampaignPreview = document.getElementById('btnCancelCampaignPreview');
-  const previewModalCampName = document.getElementById('previewModalCampName');
-  const previewModalCampMeta = document.getElementById('previewModalCampMeta');
-  const previewModalTotal = document.getElementById('previewModalTotal');
-  const previewModalSent = document.getElementById('previewModalSent');
-  const previewModalFailed = document.getElementById('previewModalFailed');
-  const previewModalQueued = document.getElementById('previewModalQueued');
-  const previewModalTableBody = document.getElementById('previewModalTableBody');
   const rerunModeSelect = document.getElementById('rerunModeSelect');
   const rerunCampaignNameInput = document.getElementById('rerunCampaignNameInput');
   const chkRerunTemplateRotation = document.getElementById('chkRerunTemplateRotation');
