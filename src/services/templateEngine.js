@@ -2,6 +2,23 @@
  * Template Engine for Merging Recipient Attributes
  */
 
+/**
+ * Extracts apex root domain from domain or email, stripping subdomains (e.g. mail.theparipexjournal.com -> theparipexjournal.com)
+ */
+function extractApexDomain(domainOrEmail) {
+  if (!domainOrEmail || typeof domainOrEmail !== 'string') return '';
+  let domain = domainOrEmail.includes('@') ? domainOrEmail.split('@')[1] : domainOrEmail;
+  domain = domain.trim().toLowerCase();
+  const parts = domain.split('.');
+  if (parts.length <= 2) return domain;
+  const twoPartTlds = ['co.uk', 'co.in', 'org.uk', 'gov.in', 'net.in', 'ac.in', 'edu.in', 'com.au', 'co.nz'];
+  const lastTwo = parts.slice(-2).join('.');
+  if (twoPartTlds.includes(lastTwo)) {
+    return parts.slice(-3).join('.');
+  }
+  return parts.slice(-2).join('.');
+}
+
 function renderTemplate(templateStr, data = {}) {
   if (!templateStr || typeof templateStr !== 'string') {
     return '';
@@ -13,9 +30,10 @@ function renderTemplate(templateStr, data = {}) {
     ? data.email.split('@')[1].trim().toLowerCase()
     : '';
   const senderEmail = data.sender_email || data.senderEmail || data.senderemail || '';
-  const senderDomain = (senderEmail && senderEmail.includes('@'))
+  const rawSenderDomain = (senderEmail && senderEmail.includes('@'))
     ? senderEmail.split('@')[1].trim().toLowerCase()
     : (data.sender_domain || data.senderDomain || data.senderdomain || '');
+  const senderDomain = extractApexDomain(rawSenderDomain);
 
   const firstName = (data.name || '').split(' ')[0] || data.name || 'Researcher';
   const fullName = data.name || 'Researcher';

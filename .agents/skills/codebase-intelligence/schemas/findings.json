@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "codebase-intelligence finding",
+  "type": "object",
+  "required": [
+    "rule",
+    "severity",
+    "file",
+    "line",
+    "pattern",
+    "potential_consequence",
+    "evidence",
+    "confidence"
+  ],
+  "properties": {
+    "rule": {
+      "type": "string",
+      "description": "domain.name, e.g. ux.feedback_gap"
+    },
+    "severity": {
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "file": {
+      "type": "string"
+    },
+    "line": {
+      "type": "integer"
+    },
+    "pattern": {
+      "type": "string",
+      "description": "what was observed, stated as fact"
+    },
+    "potential_consequence": {
+      "type": "string",
+      "description": "what it might mean for a person"
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "signals and counts, including negative evidence"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "verify": {
+      "type": "string",
+      "description": "most likely reason this finding is wrong"
+    }
+  },
+  "additionalProperties": false
+}

@@ -61,10 +61,17 @@ class AccountPool {
   }
 
   /**
-   * Resets sent_today counters for accounts whose 24-hour rolling window has rolled over
+   * Resets sent_today counters for accounts whose 24-hour rolling window has rolled over.
+   * Throttled to run at most once every 30s to prevent SQLite lock contention on high-frequency dispatch.
    */
-  static refreshRollingQuotas() {
-    // Count sends in the last 24 hours per account from queue table
+  static refreshRollingQuotas(force = false) {
+    const now = Date.now();
+    if (!force && this._lastQuotaRefresh && (now - this._lastQuotaRefresh < 30000)) {
+      return;
+    }
+    this._lastQuotaRefresh = now;
+
+    // Count sends in the last 24 hours per account from queue table, respecting any manual quota_reset_at
     const stmt = db.prepare(`
       UPDATE accounts
       SET sent_today = (
@@ -73,6 +80,7 @@ class AccountPool {
         WHERE queue.account_id = accounts.id
           AND queue.status = 'sent'
           AND queue.sent_at >= datetime('now', '-24 hours')
+          AND (accounts.quota_reset_at IS NULL OR queue.sent_at > accounts.quota_reset_at)
       )
     `);
     stmt.run();

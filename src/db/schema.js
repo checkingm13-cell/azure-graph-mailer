@@ -144,6 +144,9 @@ function initSchema(db) {
     if (!accountCols.includes('complaint_count')) {
       db.exec("ALTER TABLE accounts ADD COLUMN complaint_count INTEGER DEFAULT 0");
     }
+    if (!accountCols.includes('quota_reset_at')) {
+      db.exec("ALTER TABLE accounts ADD COLUMN quota_reset_at TEXT");
+    }
 
     if (!campaignCols.includes('mode')) {
       db.exec("ALTER TABLE campaigns ADD COLUMN mode TEXT DEFAULT 'SMART'");
@@ -166,6 +169,9 @@ function initSchema(db) {
     }
     if (!queueCols.includes('accepted_at')) {
       db.exec("ALTER TABLE queue ADD COLUMN accepted_at TEXT");
+    }
+    if (!queueCols.includes('template_id')) {
+      db.exec("ALTER TABLE queue ADD COLUMN template_id INTEGER REFERENCES templates(id)");
     }
 
     db.exec("CREATE INDEX IF NOT EXISTS idx_queue_schedule ON queue(status, scheduled_at, id);");

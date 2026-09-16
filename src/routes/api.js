@@ -93,92 +93,6 @@ router.post('/worker/pause', (req, res) => {
   res.json({ ok: true, message: 'Worker paused' });
 });
 
-// Add to src/routes/api.js
-
-router.post('/campaigns/:id/clone', (req, res) => {
-  const campId = req.params.id;
-  const { mode = 'failed_only', senderAccountId = null } = req.body;
-
-  const originalCamp = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campId);
-  if (!originalCamp) {
-    return res.status(404).json({ ok: false, error: 'Original campaign not found.' });
-  }
-
-  // Fetch target queue items based on mode
-  let targetQueueItems = [];
-  if (mode === 'failed_only') {
-    targetQueueItems = db.prepare(`
-      SELECT * FROM queue 
-      WHERE campaign_id = ? AND status = 'failed'
-    `).all(campId);
-  } else {
-    targetQueueItems = db.prepare(`
-      SELECT * FROM queue 
-      WHERE campaign_id = ?
-    `).all(campId);
-  }
-
-  if (targetQueueItems.length === 0) {
-    return res.status(400).json({
-      ok: false,
-      error: mode === 'failed_only'
-        ? 'No failed contacts found to re-run in this campaign.'
-        : 'No contacts found in this campaign.'
-    });
-  }
-
-  const template = db.prepare('SELECT * FROM templates WHERE id = ?').get(originalCamp.template_id);
-  if (!template) {
-    return res.status(404).json({ ok: false, error: 'Associated template no longer exists.' });
-  }
-
-  const parsedSenderAccountId = senderAccountId ? parseInt(senderAccountId, 10) : originalCamp.sender_account_id;
-  const newCampName = `${originalCamp.name}_Rerun_${mode === 'failed_only' ? 'Failed' : 'All'}_${Date.now().toString().slice(-4)}`;
-
-  const cloneTx = db.transaction(() => {
-    const campRes = db.prepare(`
-      INSERT INTO campaigns (name, template_id, status, total_count, scheduled_at, sender_account_id)
-      VALUES (?, ?, 'QUEUED', ?, datetime('now'), ?)
-    `).run(newCampName, originalCamp.template_id, targetQueueItems.length, parsedSenderAccountId);
-
-    const newCampaignId = campRes.lastInsertRowid;
-
-    const queueInsert = db.prepare(`
-      INSERT INTO queue (campaign_id, contact_id, email, name, subject, rendered_html, status, scheduled_at)
-      VALUES (?, ?, ?, ?, ?, ?, 'queued', datetime('now'))
-    `);
-
-    for (const item of targetQueueItems) {
-      queueInsert.run(
-        newCampaignId,
-        item.contact_id,
-        item.email,
-        item.name || '',
-        item.subject,
-        item.rendered_html
-      );
-    }
-
-    db.prepare(`
-      INSERT INTO logs (campaign_id, level, message)
-      VALUES (?, 'INFO', ?)
-    `).run(newCampaignId, `Cloned campaign "${newCampName}" created with ${targetQueueItems.length} recipients.`);
-
-    return { newCampaignId, newCampName, count: targetQueueItems.length };
-  });
-
-  try {
-    const result = cloneTx();
-    res.json({
-      ok: true,
-      message: `Re-run campaign "${result.newCampName}" launched with ${result.count} contacts queued!`,
-      campaignId: result.newCampaignId
-    });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: 'Failed to create re-run campaign: ' + err.message });
-  }
-});
-
 router.post('/worker/resume', (req, res) => {
   queueWorker.resume();
   res.json({ ok: true, message: 'Worker resumed' });
@@ -196,7 +110,7 @@ router.get('/queue', (req, res) => {
     FROM queue q
     LEFT JOIN accounts a ON q.account_id = a.id
     LEFT JOIN campaigns c ON q.campaign_id = c.id
-    LEFT JOIN templates t ON c.template_id = t.id
+    LEFT JOIN templates t ON COALESCE(q.template_id, c.template_id) = t.id
     ORDER BY 
       CASE 
         WHEN q.status = 'sending' THEN 1
@@ -382,7 +296,7 @@ router.patch('/accounts/:id/toggle', (req, res) => {
   res.json({ ok: true, is_active: newStatus });
 });
 
-// Reset single account quota (sent_today = 0, clear cooldown, clear historical window)
+// Reset single account quota (sent_today = 0, clear cooldown, set quota_reset_at)
 router.post('/accounts/:id/reset', (req, res) => {
   const account = db.prepare('SELECT id, email FROM accounts WHERE id = ?').get(req.params.id);
   if (!account) return res.status(404).json({ ok: false, error: 'Account not found' });
@@ -392,16 +306,12 @@ router.post('/accounts/:id/reset', (req, res) => {
     SET sent_today = 0, 
         last_sent_at = NULL, 
         cooldown_until = NULL, 
+        quota_reset_at = datetime('now'),
         status = 'ACTIVE' 
     WHERE id = ?
   `).run(req.params.id);
 
-  // Clear 24-hour sent records for this account so rolling count stays at 0
-  db.prepare(`
-    UPDATE queue 
-    SET sent_at = datetime('now', '-25 hours') 
-    WHERE account_id = ? AND status = 'sent'
-  `).run(req.params.id);
+  AccountPool.refreshRollingQuotas(true);
 
   res.json({ ok: true, message: `Reset sent count to 0 for ${account.email}.` });
 });
@@ -413,15 +323,11 @@ router.post('/accounts/reset-all', (req, res) => {
     SET sent_today = 0, 
         last_sent_at = NULL, 
         cooldown_until = NULL, 
+        quota_reset_at = datetime('now'),
         status = 'ACTIVE'
   `).run();
 
-  // Clear 24-hour sent records so rolling recalculation stays at 0
-  db.prepare(`
-    UPDATE queue 
-    SET sent_at = datetime('now', '-25 hours') 
-    WHERE status = 'sent'
-  `).run();
+  AccountPool.refreshRollingQuotas(true);
 
   res.json({ ok: true, message: `Reset sent counters to 0 for all ${info.changes} account(s).` });
 });
@@ -542,7 +448,13 @@ router.post('/contacts/upload', upload.single('file'), async (req, res) => {
 // 6. CAMPAIGNS & AUTO-SPLIT BATCHES
 router.get('/campaigns', (req, res) => {
   const campaigns = db.prepare(`
-    SELECT c.*, t.name AS template_name, a.email AS sender_email, a.provider AS sender_provider
+    SELECT 
+      c.*, 
+      t.name AS template_name, 
+      a.email AS sender_email, 
+      a.provider AS sender_provider,
+      (SELECT COUNT(DISTINCT COALESCE(q.template_id, c.template_id)) FROM queue q WHERE q.campaign_id = c.id) AS template_variants_count,
+      (SELECT COUNT(DISTINCT q.account_id) FROM queue q WHERE q.campaign_id = c.id AND q.account_id IS NOT NULL) AS active_senders_count
     FROM campaigns c
     LEFT JOIN templates t ON c.template_id = t.id
     LEFT JOIN accounts a ON c.sender_account_id = a.id
@@ -575,10 +487,16 @@ router.get('/campaigns/:id/preview', (req, res) => {
   `).get(campId);
 
   const sampleItems = db.prepare(`
-    SELECT id, email, name, subject, status, attempts, last_error, sent_at
-    FROM queue
-    WHERE campaign_id = ?
-    ORDER BY id ASC
+    SELECT 
+      q.id, q.email, q.name, q.subject, q.status, q.attempts, q.last_error, q.sent_at,
+      a.email AS assigned_sender_email, a.provider AS assigned_provider,
+      t.name AS template_name
+    FROM queue q
+    LEFT JOIN accounts a ON q.account_id = a.id
+    LEFT JOIN campaigns c ON q.campaign_id = c.id
+    LEFT JOIN templates t ON COALESCE(q.template_id, c.template_id) = t.id
+    WHERE q.campaign_id = ?
+    ORDER BY q.id ASC
     LIMIT 100
   `).all(campId);
 
@@ -825,8 +743,8 @@ router.post('/campaigns/launch-batches', (req, res) => {
     `);
 
     const queueInsert = db.prepare(`
-      INSERT INTO queue (campaign_id, contact_id, email, name, subject, rendered_html, status, scheduled_at)
-      VALUES (?, ?, ?, ?, ?, ?, 'queued', ?)
+      INSERT INTO queue (campaign_id, contact_id, email, name, subject, rendered_html, status, scheduled_at, template_id)
+      VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?)
     `);
 
     for (let i = 0; i < totalBatches; i++) {
@@ -880,7 +798,7 @@ router.post('/campaigns/launch-batches', (req, res) => {
 
         const renderedSubject = renderTemplate(assignedTemplate.subject, c);
         const renderedBody = renderTemplate(assignedTemplate.body_html, c);
-        queueInsert.run(campaignId, contactId, c.email, c.name || '', renderedSubject, renderedBody, batchScheduledAt);
+        queueInsert.run(campaignId, contactId, c.email, c.name || '', renderedSubject, renderedBody, batchScheduledAt, assignedTemplate.id);
       }
 
       db.prepare(`
@@ -959,18 +877,38 @@ router.post('/campaigns/:id/cancel', (req, res) => {
 // CLONE / RE-RUN CAMPAIGN (Re-run failed or all contacts)
 router.post('/campaigns/:id/clone', (req, res) => {
   const campId = req.params.id;
-  const { newName, templateId, mode = 'all', senderAccountId = null } = req.body || {};
+  const { 
+    newName, 
+    templateId,
+    templateIds = [],
+    templateRotationStrategy = 'PER_EMAIL',
+    mode = 'all', 
+    sendingStrategy = 'SMART',
+    senderAccountId = null,
+    fallbackAllowed = true,
+    sendingSpeed = 'BALANCED',
+    customIntervalMs = 2500
+  } = req.body || {};
 
   const origCamp = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campId);
   if (!origCamp) return res.status(404).json({ ok: false, error: 'Campaign not found' });
 
-  const targetTemplateId = templateId || origCamp.template_id;
-  const template = db.prepare('SELECT * FROM templates WHERE id = ?').get(targetTemplateId);
-  if (!template) return res.status(404).json({ ok: false, error: 'Template not found' });
+  // Resolve active templates (single or rotated)
+  let activeTemplates = [];
+  if (Array.isArray(templateIds) && templateIds.length > 0) {
+    for (const tid of templateIds) {
+      const t = db.prepare('SELECT * FROM templates WHERE id = ?').get(parseInt(tid, 10));
+      if (t) activeTemplates.push(t);
+    }
+  } else {
+    const targetTplId = templateId || origCamp.template_id;
+    const t = db.prepare('SELECT * FROM templates WHERE id = ?').get(targetTplId);
+    if (t) activeTemplates.push(t);
+  }
 
-  const targetSenderAccountId = senderAccountId !== undefined 
-    ? (senderAccountId ? parseInt(senderAccountId, 10) : null)
-    : origCamp.sender_account_id;
+  if (activeTemplates.length === 0) {
+    return res.status(400).json({ ok: false, error: 'At least one valid email template must be selected.' });
+  }
 
   let query = 'SELECT email, name FROM queue WHERE campaign_id = ?';
   if (mode === 'failed_only') {
@@ -993,39 +931,59 @@ router.post('/campaigns/:id/clone', (req, res) => {
 
   const campaignName = (newName && newName.trim()) 
     ? newName.trim() 
-    : `${origCamp.name}_Rerun_${Date.now().toString().slice(-4)}`;
+    : `${origCamp.name}_Rerun_${mode === 'failed_only' ? 'Failed' : 'All'}_${Date.now().toString().slice(-4)}`;
 
   const nowSql = formatSqliteDateTime(new Date());
+  const parsedSenderAccountId = (sendingStrategy === 'CONTROLLED' && senderAccountId) ? parseInt(senderAccountId, 10) : null;
+  const isFallbackAllowed = fallbackAllowed ? 1 : 0;
+  const numericIntervalMs = Math.max(100, parseInt(customIntervalMs, 10) || 2500);
 
   const cloneTx = db.transaction(() => {
     const campRes = db.prepare(`
-      INSERT INTO campaigns (name, template_id, status, total_count, scheduled_at, sender_account_id)
-      VALUES (?, ?, 'QUEUED', ?, ?, ?)
-    `).run(campaignName, targetTemplateId, uniqueItems.length, nowSql, targetSenderAccountId);
+      INSERT INTO campaigns (
+        name, template_id, status, total_count, scheduled_at, 
+        sender_account_id, pinned_account_id, mode, fallback_allowed, sending_speed, custom_interval_ms
+      )
+      VALUES (?, ?, 'QUEUED', ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      campaignName,
+      activeTemplates[0].id,
+      uniqueItems.length,
+      nowSql,
+      parsedSenderAccountId,
+      parsedSenderAccountId,
+      sendingStrategy,
+      isFallbackAllowed,
+      sendingSpeed,
+      numericIntervalMs
+    );
 
     const newCampId = campRes.lastInsertRowid;
 
     const queueInsert = db.prepare(`
-      INSERT INTO queue (campaign_id, contact_id, email, name, subject, rendered_html, status, scheduled_at)
-      VALUES (?, ?, ?, ?, ?, ?, 'queued', ?)
+      INSERT INTO queue (campaign_id, contact_id, email, name, subject, rendered_html, status, scheduled_at, template_id)
+      VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?)
     `);
 
-    for (const it of uniqueItems) {
+    for (let cIdx = 0; cIdx < uniqueItems.length; cIdx++) {
+      const it = uniqueItems[cIdx];
       const contact = db.prepare('SELECT id, paper_title, affiliation FROM contacts WHERE email = ?').get(it.email);
       const cObj = {
         name: it.name || '',
         paper_title: contact?.paper_title || '',
         affiliation: contact?.affiliation || ''
       };
-      const renderedSubject = renderTemplate(template.subject, cObj);
-      const renderedBody = renderTemplate(template.body_html, cObj);
-      queueInsert.run(newCampId, contact?.id || null, it.email, it.name || '', renderedSubject, renderedBody, nowSql);
+
+      const assignedTemplate = activeTemplates[cIdx % activeTemplates.length];
+      const renderedSubject = renderTemplate(assignedTemplate.subject, cObj);
+      const renderedBody = renderTemplate(assignedTemplate.body_html, cObj);
+      queueInsert.run(newCampId, contact?.id || null, it.email, it.name || '', renderedSubject, renderedBody, nowSql, assignedTemplate.id);
     }
 
     db.prepare(`
       INSERT INTO logs (campaign_id, level, message)
       VALUES (?, 'INFO', ?)
-    `).run(newCampId, `Campaign "${campaignName}" created via Re-run/Clone of Campaign #${campId} (${uniqueItems.length} recipients).`);
+    `).run(newCampId, `Campaign "${campaignName}" created via Re-run of Campaign #${campId} (${uniqueItems.length} recipients, Templates: ${activeTemplates.length}, Mode: ${sendingStrategy}).`);
 
     return { newCampId, campaignName, count: uniqueItems.length };
   });

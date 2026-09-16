@@ -477,8 +477,8 @@ document.addEventListener('DOMContentLoaded', () => {
             <td>#${item.id}</td>
             <td><strong>${escapeHtml(item.email)}</strong></td>
             <td>${escapeHtml(item.name || '--')}</td>
-            <td><strong style="color: var(--sky); font-size: 11px;">${escapeHtml(item.campaign_name || '--')}</strong></td>
-            <td><span style="font-size: 11px; color: var(--text-secondary);">${escapeHtml(item.template_name || 'Rotated Template')}</span></td>
+            <td title="${escapeHtml(item.campaign_name || '')}"><strong style="color: var(--sky); font-size: 11px;">${escapeHtml(item.campaign_name ? (item.campaign_name.length > 20 ? item.campaign_name.slice(0, 20) + '...' : item.campaign_name) : '--')}</strong></td>
+            <td title="${escapeHtml(item.template_name || '')}"><span style="font-size: 11px; color: var(--text-secondary);">${escapeHtml(item.template_name ? (item.template_name.length > 25 ? item.template_name.slice(0, 25) + '...' : item.template_name) : 'Rotated Template')}</span></td>
             <td><span class="account-badge">${escapeHtml(item.assigned_sender_email || 'Auto-Rotate Pool')}</span></td>
             <td title="${escapeHtml(item.subject)}">${escapeHtml(item.subject ? (item.subject.length > 30 ? item.subject.slice(0, 30) + '...' : item.subject) : '--')}</td>
             <td><span class="badge ${badgeClass}">${item.status.toUpperCase()}</span></td>
@@ -1451,15 +1451,24 @@ document.addEventListener('DOMContentLoaded', () => {
           actionsHtml = `<button type="button" class="btn btn-secondary btn-sm btn-preview-camp" data-id="${c.id}" data-name="${escapeHtml(c.name)}" style="padding: 3px 8px; font-size: 11px; background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4); color: var(--sky);">🔍 Preview / Re-run</button>`;
         }
 
-        const timeDisplay = c.started_at ? `Started: ${formatDateTime(c.started_at)}` : (c.scheduled_at ? `Scheduled: ${formatDateTime(c.scheduled_at)}` : '--');
-        const senderBadge = c.sender_email ? `<div style="font-size: 11px; font-weight: 600; color: var(--sky);">${escapeHtml(c.sender_email)}</div><span class="account-badge" style="font-size: 9px; padding: 1px 5px;">${c.sender_provider || 'ENGINE'}</span>` : `<span style="font-size: 11px; color: var(--text-muted);">Pool (Auto-Rotate)</span>`;
-        const progressPct = c.total_count > 0 ? Math.round(((c.sent_count + c.failed_count) / c.total_count) * 100) : 0;
+        const isTemplateRotated = (c.template_variants_count && c.template_variants_count > 1);
+        const templateBadge = isTemplateRotated
+          ? `<span title="${escapeHtml(c.template_name || '')} (Rotating ${c.template_variants_count} templates)"><strong style="color: var(--sky); font-size: 11px;">🔀 ${c.template_variants_count} Templates Rotated</strong><div style="font-size: 10px; color: var(--text-muted);">${escapeHtml(c.template_name || '')}</div></span>`
+          : `<span title="${escapeHtml(c.template_name || '')}">${escapeHtml(c.template_name ? (c.template_name.length > 28 ? c.template_name.slice(0, 28) + '...' : c.template_name) : '--')}</span>`;
+
+        let senderBadge = '';
+        if (c.mode === 'CONTROLLED' && c.sender_email) {
+          senderBadge = `<div style="font-size: 11px; font-weight: 600; color: var(--sky);">${escapeHtml(c.sender_email)}</div><span class="account-badge" style="font-size: 9px; padding: 1px 5px;">${c.sender_provider || 'CONTROLLED'}</span>`;
+        } else {
+          const sendersCount = c.active_senders_count > 0 ? `${c.active_senders_count} accounts leased` : 'Smart Send Pool';
+          senderBadge = `<div><strong style="color: var(--emerald); font-size: 11px;">⚡ Auto-Rotate Pool</strong></div><span class="account-badge" style="font-size: 9px; padding: 1px 5px; background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.3);">${sendersCount}</span>`;
+        }
 
         return `
           <tr>
             <td>#${c.id}</td>
-            <td><strong>${escapeHtml(c.name)}</strong></td>
-            <td>${escapeHtml(c.template_name || '--')}</td>
+            <td><strong title="${escapeHtml(c.name)}">${escapeHtml(c.name ? (c.name.length > 25 ? c.name.slice(0, 25) + '...' : c.name) : '--')}</strong></td>
+            <td>${templateBadge}</td>
             <td>${senderBadge}</td>
             <td><span style="font-size: 11px; color: var(--text-secondary);">${timeDisplay}</span></td>
             <td><span class="badge ${statusBadgeClass}">${c.status}</span></td>
@@ -1622,64 +1631,195 @@ document.addEventListener('DOMContentLoaded', () => {
   const previewModalFailed = document.getElementById('previewModalFailed');
   const previewModalQueued = document.getElementById('previewModalQueued');
   const previewModalTableBody = document.getElementById('previewModalTableBody');
+  // 11. CAMPAIGN PREVIEW & RE-RUN MODAL
+  const modalCampaignPreview = document.getElementById('modalCampaignPreview');
+  const btnCloseCampaignPreview = document.getElementById('btnCloseCampaignPreview');
+  const btnCancelCampaignPreview = document.getElementById('btnCancelCampaignPreview');
+  const previewModalCampName = document.getElementById('previewModalCampName');
+  const previewModalCampMeta = document.getElementById('previewModalCampMeta');
+  const previewModalTotal = document.getElementById('previewModalTotal');
+  const previewModalSent = document.getElementById('previewModalSent');
+  const previewModalFailed = document.getElementById('previewModalFailed');
+  const previewModalQueued = document.getElementById('previewModalQueued');
+  const previewModalTableBody = document.getElementById('previewModalTableBody');
   const rerunModeSelect = document.getElementById('rerunModeSelect');
+  const rerunCampaignNameInput = document.getElementById('rerunCampaignNameInput');
+  const chkRerunTemplateRotation = document.getElementById('chkRerunTemplateRotation');
+  const rerunSingleTemplateBox = document.getElementById('rerunSingleTemplateBox');
+  const rerunTemplateSelect = document.getElementById('rerunTemplateSelect');
+  const rerunMultiTemplateBox = document.getElementById('rerunMultiTemplateBox');
+  const rerunTemplateCheckboxesList = document.getElementById('rerunTemplateCheckboxesList');
+  const rerunControlledOptions = document.getElementById('rerunControlledOptions');
   const rerunSenderAccountSelect = document.getElementById('rerunSenderAccountSelect');
+  const chkRerunFallbackAllowed = document.getElementById('chkRerunFallbackAllowed');
+  const rerunCustomIntervalBox = document.getElementById('rerunCustomIntervalBox');
+  const inputRerunCustomIntervalSec = document.getElementById('inputRerunCustomIntervalSec');
   const btnTriggerRerun = document.getElementById('btnTriggerRerun');
   let activePreviewCampaignId = null;
 
+  // Re-run UI interactions
+  if (chkRerunTemplateRotation) {
+    chkRerunTemplateRotation.addEventListener('change', () => {
+      const isRot = chkRerunTemplateRotation.checked;
+      if (rerunSingleTemplateBox) rerunSingleTemplateBox.style.display = isRot ? 'none' : 'block';
+      if (rerunMultiTemplateBox) rerunMultiTemplateBox.style.display = isRot ? 'block' : 'none';
+    });
+  }
+
+  document.querySelectorAll('input[name="rerunStrategyRadio"]').forEach(r => {
+    r.addEventListener('change', () => {
+      if (rerunControlledOptions) {
+        rerunControlledOptions.style.display = r.value === 'CONTROLLED' ? 'block' : 'none';
+      }
+    });
+  });
+
+  document.querySelectorAll('input[name="rerunSpeedPreset"]').forEach(r => {
+    r.addEventListener('change', () => {
+      if (rerunCustomIntervalBox) {
+        rerunCustomIntervalBox.style.display = r.value === 'CUSTOM' ? 'flex' : 'none';
+      }
+    });
+  });
+
   async function openCampaignPreviewModal(campaignId) {
     if (!modalCampaignPreview) return;
-    activePreviewCampaignId = campaignId; modalCampaignPreview.style.display = 'flex';
-    previewModalTableBody.innerHTML = '<tr><td colspan="5" class="table-empty">⏳ Loading campaign details and queue snapshot...</td></tr>';
+    activePreviewCampaignId = campaignId; 
+    modalCampaignPreview.style.display = 'flex';
+    previewModalTableBody.innerHTML = '<tr><td colspan="6" class="table-empty">⏳ Loading campaign details and queue snapshot...</td></tr>';
+
+    // Populate templates dropdown and checkboxes in Re-run modal
+    if (rerunTemplateSelect && allLoadedTemplates.length > 0) {
+      rerunTemplateSelect.innerHTML = allLoadedTemplates.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');
+    }
+    if (rerunTemplateCheckboxesList && allLoadedTemplates.length > 0) {
+      rerunTemplateCheckboxesList.innerHTML = allLoadedTemplates.map((t, idx) => `
+        <label style="display: flex; align-items: center; gap: 6px; background: var(--bg-surface); padding: 6px 8px; border-radius: 4px; border: 1px solid var(--border-color); cursor: pointer; font-size: 11px;">
+          <input type="checkbox" class="chk-rerun-rotate-tpl" value="${t.id}" ${idx < 2 ? 'checked' : ''}>
+          <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(t.name)}</span>
+        </label>
+      `).join('');
+    }
+
     try {
       const res = await fetch(`/api/campaigns/${campaignId}/preview`);
       const data = await res.json();
       if (!data.ok) { alert(data.error || 'Failed to load campaign preview.'); closeCampaignPreviewModal(); return; }
       const c = data.campaign; const s = data.summary;
       previewModalCampName.textContent = c.name;
-      const senderText = c.sender_email ? `${c.sender_email} (${c.sender_provider})` : 'All Active Pool';
+      if (rerunCampaignNameInput) rerunCampaignNameInput.value = `${c.name}_Rerun`;
+
+      const senderText = c.sender_email ? `${c.sender_email} (${c.sender_provider})` : '⚡ All Active Pool (Auto-Rotate)';
       previewModalCampMeta.textContent = `Template: ${c.template_name || 'Standard'} | Sender: ${senderText} | Status: ${c.status}`;
-      previewModalTotal.textContent = s.total || 0; previewModalSent.textContent = s.sent || 0; previewModalFailed.textContent = s.failed || 0; previewModalQueued.textContent = (s.queued || 0) + (s.sending || 0);
+      previewModalTotal.textContent = s.total || 0; 
+      previewModalSent.textContent = s.sent || 0; 
+      previewModalFailed.textContent = s.failed || 0; 
+      previewModalQueued.textContent = (s.queued || 0) + (s.sending || 0);
+
+      // Preselect template & sender if present
+      if (rerunTemplateSelect && c.template_id) rerunTemplateSelect.value = String(c.template_id);
       if (rerunSenderAccountSelect && c.sender_account_id) rerunSenderAccountSelect.value = String(c.sender_account_id);
+
       if (!data.sampleItems || data.sampleItems.length === 0) {
-        previewModalTableBody.innerHTML = '<tr><td colspan="5" class="table-empty">No queue records found for this campaign.</td></tr>';
+        previewModalTableBody.innerHTML = '<tr><td colspan="6" class="table-empty">No queue records found for this campaign.</td></tr>';
       } else {
         previewModalTableBody.innerHTML = data.sampleItems.map(item => {
           let badgeClass = 'badge-queued';
           if (item.status === 'sent') badgeClass = 'badge-completed';
           else if (item.status === 'failed') badgeClass = 'badge-failed';
           else if (item.status === 'sending') badgeClass = 'badge-sending';
-          return `<tr><td><strong>${escapeHtml(item.email)}</strong></td><td>${escapeHtml(item.name || '--')}</td><td><span class="badge ${badgeClass}">${item.status}</span></td><td>${item.attempts}</td><td style="color: ${item.status === 'failed' ? 'var(--rose)' : 'var(--text-muted)'}; font-size: 11px;">${escapeHtml(item.last_error || (item.status === 'sent' ? `Delivered ${formatDateTime(item.sent_at)}` : '--'))}</td></tr>`;
+
+          const assignedSenderBadge = item.assigned_sender_email
+            ? `<span class="account-badge" style="font-size: 10px;">${escapeHtml(item.assigned_sender_email)}</span>`
+            : `<span style="font-size: 11px; color: var(--text-muted);">Pool (Leasing)</span>`;
+
+          const templateVariantBadge = item.template_name
+            ? `<span style="font-size: 11px; color: var(--sky); font-weight: 500;">${escapeHtml(item.template_name)}</span>`
+            : `<span style="font-size: 11px; color: var(--text-secondary);">${escapeHtml(c.template_name || 'Template')}</span>`;
+
+          return `
+            <tr>
+              <td><strong>${escapeHtml(item.email)}</strong></td>
+              <td>${templateVariantBadge}</td>
+              <td>${assignedSenderBadge}</td>
+              <td><span class="badge ${badgeClass}">${item.status.toUpperCase()}</span></td>
+              <td>${item.attempts || 0}</td>
+              <td style="color: ${item.status === 'failed' ? 'var(--rose)' : 'var(--text-muted)'}; font-size: 11px;">${escapeHtml(item.last_error || (item.status === 'sent' ? `Delivered ${formatDateTime(item.sent_at)}` : '--'))}</td>
+            </tr>
+          `;
         }).join('');
       }
     } catch (err) { alert('Error fetching preview: ' + err.message); closeCampaignPreviewModal(); }
   }
-  function closeCampaignPreviewModal() { if (modalCampaignPreview) modalCampaignPreview.style.display = 'none'; activePreviewCampaignId = null; }
+
+  function closeCampaignPreviewModal() { 
+    if (modalCampaignPreview) modalCampaignPreview.style.display = 'none'; 
+    activePreviewCampaignId = null; 
+  }
 
   if (btnCloseCampaignPreview) btnCloseCampaignPreview.addEventListener('click', closeCampaignPreviewModal);
   if (btnCancelCampaignPreview) btnCancelCampaignPreview.addEventListener('click', closeCampaignPreviewModal);
   modalCampaignPreview?.addEventListener('click', (e) => { if (e.target === modalCampaignPreview) closeCampaignPreviewModal(); });
 
-  // Replace the btnTriggerRerun listener in public/js/app.js
-
   if (btnTriggerRerun) {
     btnTriggerRerun.addEventListener('click', async () => {
       if (!activePreviewCampaignId) return;
       const mode = rerunModeSelect ? rerunModeSelect.value : 'failed_only';
-      const senderVal = rerunSenderAccountSelect ? rerunSenderAccountSelect.value : '';
-      const modeText = mode === 'failed_only' ? 'failed/errored contacts only' : 'all contacts in this campaign';
+      const newName = rerunCampaignNameInput ? rerunCampaignNameInput.value.trim() : '';
 
-      const confirmed = confirm(`Are you sure you want to re-run this campaign (${modeText})?`);
+      // Template selection / rotation
+      const isRotation = chkRerunTemplateRotation ? chkRerunTemplateRotation.checked : false;
+      let templateIds = [];
+      let templateId = null;
+      if (isRotation) {
+        const checked = document.querySelectorAll('.chk-rerun-rotate-tpl:checked');
+        if (checked.length < 2) {
+          alert('Please select at least 2 templates to enable template rotation.');
+          return;
+        }
+        templateIds = Array.from(checked).map(cb => parseInt(cb.value, 10));
+      } else {
+        templateId = rerunTemplateSelect ? parseInt(rerunTemplateSelect.value, 10) : null;
+      }
+
+      // Sender strategy
+      const sendingStrategy = document.querySelector('input[name="rerunStrategyRadio"]:checked')?.value || 'SMART';
+      const senderVal = rerunSenderAccountSelect ? rerunSenderAccountSelect.value : '';
+      const fallbackAllowed = chkRerunFallbackAllowed ? chkRerunFallbackAllowed.checked : true;
+
+      // Sending speed preset
+      const sendingSpeed = document.querySelector('input[name="rerunSpeedPreset"]:checked')?.value || 'BALANCED';
+      let customIntervalMs = 2500;
+      if (sendingSpeed === 'SAFE') customIntervalMs = 6500;
+      else if (sendingSpeed === 'FAST') customIntervalMs = 1000;
+      else if (sendingSpeed === 'CUSTOM') {
+        customIntervalMs = Math.round(parseFloat(inputRerunCustomIntervalSec?.value || '2.5') * 1000);
+      }
+
+      const modeText = mode === 'failed_only' ? 'failed/errored contacts only' : 'all contacts in this campaign';
+      const confirmed = confirm(`Are you sure you want to launch this re-run campaign (${modeText})?`);
       if (!confirmed) return;
 
       btnTriggerRerun.disabled = true;
       btnTriggerRerun.textContent = '⏳ Queuing Re-run...';
 
       try {
+        const payload = {
+          newName,
+          mode,
+          templateId,
+          templateIds,
+          sendingStrategy,
+          senderAccountId: (sendingStrategy === 'CONTROLLED' && senderVal) ? parseInt(senderVal, 10) : null,
+          fallbackAllowed,
+          sendingSpeed,
+          customIntervalMs
+        };
+
         const res = await fetch(`/api/campaigns/${activePreviewCampaignId}/clone`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode, senderAccountId: senderVal ? parseInt(senderVal, 10) : null })
+          body: JSON.stringify(payload)
         });
 
         const contentType = res.headers.get('content-type');
@@ -1689,7 +1829,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const data = await res.json();
         btnTriggerRerun.disabled = false;
-        btnTriggerRerun.textContent = '🚀 Re-run Campaign Now';
+        btnTriggerRerun.textContent = '🚀 Launch Re-run Campaign';
 
         if (data.ok) {
           alert(`🎉 SUCCESS!\n${data.message}`);
@@ -1702,7 +1842,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       } catch (err) {
         btnTriggerRerun.disabled = false;
-        btnTriggerRerun.textContent = '🚀 Re-run Campaign Now';
+        btnTriggerRerun.textContent = '🚀 Launch Re-run Campaign';
         alert('Error triggering re-run: ' + err.message);
       }
     });
