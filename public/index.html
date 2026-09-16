@@ -217,19 +217,20 @@
       <div class="two-col-layout">
         <div class="panel-card">
           <div class="panel-header">
-            <h3>Add / Update Sender Account</h3>
+            <h3 id="accountFormTitle">Add / Update Sender Account</h3>
           </div>
           <form id="formAddAccount">
+            <input type="hidden" id="editAccountId" value="">
             <div class="form-group"><label class="form-label">Sender Email Address</label><input type="email"
                 id="accEmail" class="form-input" placeholder="e.g. editor@mail.theparipexjournal.com" required><span
-                class="form-help">Must be a Shared Mailbox or User Mailbox in your M365 tenant.</span></div>
+                class="form-help" id="accEmailHelp">Must be a Shared Mailbox or User Mailbox in your M365 tenant.</span></div>
             <div class="form-group"><label class="form-label">Display Name</label><input type="text" id="accDisplayName"
                 class="form-input" placeholder="e.g. Editorial Office - Paripex" required></div>
             <div class="form-row">
               <div class="form-group"><label class="form-label">Daily Limit (24h)</label><input type="number"
-                  id="accDailyLimit" class="form-input" value="500" min="50" max="2000" required></div>
+                  id="accDailyLimit" class="form-input" value="500" min="1" required></div>
               <div class="form-group"><label class="form-label">Cooldown (Seconds)</label><input type="number"
-                  id="accCooldown" class="form-input" value="60" min="5" max="3600" required></div>
+                  id="accCooldown" class="form-input" value="60" min="0" required></div>
             </div>
             <div class="form-group"><label class="form-label">Dispatch Engine</label><select id="accProvider"
                 class="form-select">
@@ -237,7 +238,10 @@
                 <option value="AZURE_ACS">Azure Communication Services (ACS)</option>
                 <option value="OCI">Oracle Cloud Infrastructure (OCI)</option>
               </select></div>
-            <button type="submit" class="btn btn-primary btn-block">➕ Add Account to Pool</button>
+            <div style="display: flex; gap: 8px;">
+              <button type="submit" id="btnSubmitAccount" class="btn btn-primary btn-block">➕ Add Account to Pool</button>
+              <button type="button" id="btnCancelEditAccount" class="btn btn-secondary" style="display: none; white-space: nowrap;">✕ Cancel</button>
+            </div>
           </form>
         </div>
         <div class="panel-card">

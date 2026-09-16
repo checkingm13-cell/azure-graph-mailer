@@ -18,6 +18,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const accountsTableBody = document.getElementById('accountsTableBody');
   const badgeAccountCount = document.getElementById('badgeAccountCount');
   const formAddAccount = document.getElementById('formAddAccount');
+  const editAccountId = document.getElementById('editAccountId');
+  const accountFormTitle = document.getElementById('accountFormTitle');
+  const btnSubmitAccount = document.getElementById('btnSubmitAccount');
+  const btnCancelEditAccount = document.getElementById('btnCancelEditAccount');
+  const accEmailHelp = document.getElementById('accEmailHelp');
+  let allLoadedAccounts = [];
   const campaignsTableBody = document.getElementById('campaignsTableBody');
   const formTemplate = document.getElementById('formTemplate');
   const tplId = document.getElementById('tplId');
@@ -147,6 +153,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (accProviderSelect) {
     accProviderSelect.addEventListener('change', () => {
+      if (editAccountId && editAccountId.value) return;
       if (accProviderSelect.value === 'OCI') {
         if (accDailyLimitInput) accDailyLimitInput.value = 10000;
         if (accCooldownInput) accCooldownInput.value = 0;
@@ -383,17 +390,59 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // 4. LOAD ACCOUNTS POOL
+  function resetAccountForm() {
+    if (formAddAccount) formAddAccount.reset();
+    if (editAccountId) editAccountId.value = '';
+    if (accEmailInput) {
+      accEmailInput.disabled = false;
+      accEmailInput.readOnly = false;
+    }
+    if (accEmailHelp) accEmailHelp.textContent = 'Must be a Shared Mailbox or User Mailbox in your M365 tenant.';
+    if (accountFormTitle) accountFormTitle.textContent = 'Add / Update Sender Account';
+    if (btnSubmitAccount) btnSubmitAccount.innerHTML = '➕ Add Account to Pool';
+    if (btnCancelEditAccount) btnCancelEditAccount.style.display = 'none';
+    if (accDailyLimitInput) accDailyLimitInput.value = 500;
+    if (accCooldownInput) accCooldownInput.value = 60;
+  }
+
+  function startEditAccount(accId) {
+    const acc = allLoadedAccounts.find(a => String(a.id) === String(accId));
+    if (!acc) return;
+    switchTab('tab-accounts');
+    if (editAccountId) editAccountId.value = acc.id;
+    if (accEmailInput) {
+      accEmailInput.value = acc.email;
+      accEmailInput.disabled = true;
+    }
+    if (accEmailHelp) accEmailHelp.innerHTML = '<span style="color: var(--amber); font-weight: 600;">⚠️ Email address is locked during edit to preserve queue logs.</span>';
+    if (accDisplayNameInput) accDisplayNameInput.value = acc.display_name || '';
+    if (accDailyLimitInput) accDailyLimitInput.value = acc.daily_limit;
+    if (accCooldownInput) accCooldownInput.value = acc.cooldown_seconds;
+    if (accProviderSelect) accProviderSelect.value = acc.provider;
+    if (accountFormTitle) accountFormTitle.textContent = `✏️ Edit Account: ${acc.email}`;
+    if (btnSubmitAccount) btnSubmitAccount.innerHTML = '💾 Save Changes';
+    if (btnCancelEditAccount) btnCancelEditAccount.style.display = 'inline-block';
+    formAddAccount.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  if (btnCancelEditAccount) {
+    btnCancelEditAccount.addEventListener('click', () => {
+      resetAccountForm();
+    });
+  }
+
   async function loadAccounts() {
     try {
       const res = await fetch('/api/accounts');
       const data = await res.json();
       if (!data.ok) return;
-      badgeAccountCount.textContent = `${data.accounts.length} accounts`;
+      allLoadedAccounts = data.accounts || [];
+      badgeAccountCount.textContent = `${allLoadedAccounts.length} accounts`;
 
       const batchSenderSelect = document.getElementById('batchSenderAccountSelect');
       const quickTestSenderSelect = document.getElementById('quickTestSenderAccount');
       const rerunSenderSelect = document.getElementById('rerunSenderAccountSelect');
-      const optionsHtml = data.accounts.map(a => {
+      const optionsHtml = allLoadedAccounts.map(a => {
         const engineLabel = a.provider === 'AZURE_ACS' ? '⚡ Azure ACS' : (a.provider === 'OCI' ? '🏛️ Oracle OCI' : '🔷 Graph API');
         return `<option value="${a.id}">[${engineLabel}] ${escapeHtml(a.email)} (${escapeHtml(a.display_name)})</option>`;
       }).join('');
@@ -414,24 +463,33 @@ document.addEventListener('DOMContentLoaded', () => {
         if (curVal) rerunSenderSelect.value = curVal;
       }
 
-      if (data.accounts.length === 0) {
+      if (allLoadedAccounts.length === 0) {
         accountsTableBody.innerHTML = `<tr><td colspan="6" class="table-empty">No sender accounts registered yet.</td></tr>`;
         accountsPoolGrid.innerHTML = `<div class="loading-placeholder">No accounts registered. Go to "Sender Accounts Pool" tab to add your first account.</div>`;
       } else {
-        accountsTableBody.innerHTML = data.accounts.map((a) => `
+        accountsTableBody.innerHTML = allLoadedAccounts.map((a) => `
           <tr>
             <td><strong>${escapeHtml(a.email)}</strong><div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(a.display_name)}</div></td>
             <td><span class="account-badge">${a.provider}</span></td>
             <td><span class="badge ${a.is_active ? 'badge-completed' : 'badge-failed'}" style="cursor: pointer;" title="Click to toggle status">${a.is_active ? '🟢 Active' : '⚪ Inactive'}</span></td>
-            <td>${a.sent_today} / ${a.daily_limit}</td>
+            <td><strong>${a.sent_today}</strong> / ${a.daily_limit}</td>
             <td>${a.cooldown_seconds}s</td>
             <td>
-              <button class="btn btn-secondary btn-sm btn-toggle-account" data-id="${a.id}" style="margin-right: 4px;">${a.is_active ? 'Disable' : 'Enable'}</button>
-              <button class="btn btn-danger btn-sm btn-del-account" data-id="${a.id}">Delete</button>
+              <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                <button class="btn btn-primary btn-sm btn-edit-account" data-id="${a.id}" title="Edit daily limit & settings">✏️ Edit</button>
+                <button class="btn btn-secondary btn-sm btn-toggle-account" data-id="${a.id}">${a.is_active ? 'Disable' : 'Enable'}</button>
+                <button class="btn btn-danger btn-sm btn-del-account" data-id="${a.id}">Delete</button>
+              </div>
             </td>
           </tr>
         `).join('');
 
+        document.querySelectorAll('.btn-edit-account').forEach((btn) => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            startEditAccount(btn.dataset.id);
+          });
+        });
         document.querySelectorAll('.btn-toggle-account').forEach((btn) => {
           btn.addEventListener('click', async () => {
             await fetch(`/api/accounts/${btn.dataset.id}/toggle`, { method: 'PATCH' });
@@ -446,14 +504,20 @@ document.addEventListener('DOMContentLoaded', () => {
           });
         });
 
-        accountsPoolGrid.innerHTML = data.accounts.map((a) => {
+        accountsPoolGrid.innerHTML = allLoadedAccounts.map((a) => {
           const pct = Math.min(100, Math.round((a.sent_today / a.daily_limit) * 100));
           const isCooldown = a.cooldown_remaining_sec > 0;
           return `
             <div class="account-card">
               <div class="account-card-header">
-                <div><div class="account-email">${escapeHtml(a.email)}</div><div style="font-size: 10px; color: var(--text-muted);">${escapeHtml(a.display_name)}</div></div>
-                <span class="account-badge">${a.provider}</span>
+                <div>
+                  <div class="account-email">${escapeHtml(a.email)}</div>
+                  <div style="font-size: 10px; color: var(--text-muted);">${escapeHtml(a.display_name)}</div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <span class="account-badge">${a.provider}</span>
+                  <button class="btn btn-secondary btn-xs btn-edit-account-card" data-id="${a.id}" title="Edit daily limit & settings" style="padding: 2px 7px; font-size: 10px;">✏️ Edit</button>
+                </div>
               </div>
               <div class="gauge-bar-bg"><div class="gauge-bar-fill" style="width: ${pct}%; background-color: ${pct > 90 ? 'var(--rose)' : 'var(--emerald)'};"></div></div>
               <div class="account-stats-row">
@@ -463,23 +527,69 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
           `;
         }).join('');
+
+        document.querySelectorAll('.btn-edit-account-card').forEach((btn) => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            startEditAccount(btn.dataset.id);
+          });
+        });
       }
     } catch (err) { console.error('Error loading accounts:', err); }
   }
 
   formAddAccount.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const payload = {
-      email: document.getElementById('accEmail').value.trim(),
-      displayName: document.getElementById('accDisplayName').value.trim(),
-      dailyLimit: document.getElementById('accDailyLimit').value,
-      cooldownSeconds: document.getElementById('accCooldown').value,
-      provider: document.getElementById('accProvider').value
-    };
-    const res = await fetch('/api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    const data = await res.json();
-    if (data.ok) { formAddAccount.reset(); loadAccounts(); refreshTelemetry(); }
-    else { alert(data.error || 'Failed to add account'); }
+    const id = editAccountId ? editAccountId.value : '';
+    const dailyLimit = parseInt(accDailyLimitInput.value, 10);
+    const cooldownSeconds = parseInt(accCooldownInput.value, 10);
+
+    if (isNaN(dailyLimit) || dailyLimit < 1) {
+      return alert('Please enter a valid daily limit (minimum 1)');
+    }
+
+    if (id) {
+      const payload = {
+        displayName: accDisplayNameInput.value.trim(),
+        dailyLimit,
+        cooldownSeconds: isNaN(cooldownSeconds) ? 0 : cooldownSeconds,
+        provider: accProviderSelect.value
+      };
+      const res = await fetch(`/api/accounts/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.ok) {
+        resetAccountForm();
+        loadAccounts();
+        refreshTelemetry();
+      } else {
+        alert(data.error || 'Failed to update account');
+      }
+    } else {
+      const payload = {
+        email: accEmailInput.value.trim(),
+        displayName: accDisplayNameInput.value.trim(),
+        dailyLimit,
+        cooldownSeconds: isNaN(cooldownSeconds) ? 0 : cooldownSeconds,
+        provider: accProviderSelect.value
+      };
+      const res = await fetch('/api/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.ok) {
+        resetAccountForm();
+        loadAccounts();
+        refreshTelemetry();
+      } else {
+        alert(data.error || 'Failed to add account');
+      }
+    }
   });
 
   // 5. TEMPLATES

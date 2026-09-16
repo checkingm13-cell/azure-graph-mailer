@@ -223,6 +223,23 @@ router.post('/accounts', (req, res) => {
   res.json({ ok: true, message: `Account "${email}" added to pool.` });
 });
 
+router.put('/accounts/:id', (req, res) => {
+  const { displayName, provider, dailyLimit, cooldownSeconds, isActive } = req.body;
+  const updated = AccountPool.updateAccountById(req.params.id, {
+    displayName,
+    provider,
+    dailyLimit: dailyLimit !== undefined ? parseInt(dailyLimit, 10) : undefined,
+    cooldownSeconds: cooldownSeconds !== undefined ? parseInt(cooldownSeconds, 10) : undefined,
+    isActive
+  });
+
+  if (!updated) {
+    return res.status(404).json({ ok: false, error: 'Account not found.' });
+  }
+
+  res.json({ ok: true, message: `Account "${updated.email}" updated successfully.`, account: updated });
+});
+
 router.delete('/accounts/:id', (req, res) => {
   db.prepare('DELETE FROM accounts WHERE id = ?').run(req.params.id);
   res.json({ ok: true, message: 'Account removed from pool.' });

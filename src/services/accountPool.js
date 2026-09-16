@@ -114,6 +114,34 @@ class AccountPool {
   }
 
   /**
+   * Updates an existing account's configurable fields by ID
+   * @param {number|string} id
+   * @param {Object} updates
+   */
+  static updateAccountById(id, { displayName, provider, dailyLimit, cooldownSeconds, isActive } = {}) {
+    const existing = db.prepare('SELECT * FROM accounts WHERE id = ?').get(id);
+    if (!existing) return null;
+
+    const nextDisplayName = displayName !== undefined ? displayName.trim() : existing.display_name;
+    const nextProvider = provider !== undefined ? provider : existing.provider;
+    const nextDailyLimit = dailyLimit !== undefined ? parseInt(dailyLimit, 10) : existing.daily_limit;
+    const nextCooldown = cooldownSeconds !== undefined ? parseInt(cooldownSeconds, 10) : existing.cooldown_seconds;
+    const nextIsActive = isActive !== undefined ? (isActive ? 1 : 0) : existing.is_active;
+
+    db.prepare(`
+      UPDATE accounts
+      SET display_name = ?,
+          provider = ?,
+          daily_limit = ?,
+          cooldown_seconds = ?,
+          is_active = ?
+      WHERE id = ?
+    `).run(nextDisplayName, nextProvider, nextDailyLimit, nextCooldown, nextIsActive, id);
+
+    return db.prepare('SELECT * FROM accounts WHERE id = ?').get(id);
+  }
+
+  /**
    * Returns list of all accounts with live telemetry
    */
   static getAllAccounts() {
