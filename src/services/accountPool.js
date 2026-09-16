@@ -229,7 +229,7 @@ class AccountPool {
         statusColor = 'amber';
       } else if (acc.remaining_today <= 0) {
         humanStatus = 'Daily Limit Reached';
-        statusColor = 'amber';
+        statusColor = 'rose';
       } else if (effectiveStatus === 'DEGRADED') {
         humanStatus = 'Reduced Sending';
         statusColor = 'amber';

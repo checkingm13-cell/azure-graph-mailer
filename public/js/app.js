@@ -672,12 +672,18 @@ document.addEventListener('DOMContentLoaded', () => {
         accountsTableBody.innerHTML = `<tr><td colspan="6" class="table-empty">No sender accounts registered yet.</td></tr>`;
         accountsPoolGrid.innerHTML = `<div class="loading-placeholder">No accounts registered. Go to "Sender Accounts Pool" tab to add your first account.</div>`;
       } else {
-        accountsTableBody.innerHTML = allLoadedAccounts.map((a) => `
+        accountsTableBody.innerHTML = allLoadedAccounts.map((a) => {
+          const isLimit = a.sent_today >= a.daily_limit;
+          let statusBadge = a.is_active ? '<span class="badge badge-completed">🟢 Active</span>' : '<span class="badge badge-cancelled">⚪ Inactive</span>';
+          if (a.is_active && isLimit) {
+            statusBadge = '<span class="badge badge-failed">🛑 Limit Reached</span>';
+          }
+          return `
           <tr>
             <td><strong>${escapeHtml(a.email)}</strong><div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(a.display_name)}</div></td>
             <td><span class="account-badge">${a.provider}</span></td>
-            <td><span class="badge ${a.is_active ? 'badge-completed' : 'badge-failed'}" style="cursor: pointer;" title="Click to toggle status">${a.is_active ? '🟢 Active' : '⚪ Inactive'}</span></td>
-            <td><strong>${a.sent_today}</strong> / ${a.daily_limit}</td>
+            <td><span style="cursor: pointer;" title="Click to toggle status" class="btn-toggle-status" data-id="${a.id}">${statusBadge}</span></td>
+            <td><strong style="color: ${isLimit ? 'var(--rose)' : 'inherit'};">${a.sent_today}</strong> / ${a.daily_limit}${isLimit ? ' <span class="badge badge-failed" style="font-size: 10px; margin-left: 4px;">Full</span>' : ''}</td>
             <td>${a.cooldown_seconds}s</td>
             <td>
               <div style="display: flex; gap: 4px; flex-wrap: wrap;">
@@ -688,7 +694,8 @@ document.addEventListener('DOMContentLoaded', () => {
               </div>
             </td>
           </tr>
-        `).join('');
+        `;
+        }).join('');
 
         document.querySelectorAll('.btn-edit-account').forEach((btn) => {
           btn.addEventListener('click', (e) => {
@@ -715,7 +722,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
           });
         });
-        document.querySelectorAll('.btn-toggle-account').forEach((btn) => {
+        document.querySelectorAll('.btn-toggle-account, .btn-toggle-status').forEach((btn) => {
           btn.addEventListener('click', async () => {
             await fetch(`/api/accounts/${btn.dataset.id}/toggle`, { method: 'PATCH' });
             loadAccounts(); refreshTelemetry();
@@ -730,22 +737,35 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         accountsPoolGrid.innerHTML = allLoadedAccounts.map((a) => {
-          const pct = Math.min(100, Math.round((a.sent_today / a.daily_limit) * 100));
           const isCooldown = a.cooldown_remaining_sec > 0;
+          const remaining = a.remaining_today !== undefined ? a.remaining_today : Math.max(0, a.daily_limit - a.sent_today);
+          const isLimitReached = remaining <= 0;
           const serviceName = a.provider === 'AZURE_ACS' ? 'Azure Email' : (a.provider === 'OCI' ? 'Oracle Email' : 'Microsoft 365');
           const healthScore = a.computed_health_score || a.health_score || 100;
           const healthLabel = healthScore >= 90 ? 'Healthy' : (healthScore >= 70 ? 'Good' : 'Needs Review');
-          const humanStatus = a.human_status || (isCooldown ? 'Temporarily paused' : (a.is_active ? 'Ready' : 'Disabled'));
-          const statusDot = a.status_color === 'rose' ? '✕' : (isCooldown ? '⏸' : (a.is_active ? '●' : '○'));
-          const statusColor = a.status_color === 'rose' ? 'var(--rose)' : (isCooldown ? 'var(--amber)' : (a.is_active ? 'var(--emerald)' : 'var(--text-muted)'));
+          
+          const humanStatus = isLimitReached 
+            ? 'Daily Limit Reached' 
+            : (a.human_status || (isCooldown ? 'Temporarily paused' : (a.is_active ? 'Ready' : 'Disabled')));
+          const statusColor = isLimitReached 
+            ? 'var(--rose)' 
+            : (a.status_color === 'rose' ? 'var(--rose)' : (a.status_color === 'amber' || isCooldown ? 'var(--amber)' : (a.is_active ? 'var(--emerald)' : 'var(--text-muted)')));
+          const statusDot = isLimitReached 
+            ? '🛑' 
+            : (a.status_color === 'rose' ? '✕' : (isCooldown ? '⏸' : (a.is_active ? '●' : '○')));
+
+          const remPct = a.daily_limit > 0 ? Math.min(100, Math.round((remaining / a.daily_limit) * 100)) : 0;
+          const barWidth = isLimitReached ? 100 : remPct;
+          const barColor = isLimitReached ? 'var(--rose)' : (remPct <= 15 ? 'var(--amber)' : 'var(--emerald)');
+          const barGlow = isLimitReached ? 'box-shadow: 0 0 10px rgba(244, 63, 94, 0.45);' : '';
 
           return `
-            <div class="account-card" style="border-radius: 10px; padding: 14px; background: var(--bg-card); border: 1px solid var(--border-color); display: flex; flex-direction: column; justify-content: space-between;">
+            <div class="account-card" style="border-radius: 10px; padding: 14px; background: var(--bg-card); border: 1px solid ${isLimitReached ? 'rgba(244, 63, 94, 0.4)' : 'var(--border-color)'}; display: flex; flex-direction: column; justify-content: space-between;">
               <div>
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
                   <div style="display: flex; align-items: center; gap: 6px;">
                     <span style="color: ${statusColor}; font-weight: 700; font-size: 13px;">${statusDot}</span>
-                    <span style="font-weight: 600; font-size: 12px; color: ${statusColor};">${humanStatus}</span>
+                    <span style="font-weight: 700; font-size: 12px; color: ${statusColor};">${humanStatus}</span>
                   </div>
                   <span class="account-badge" style="font-size: 10px; font-weight: 600;">${serviceName}</span>
                 </div>
@@ -767,16 +787,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 <!-- Daily Sending Limit & Available Today -->
                 <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; margin-bottom: 4px;">
                   <span style="color: var(--text-muted);">Available Today</span>
-                  <strong style="color: var(--text-primary);">${(a.remaining_today !== undefined ? a.remaining_today : (a.daily_limit - a.sent_today)).toLocaleString()} / ${a.daily_limit.toLocaleString()}</strong>
+                  <strong style="color: ${isLimitReached ? 'var(--rose)' : 'var(--text-primary)'};">${remaining.toLocaleString()} / ${a.daily_limit.toLocaleString()}${isLimitReached ? ' (0 Left)' : ''}</strong>
                 </div>
                 <div class="gauge-bar-bg" style="height: 6px; margin-bottom: 8px;">
-                  <div class="gauge-bar-fill" style="width: ${a.daily_limit > 0 ? Math.min(100, Math.round(((a.remaining_today !== undefined ? a.remaining_today : (a.daily_limit - a.sent_today)) / a.daily_limit) * 100)) : 0}%; background-color: ${(a.remaining_today !== undefined ? a.remaining_today : (a.daily_limit - a.sent_today)) <= 0 ? 'var(--rose)' : 'var(--emerald)'};"></div>
+                  <div class="gauge-bar-fill" style="width: ${barWidth}%; background-color: ${barColor}; ${barGlow}"></div>
                 </div>
               </div>
 
               <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); font-size: 11px;">
-                <span style="color: ${isCooldown ? 'var(--amber)' : 'var(--text-muted)'};">
-                  ${isCooldown ? `⏳ Resumes in ${a.cooldown_remaining_sec}s` : `Speed: ${a.sending_speed || 'Balanced'}`}
+                <span style="color: ${isCooldown ? 'var(--amber)' : (isLimitReached ? 'var(--rose)' : 'var(--text-muted)')}; font-weight: ${isLimitReached ? '600' : 'normal'};">
+                  ${isCooldown ? `⏳ Resumes in ${a.cooldown_remaining_sec}s` : (isLimitReached ? '🛑 Daily quota full' : `Speed: ${a.sending_speed || 'Balanced'}`)}
                 </span>
                 <div style="display: flex; gap: 4px;">
                   <button class="btn btn-secondary btn-xs btn-reset-card" data-id="${a.id}" style="padding: 3px 6px; font-size: 11px;" title="Reset sent today to 0">🔄 Reset</button>

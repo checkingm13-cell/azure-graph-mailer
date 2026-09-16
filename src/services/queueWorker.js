@@ -37,6 +37,21 @@ class QueueWorker {
     if (this.isRunning) return;
     this.isRunning = true;
     this.isPaused = false;
+
+    // Crash Recovery Hook: Recover any stranded in-flight records from server restarts
+    try {
+      const recovered = db.prepare(`
+        UPDATE queue 
+        SET status = 'queued', account_id = NULL 
+        WHERE status = 'sending'
+      `).run();
+      if (recovered.changes > 0) {
+        console.log(`[QueueWorker] 🔄 Crash Recovery: Re-queued ${recovered.changes} stranded 'sending' email(s).`);
+      }
+    } catch (err) {
+      console.error('[QueueWorker] Error recovering stranded sending items:', err);
+    }
+
     console.log('[QueueWorker] 🚀 Background queue worker engine started.');
     this.workerLoopPromise = this.loop().catch((err) => {
       console.error('[QueueWorker] Fatal error in worker loop:', err);
