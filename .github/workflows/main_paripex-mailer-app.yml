@@ -26,7 +26,7 @@ jobs:
       - name: Install Dependencies
         run: npm ci --omit=dev
 
-      # Package ONLY app files + node_modules in ultra-compressed fast mode without git/scratch
+      # Package essential files with ultra-fast compression level 1
       - name: Create Clean Lightweight Archive
         run: |
           zip -q -1 -r release.zip package.json package-lock.json src public node_modules
@@ -38,10 +38,12 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_ADDF7064233A4843AD97AC6BDD366422 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_B86E2BDB93B14E92B6BD707FD34B6FE2 }}
 
-      # Direct Fast Zip Deploy
+      # Fast Zip Deploy without waiting for container cold-start ping
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'paripex-mailer-app'
           slot-name: 'Production'
           package: release.zip
+          clean: true
+          restart: false
