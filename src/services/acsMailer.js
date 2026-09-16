@@ -10,10 +10,15 @@ let acsClient = null;
 
 function getAcsClient() {
   if (acsClient) return acsClient;
-  if (!config.acsConnectionString) {
-    throw new Error('Azure Communication Services Connection String is not configured in .env.');
+  let connStr = (config.acsConnectionString || '').trim();
+  if (!connStr) {
+    throw new Error('Azure Communication Services Connection String is not configured in environment.');
   }
-  acsClient = new EmailClient(config.acsConnectionString);
+  // Auto-fix if 'endpoint=' prefix was omitted
+  if (!connStr.toLowerCase().startsWith('endpoint=')) {
+    connStr = `endpoint=${connStr}`;
+  }
+  acsClient = new EmailClient(connStr);
   return acsClient;
 }
 
