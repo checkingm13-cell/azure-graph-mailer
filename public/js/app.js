@@ -1235,29 +1235,60 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  let previewContactIndex = 0;
+
   function updateSampleEmailPreview() {
     if (!currentPreviewData || !currentPreviewData.contacts.length) return;
     const isRotation = chkEnableTemplateRotation && chkEnableTemplateRotation.checked;
-    let templateId = null;
-
-    if (isRotation) {
-      const checkedBoxes = Array.from(document.querySelectorAll('.chk-rotate-tpl:checked'));
-      if (checkedBoxes.length > 0) {
-        templateId = checkedBoxes[0].value;
-      }
-    } else {
-      templateId = batchTemplateSelect.value;
+    const checkedBoxes = Array.from(document.querySelectorAll('.chk-rotate-tpl:checked'));
+    
+    let activeTemplatesList = [];
+    if (isRotation && checkedBoxes.length > 0) {
+      activeTemplatesList = checkedBoxes.map(cb => allLoadedTemplates.find(t => String(t.id) === String(cb.value))).filter(Boolean);
+    } else if (batchTemplateSelect && batchTemplateSelect.value) {
+      const singleTpl = allLoadedTemplates.find(t => String(t.id) === String(batchTemplateSelect.value));
+      if (singleTpl) activeTemplatesList = [singleTpl];
     }
 
-    const firstContact = currentPreviewData.contacts[0];
-    sampleRecipientEmail.textContent = `Recipient: ${firstContact.email} (${firstContact.name || 'Author'})`;
-    if (!templateId) {
-      sampleSubjectLine.textContent = isRotation ? 'Subject: (Select templates in rotation list above)' : 'Subject: (Choose a template above)';
+    if (previewContactIndex >= currentPreviewData.contacts.length) previewContactIndex = 0;
+    const currentContact = currentPreviewData.contacts[previewContactIndex];
+
+    let assignedTemplate = null;
+    if (activeTemplatesList.length > 0) {
+      const rotationStrategy = document.querySelector('input[name="templateRotationStrategy"]:checked')?.value || 'PER_EMAIL';
+      const batchSize = Math.max(1, parseInt(batchSizeInput?.value || '50', 10));
+      const tplIndex = rotationStrategy === 'PER_EMAIL'
+        ? previewContactIndex % activeTemplatesList.length
+        : Math.floor(previewContactIndex / batchSize) % activeTemplatesList.length;
+      assignedTemplate = activeTemplatesList[tplIndex];
+    }
+
+    // Recipient Navigation Bar in Preview
+    const navHtml = currentPreviewData.contacts.length > 1 ? `
+      <div style="display: flex; gap: 6px; align-items: center; margin-bottom: 8px;">
+        <button type="button" class="btn btn-secondary btn-sm" id="btnPrevSampleContact" style="padding: 2px 8px; font-size: 11px;" ${previewContactIndex === 0 ? 'disabled' : ''}>◀ Prev</button>
+        <span style="font-size: 11px; font-weight: 600; color: var(--text-primary);">Recipient ${previewContactIndex + 1} of ${currentPreviewData.contacts.length}</span>
+        <button type="button" class="btn btn-secondary btn-sm" id="btnNextSampleContact" style="padding: 2px 8px; font-size: 11px;" ${previewContactIndex >= currentPreviewData.contacts.length - 1 ? 'disabled' : ''}>Next ▶</button>
+        ${assignedTemplate ? `<span class="badge badge-scheduled" style="font-size: 10px; margin-left: 6px;">Variant: ${escapeHtml(assignedTemplate.name)}</span>` : ''}
+      </div>
+    ` : '';
+
+    sampleRecipientEmail.innerHTML = navHtml + `<span>Recipient: <strong>${escapeHtml(currentContact.email)}</strong> (${escapeHtml(currentContact.name || 'Author')})</span>`;
+    
+    // Attach buttons for stepping through sample contacts
+    document.getElementById('btnPrevSampleContact')?.addEventListener('click', () => {
+      if (previewContactIndex > 0) { previewContactIndex--; updateSampleEmailPreview(); }
+    });
+    document.getElementById('btnNextSampleContact')?.addEventListener('click', () => {
+      if (previewContactIndex < currentPreviewData.contacts.length - 1) { previewContactIndex++; updateSampleEmailPreview(); }
+    });
+
+    if (!assignedTemplate) {
+      sampleSubjectLine.textContent = isRotation ? 'Subject: (Select at least 2 templates above to rotate)' : 'Subject: (Choose a template above)';
       sampleEmailBody.innerHTML = 'Choose or check template(s) above to preview how the email will look with merged variables.';
       return;
     }
-    const template = allLoadedTemplates.find((t) => String(t.id) === String(templateId));
-    if (!template) return;
+
     function merge(str, c) {
       const activeSender = document.getElementById('batchSenderAccountSelect')?.selectedOptions[0]?.text || 'dr.reetashah@theparipexjournal.com';
       let rawDomain = activeSender.includes('@') ? activeSender.split('@')[1].replace(/[^a-zA-Z0-9.-]/g, '') : 'theparipexjournal.com';
@@ -1289,7 +1320,11 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       return out;
     }
-    const rawHtml = merge(template.body_html, firstContact);
+
+    const rotationInfo = isRotation ? ` [Rotating: ${activeTemplatesList.length} Templates Active]` : '';
+    sampleSubjectLine.innerHTML = `<span style="color: var(--text-muted); font-size: 11px;">Subject:</span> <b>${escapeHtml(merge(assignedTemplate.subject, currentContact))}</b>${rotationInfo}`;
+    
+    const rawHtml = merge(assignedTemplate.body_html, currentContact);
     if (typeof DOMPurify !== 'undefined') {
       sampleEmailBody.innerHTML = DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true } });
     } else {

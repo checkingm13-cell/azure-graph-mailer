@@ -161,12 +161,12 @@ class QueueWorker {
           const dynamicSubject = renderTemplate(item.subject, {
             sender_email: account.email,
             email: item.email,
-            name: item.author_name
+            name: item.name
           });
           const dynamicHtml = renderTemplate(item.rendered_html, {
             sender_email: account.email,
             email: item.email,
-            name: item.author_name
+            name: item.name
           });
 
           if (account.provider === 'AZURE_ACS') {
