@@ -35,6 +35,9 @@ app.use('/api', (req, res, next) => {
 // Mount API routes
 app.use('/api', apiRoutes);
 
+// Static frontend dashboard
+app.use(express.static(path.resolve(__dirname, '../public')));
+
 // Lightweight Health & Heartbeat Endpoint (For Uptime Monitors & Azure Health Checks)
 app.get(['/health', '/heartbeat', '/ping'], (req, res) => {
   res.status(200).json({
@@ -43,6 +46,11 @@ app.get(['/health', '/heartbeat', '/ping'], (req, res) => {
     timestamp: new Date().toISOString(),
     worker: queueWorker.isRunning && !queueWorker.isPaused ? 'active' : 'idle'
   });
+});
+
+// Fallback to index.html for root or SPA navigation
+app.get('/', (req, res) => {
+  res.sendFile(path.resolve(__dirname, '../public/index.html'));
 });
 
 function seedDefaultAccount() {

@@ -20,7 +20,10 @@ function formatSqliteDateTime(d) {
   return date.toISOString().replace('T', ' ').slice(0, 19);
 }
 
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ 
+  dest: 'uploads/',
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit to prevent memory exhaustion
+});
 
 // Helper function to extract rows from Excel or CSV using ExcelJS
 async function parseSpreadsheetRows(filePath, originalName = '') {

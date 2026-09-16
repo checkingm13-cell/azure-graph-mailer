@@ -1289,9 +1289,12 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       return out;
     }
-    const rotationNote = isRotation ? ` [Rotating across ${document.querySelectorAll('.chk-rotate-tpl:checked').length} templates - Sample 1 shown]` : '';
-    sampleSubjectLine.textContent = `Subject: ${merge(template.subject, firstContact)}${rotationNote}`;
-    sampleEmailBody.innerHTML = merge(template.body_html, firstContact);
+    const rawHtml = merge(template.body_html, firstContact);
+    if (typeof DOMPurify !== 'undefined') {
+      sampleEmailBody.innerHTML = DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true } });
+    } else {
+      sampleEmailBody.innerHTML = rawHtml;
+    }
   }
 
   if (batchSizeInput) batchSizeInput.addEventListener('input', renderBatchesBreakdown);
