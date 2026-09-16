@@ -38,7 +38,7 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_ADDF7064233A4843AD97AC6BDD366422 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_B86E2BDB93B14E92B6BD707FD34B6FE2 }}
 
-      # Fast Zip Deploy without waiting for container cold-start ping
+      # Fast Zip Deploy and reload process
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
@@ -46,4 +46,5 @@ jobs:
           slot-name: 'Production'
           package: release.zip
           clean: true
-          restart: false
+          restart: true
+

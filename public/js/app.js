@@ -608,7 +608,35 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // Reset All Accounts Quotas Buttons
+  const attachResetAll = (elemId) => {
+    const btn = document.getElementById(elemId);
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      if (!confirm('Are you sure you want to reset sent today counters to 0 for ALL accounts in the pool?')) return;
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/accounts/reset-all', { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+          alert('✅ ' + (data.message || 'All account quotas reset to 0!'));
+          loadAccounts();
+          refreshTelemetry();
+        } else {
+          alert('❌ Failed: ' + (data.error || 'Server error'));
+        }
+      } catch (err) {
+        alert('❌ Network error: ' + err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  };
+  attachResetAll('btnResetAllQuotasOverview');
+  attachResetAll('btnResetAllQuotasAccounts');
+
   async function loadAccounts() {
+
     try {
       const res = await fetch('/api/accounts');
       const data = await res.json();

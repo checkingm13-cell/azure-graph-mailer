@@ -311,6 +311,13 @@ router.post('/accounts/:id/reset', (req, res) => {
     WHERE id = ?
   `).run(req.params.id);
 
+  // Clear 24-hour sent records for this account so rolling count stays at 0
+  db.prepare(`
+    UPDATE queue 
+    SET sent_at = datetime('now', '-25 hours') 
+    WHERE account_id = ? AND status = 'sent'
+  `).run(req.params.id);
+
   AccountPool.refreshRollingQuotas(true);
 
   res.json({ ok: true, message: `Reset sent count to 0 for ${account.email}.` });
@@ -325,6 +332,13 @@ router.post('/accounts/reset-all', (req, res) => {
         cooldown_until = NULL, 
         quota_reset_at = datetime('now'),
         status = 'ACTIVE'
+  `).run();
+
+  // Clear 24-hour sent records so rolling recalculation stays at 0
+  db.prepare(`
+    UPDATE queue 
+    SET sent_at = datetime('now', '-25 hours') 
+    WHERE status = 'sent'
   `).run();
 
   AccountPool.refreshRollingQuotas(true);
