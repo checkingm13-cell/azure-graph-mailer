@@ -378,6 +378,36 @@ router.patch('/accounts/:id/toggle', (req, res) => {
   res.json({ ok: true, is_active: newStatus });
 });
 
+// Reset single account quota (sent_today = 0, clear cooldown)
+router.post('/accounts/:id/reset', (req, res) => {
+  const account = db.prepare('SELECT id, email FROM accounts WHERE id = ?').get(req.params.id);
+  if (!account) return res.status(404).json({ ok: false, error: 'Account not found' });
+
+  db.prepare(`
+    UPDATE accounts 
+    SET sent_today = 0, 
+        last_sent_at = NULL, 
+        cooldown_until = NULL, 
+        status = 'ACTIVE' 
+    WHERE id = ?
+  `).run(req.params.id);
+
+  res.json({ ok: true, message: `Reset sent count to 0 for ${account.email}.` });
+});
+
+// Reset all accounts quotas in pool
+router.post('/accounts/reset-all', (req, res) => {
+  const info = db.prepare(`
+    UPDATE accounts 
+    SET sent_today = 0, 
+        last_sent_at = NULL, 
+        cooldown_until = NULL, 
+        status = 'ACTIVE'
+  `).run();
+
+  res.json({ ok: true, message: `Reset sent counters to 0 for all ${info.changes} account(s).` });
+});
+
 // 4. TEMPLATES MANAGEMENT
 router.get('/templates', (req, res) => {
   const templates = db.prepare('SELECT * FROM templates ORDER BY id DESC').all();

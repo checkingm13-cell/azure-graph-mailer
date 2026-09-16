@@ -652,6 +652,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <td>
               <div style="display: flex; gap: 4px; flex-wrap: wrap;">
                 <button class="btn btn-primary btn-sm btn-edit-account" data-id="${a.id}" title="Edit daily limit & settings">✏️ Edit</button>
+                <button class="btn btn-secondary btn-sm btn-reset-account" data-id="${a.id}" title="Reset sent count to 0">🔄 Reset</button>
                 <button class="btn btn-secondary btn-sm btn-toggle-account" data-id="${a.id}">${a.is_active ? 'Disable' : 'Enable'}</button>
                 <button class="btn btn-danger btn-sm btn-del-account" data-id="${a.id}">Delete</button>
               </div>
@@ -663,6 +664,14 @@ document.addEventListener('DOMContentLoaded', () => {
           btn.addEventListener('click', (e) => {
             e.stopPropagation();
             startEditAccount(btn.dataset.id);
+          });
+        });
+        document.querySelectorAll('.btn-reset-account').forEach((btn) => {
+          btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (!confirm('Reset today\'s sent counter to 0 for this account?')) return;
+            await fetch(`/api/accounts/${btn.dataset.id}/reset`, { method: 'POST' });
+            loadAccounts(); refreshTelemetry();
           });
         });
         document.querySelectorAll('.btn-toggle-account').forEach((btn) => {
@@ -728,7 +737,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 <span style="color: ${isCooldown ? 'var(--amber)' : 'var(--text-muted)'};">
                   ${isCooldown ? `⏳ Resumes in ${a.cooldown_remaining_sec}s` : `Speed: ${a.sending_speed || 'Balanced'}`}
                 </span>
-                <button class="btn btn-secondary btn-xs btn-edit-account-card" data-id="${a.id}" style="padding: 3px 8px; font-size: 11px;">Manage</button>
+                <div style="display: flex; gap: 4px;">
+                  <button class="btn btn-secondary btn-xs btn-reset-card" data-id="${a.id}" style="padding: 3px 6px; font-size: 11px;" title="Reset sent today to 0">🔄 Reset</button>
+                  <button class="btn btn-secondary btn-xs btn-edit-account-card" data-id="${a.id}" style="padding: 3px 8px; font-size: 11px;">Manage</button>
+                </div>
               </div>
             </div>
           `;
@@ -740,9 +752,43 @@ document.addEventListener('DOMContentLoaded', () => {
             startEditAccount(btn.dataset.id);
           });
         });
+
+        document.querySelectorAll('.btn-reset-card').forEach((btn) => {
+          btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (!confirm('Reset today\'s sent counter to 0 for this account?')) return;
+            await fetch(`/api/accounts/${btn.dataset.id}/reset`, { method: 'POST' });
+            loadAccounts(); refreshTelemetry();
+          });
+        });
       }
     } catch (err) { console.error('Error loading accounts:', err); }
   }
+
+  // Bind Bulk Reset Quotas
+  const handleResetAllQuotas = async () => {
+    if (!confirm('Reset sent counters to 0 for ALL accounts in the pool?')) return;
+    try {
+      const res = await fetch('/api/accounts/reset-all', { method: 'POST' });
+      const data = await res.json();
+      if (data.ok) {
+        alert('✅ All account quotas have been reset to 0!');
+        loadAccounts();
+        refreshTelemetry();
+      } else {
+        alert(data.error || 'Failed to reset quotas');
+      }
+    } catch (err) {
+      alert('Error resetting quotas: ' + err.message);
+    }
+  };
+
+  const btnResetAllOverview = document.getElementById('btnResetAllQuotasOverview');
+  if (btnResetAllOverview) btnResetAllOverview.addEventListener('click', handleResetAllQuotas);
+  const btnResetAllAccounts = document.getElementById('btnResetAllQuotasAccounts');
+  if (btnResetAllAccounts) btnResetAllAccounts.addEventListener('click', handleResetAllQuotas);
+  const btnGoToAccounts = document.getElementById('btnGoToAccountsTab');
+  if (btnGoToAccounts) btnGoToAccounts.addEventListener('click', () => switchTab('tab-accounts'));
 
   formAddAccount.addEventListener('submit', async (e) => {
     e.preventDefault();

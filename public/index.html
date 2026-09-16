@@ -193,9 +193,14 @@
             and Title columns.</p>
         </div>
       </div>
-      <div class="section-header">
-        <h2>Live Multi-Account Sender Pool</h2><span class="section-desc">Fair Round-Robin rotation with rolling 24h
-          limits</span>
+      <div class="section-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div>
+          <h2>Live Multi-Account Sender Pool</h2><span class="section-desc">Fair Round-Robin rotation with rolling 24h limits</span>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button type="button" id="btnResetAllQuotasOverview" class="btn btn-secondary btn-sm" style="color: var(--amber); border-color: rgba(245, 158, 11, 0.4);" title="Reset sent counters to 0 for all accounts">🔄 Reset All Limits to 0</button>
+          <button type="button" id="btnGoToAccountsTab" class="btn btn-primary btn-sm" style="font-size: 11px;">⚙️ Manage Limits & Pool</button>
+        </div>
       </div>
       <div id="accountsPoolGrid" class="accounts-grid">
         <div class="loading-placeholder">Loading account pool status...</div>
@@ -288,9 +293,10 @@
             </div>
             <div style="display: flex; flex-wrap: wrap; gap: 6px;">
               <button type="button" class="btn btn-secondary btn-sm btn-quota-preset" data-limit="500" data-cooldown="60" title="Safe for Microsoft Graph Mailboxes (500/day, 60s cooldown)">🛡️ Set All: 500</button>
+              <button type="button" class="btn btn-secondary btn-sm btn-quota-preset" data-limit="1000" data-cooldown="0" title="Standard Scale (1,000/day, 0s cooldown)">📈 Set All: 1,000</button>
               <button type="button" class="btn btn-secondary btn-sm btn-quota-preset" data-limit="2000" data-cooldown="0" title="Standard Volume Dispatch (2,000/day, 0s cooldown)">⚡ Set All: 2,000</button>
-              <button type="button" class="btn btn-secondary btn-sm btn-quota-preset" data-limit="4000" data-cooldown="0" title="High Volume Dispatch (4,000/day, 0s cooldown)">🚀 Set All: 4,000</button>
               <button type="button" class="btn btn-secondary btn-sm btn-quota-preset" data-limit="10000" data-cooldown="0" title="Enterprise Scale (10,000/day, 0s cooldown)">🏛️ Set All: 10,000</button>
+              <button type="button" id="btnResetAllQuotasAccounts" class="btn btn-secondary btn-sm" style="color: var(--amber); border-color: rgba(245, 158, 11, 0.4);" title="Reset sent counters to 0">🔄 Reset Sent to 0</button>
             </div>
           </div>
 
