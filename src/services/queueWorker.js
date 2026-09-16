@@ -114,7 +114,7 @@ class QueueWorker {
           continue;
         }
 
-        // 4. Mark as sending atomically
+        // 4. Mark as sending atomically and advance account dispatch timestamp immediately
         db.prepare(`
           UPDATE queue 
           SET status = 'sending',
@@ -122,6 +122,13 @@ class QueueWorker {
               attempts = attempts + 1
           WHERE id = ?
         `).run(account.id, item.id);
+
+        // Advance last_sent_at immediately so the very next email in queue leases a different account
+        db.prepare(`
+          UPDATE accounts
+          SET last_sent_at = datetime('now')
+          WHERE id = ?
+        `).run(account.id);
 
         this.currentTask = {
           queueId: item.id,

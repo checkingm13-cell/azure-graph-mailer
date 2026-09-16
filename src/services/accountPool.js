@@ -49,7 +49,11 @@ class AccountPool {
           OR last_sent_at IS NULL
           OR (strftime('%s', 'now') - strftime('%s', last_sent_at)) >= cooldown_seconds
         )
-      ORDER BY last_sent_at ASC
+      ORDER BY 
+        CASE WHEN last_sent_at IS NULL THEN 0 ELSE 1 END ASC,
+        last_sent_at ASC,
+        sent_today ASC,
+        id ASC
       LIMIT 1
     `);
 
