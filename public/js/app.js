@@ -318,6 +318,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if (btnMonitorCancel) { btnMonitorCancel.style.display = 'inline-block'; btnMonitorCancel.dataset.id = activeCamp.id; }
             if (activeCamp.etaSeconds > 0) {
               monitorEtaText.textContent = activeCamp.etaSeconds < 60 ? `~${activeCamp.etaSeconds}s remaining` : `~${Math.ceil(activeCamp.etaSeconds / 60)} min remaining`;
+            } else {
+              monitorEtaText.textContent = 'Finishing batch...';
+            }
+          } else if (activeCamp.status === 'PAUSED') {
+            monitorStatusBadge.className = 'badge badge-paused';
+            monitorStatusBadge.textContent = '⏸️ PAUSED';
+            if (btnMonitorPause) btnMonitorPause.style.display = 'none';
+            if (btnMonitorResume) { btnMonitorResume.style.display = 'inline-block'; btnMonitorResume.dataset.id = activeCamp.id; }
+            if (btnMonitorCancel) { btnMonitorCancel.style.display = 'inline-block'; btnMonitorCancel.dataset.id = activeCamp.id; }
+            monitorEtaText.textContent = 'Paused by user';
+          }
+
           // Fetch and display Operational Reason: "Why is my campaign waiting?"
           const reasonCard = document.getElementById('monitorReasonCard');
           const reasonText = document.getElementById('monitorReasonText');
