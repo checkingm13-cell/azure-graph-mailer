@@ -1757,6 +1757,8 @@ document.addEventListener('DOMContentLoaded', () => {
         rerunCustomIntervalBox.style.display = r.value === 'CUSTOM' ? 'flex' : 'none';
       }
     });
+  });
+
   const btnToggleRerunDrawer = document.getElementById('btnToggleRerunDrawer');
   const rerunDrawerBox = document.getElementById('rerunDrawerBox');
 
