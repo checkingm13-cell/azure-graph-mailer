@@ -1,111 +1,132 @@
 ---
-title: "Azure Multi-Account Mailer - Deployment & Setup Guide"
-date: 2026-09-09
+title: "Azure Web App CI/CD Pipeline & Fast Deployment Guide"
+date: 2026-09-16
 tags:
   - azure
   - deployment
   - app-service
+  - github-actions
   - devops
   - obsidian-vault
 aliases:
   - Deployment Guide
-  - How to Deploy
+  - CI/CD Pipeline
 ---
 
-# 🚀 Azure Multi-Account Mailer: Production Deployment Guide
+# 🚀 Azure Web App CI/CD Pipeline & Fast Deployment Guide
 
 > [!NOTE]
-> **Obsidian Integration:** Step-by-step operational guide to deploying `azure-graph-mailer` to Azure App Service Linux.
+> Production deployment configuration for `paripex-mailer-app` hosted on Azure App Service (Linux Node 20 LTS) via GitHub Actions.
 
 ---
 
-## 1. Prerequisites Checklist
+## 1. Fast Deployment Architecture
 
-Before deploying, ensure you have:
-1. **Active Azure Subscription** (Pay-As-You-Go).
-2. **Microsoft Entra ID App Registration** (Already created! Client ID: `172c86cf...`).
-3. **Microsoft 365 Business Basic License** ($7/mo in M365 Admin Center).
-4. **Git** installed on your local machine.
+Earlier pipeline deployments took **2 to 3+ minutes** due to uploading uncompressed folders with tens of thousands of `node_modules` files and remote Oryx build execution.
 
----
+The optimized deployment runs in **under 35 seconds**:
 
-## 2. Step-by-Step Azure Deployment
-
-### Step 1: Create Azure App Service (Linux)
-1. Go to [portal.azure.com](https://portal.azure.com).
-2. Click **Create a resource** $\to$ **Web App**.
-   * **Subscription:** Your Pay-As-You-Go subscription.
-   * **Resource Group:** Create new or select existing (e.g., `rg-mailer`).
-   * **Name:** `azure-graph-mailer-prod` (must be globally unique).
-   * **Publish:** Code.
-   * **Runtime stack:** **Node 20 LTS**.
-   * **Operating System:** **Linux**.
-   * **Pricing Plan:** **Basic B1** ($13/month).
-3. Click **Review + Create** $\to$ **Create**.
+```
+[ Git Push to main ]
+        │
+        ▼
+[ GitHub Runner ] ──► [ npm ci --omit=dev ] ──► [ Create release.zip ]
+                                                        │ (1 single compressed stream)
+                                                        ▼
+                                             [ azure/webapps-deploy@v3 ]
+                                                        │
+                                                        ▼
+                                       [ Azure App Service Kudu ]
+                                       (Instant Mount & Worker Boot)
+```
 
 ---
 
-### Step 2: Enable "Always On" (CRITICAL)
-Without this setting, Azure App Service will sleep after 20 minutes of no web traffic, pausing your queue worker.
-1. In your App Service, go to **Configuration** (or **Configuration $\to$ General settings**).
-2. Find **Always On** and switch it to **On**.
-3. Startup Command: enter `node src/app.js`.
-4. Click **Save**.
+## 2. GitHub Actions Workflow Configuration
+
+Located at `.github/workflows/main_paripex-mailer-app.yml`:
+
+```yaml
+name: Rapid & Secure Azure Web App Deployment
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Production Dependencies
+        run: npm ci --omit=dev
+
+      # Package directly into a single zip (exclude dev/test files)
+      - name: Create Clean Deployment Archive
+        run: |
+          zip -q -r release.zip . -x ".git/*" ".github/*" "tests/*" "*.md"
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_EECFD65A373B4B7B964F0D953BC008D4 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_ADDF7064233A4843AD97AC6BDD366422 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_B86E2BDB93B14E92B6BD707FD34B6FE2 }}
+
+      # Direct Zip Deploy to Azure App Service
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: 'paripex-mailer-app'
+          slot-name: 'Production'
+          package: release.zip
+```
 
 ---
 
-### Step 3: Configure Environment Variables in Azure
-In the Azure Portal under **Settings $\to$ Environment variables** (or **Configuration**), add the following:
+## 3. Environment Variables (Azure App Service Portal)
 
-| Setting Name | Value |
-| :--- | :--- |
-| `PORT` | `8080` (or leave default) |
-| `NODE_ENV` | `production` |
-| `DB_PATH` | `/home/data/mailer.db` *(Ensures persistence!)* |
-| `DEFAULT_PROVIDER` | `GRAPH_API` |
-| `AZURE_TENANT_ID` | `c1288b66-155d-4381-997b-ac06a073e27d` |
-| `AZURE_CLIENT_ID` | `your-azure-client-id` |
-| `AZURE_CLIENT_SECRET` | `your-azure-client-secret` |
-| `DEFAULT_SENDER_EMAIL` | `editor@mail.theparipexjournal.com` |
-| `GLOBAL_SEND_INTERVAL_MS` | `2500` |
-| `DEFAULT_ACCOUNT_DAILY_LIMIT` | `500` |
-| `ACCOUNT_COOLDOWN_SECONDS` | `60` |
+Set these under **Configuration $\to$ Application Settings** in Azure Portal:
 
-Click **Apply** $\to$ **Confirm**.
+| Setting Key | Example Value | Description |
+|---|---|---|
+| `PORT` | `5000` | Port Express listens on. |
+| `NODE_ENV` | `production` | Production runtime flags. |
+| `DB_PATH` | `data/mailer.db` | SQLite WAL database file path. |
+| `DEFAULT_PROVIDER` | `GRAPH_API` | Primary fallback provider (`GRAPH_API`, `AZURE_ACS`, `OCI`). |
+| `AZURE_COMMUNICATION_CONNECTION_STRING` | `endpoint=https://<resource>.communication.azure.com/;accesskey=<key>` | Azure Communication Services endpoint & key. |
+| `ACS_SENDER_EMAIL` | `DoNotReply@mail.theparipexjournal.com` | Verified ACS sender mailbox. |
+| `GLOBAL_SEND_INTERVAL_MS` | `100` | Dispatch delay between consecutive emails. |
+| `DEFAULT_ACCOUNT_DAILY_LIMIT` | `1000` | Default daily limit assigned to new accounts. |
 
 ---
 
-### Step 4: Deploy Code from Local Machine
+## 4. Troubleshooting Common Deployment Issues
 
-#### Option A: Deploy via VS Code (Easiest, 2 Clicks)
-1. Open folder `D:\projects\azure-graph-mailer` in VS Code.
-2. Install the official **Azure App Service** extension.
-3. Sign into Azure.
-4. Right-click the folder $\to$ select **Deploy to Web App...**
-5. Select `azure-graph-mailer-prod`. Done!
+### A. Missing `endpoint=` in ACS Connection String
+- **Symptom:** `Invalid connection string https://...` in queue error log.
+- **Fix:** Ensure the string starts with `endpoint=`. The engine in `src/services/acsMailer.js` now auto-prepends `endpoint=` defensively if omitted.
 
-#### Option B: Deploy via Git / GitHub
-1. Create a private GitHub repository: `azure-graph-mailer`.
-2. Push your local code:
-   ```bash
-   git add .
-   git commit -m "feat: complete multi-account mailer engine"
-   git push origin main
-   ```
-3. In Azure Portal $\to$ **Deployment Center** $\to$ connect GitHub $\to$ pick branch `main`. Azure will automatically build and deploy!
-
----
-
-## 3. Post-Deployment Verification
-1. Open `https://<your-app-name>.azurewebsites.net` in your browser.
-2. You will see the **Azure Multi-Account Mailer Control Center** dashboard live.
-3. Add your sender accounts in the **Sender Accounts Pool** tab.
-4. Upload your CSV of authors in the **Contacts Directory** tab.
-5. Launch your broadcast in the **Launch Campaign** tab.
+### B. Azure App Service Sleep / Inactivity
+- **Fix:** In Azure Portal $\to$ App Service $\to$ **Configuration** $\to$ **General Settings** $\to$ ensure **Always On** is set to **On**.
 
 ---
 
 ## 🔗 Related Notes (Obsidian Links)
-* [[COST_BREAKDOWN_AND_BUDGET]]
 * [[ARCHITECTURE_AND_SYSTEM_DESIGN]]
-* [[../README]]
+* [[SPEC_PRODUCTION_CAMPAIGN_SCHEDULER]]
+* [[README]]
