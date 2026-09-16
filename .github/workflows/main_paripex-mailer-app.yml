@@ -23,13 +23,13 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Install Production Dependencies
+      - name: Install Dependencies
         run: npm ci --omit=dev
 
-      # Package directly into a single zip (exclude dev/test files)
-      - name: Create Clean Deployment Archive
+      # Package ONLY app files + node_modules in ultra-compressed fast mode without git/scratch
+      - name: Create Clean Lightweight Archive
         run: |
-          zip -q -r release.zip . -x ".git/*" ".github/*" "tests/*" "*.md"
+          zip -q -1 -r release.zip package.json package-lock.json src public node_modules
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -38,7 +38,7 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_ADDF7064233A4843AD97AC6BDD366422 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_B86E2BDB93B14E92B6BD707FD34B6FE2 }}
 
-      # Direct Zip Deploy to Azure App Service
+      # Direct Fast Zip Deploy
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
