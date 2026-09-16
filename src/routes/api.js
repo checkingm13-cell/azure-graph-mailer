@@ -81,6 +81,12 @@ router.get('/status', (req, res) => {
   });
 });
 
+// Operational Diagnostic Engine: "Why is my campaign waiting?"
+router.get('/campaigns/:id/status-reason', (req, res) => {
+  const result = AccountPool.getCampaignWaitReason(req.params.id);
+  res.json({ ok: true, ...result });
+});
+
 // 2. WORKER CONTROLS
 router.post('/worker/pause', (req, res) => {
   queueWorker.pause();
@@ -747,9 +753,17 @@ router.post('/campaigns/launch-batches', (req, res) => {
     const totalBatches = Math.ceil(filteredContacts.length / numericBatchSize);
     const createdCampaigns = [];
 
+    const mode = (req.body.mode || 'SMART').toUpperCase();
+    const fallbackAllowed = req.body.fallbackAllowed !== undefined ? (req.body.fallbackAllowed ? 1 : 0) : 1;
+    const sendingSpeed = (req.body.sendingSpeed || 'BALANCED').toUpperCase();
+    const customIntervalMs = parseInt(req.body.customIntervalMs || '2500', 10);
+
     const campInsert = db.prepare(`
-      INSERT INTO campaigns (name, template_id, status, total_count, scheduled_at, sender_account_id)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO campaigns (
+        name, template_id, status, total_count, scheduled_at,
+        sender_account_id, pinned_account_id, mode, fallback_allowed, sending_speed, custom_interval_ms
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const queueInsert = db.prepare(`
@@ -777,7 +791,19 @@ router.post('/campaigns/launch-batches', (req, res) => {
       const isFuture = startMs > (Date.now() + 5000);
       const initialStatus = isFuture ? 'SCHEDULED' : 'QUEUED';
 
-      const campRes = campInsert.run(batchName, templateId, initialStatus, batchSlice.length, batchScheduledAt, parsedSenderAccountId);
+      const campRes = campInsert.run(
+        batchName,
+        templateId,
+        initialStatus,
+        batchSlice.length,
+        batchScheduledAt,
+        parsedSenderAccountId,
+        parsedSenderAccountId,
+        mode,
+        fallbackAllowed,
+        sendingSpeed,
+        customIntervalMs
+      );
       const campaignId = campRes.lastInsertRowid;
 
       for (const c of batchSlice) {

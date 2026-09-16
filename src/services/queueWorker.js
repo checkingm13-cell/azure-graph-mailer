@@ -64,7 +64,11 @@ class QueueWorker {
       try {
         // 1. Fetch next queued item that is scheduled for now or in the past
         const item = db.prepare(`
-          SELECT q.*, c.name AS campaign_name, c.status AS campaign_status, c.sender_account_id AS campaign_sender_account_id
+          SELECT q.*, c.name AS campaign_name, c.status AS campaign_status,
+                 c.mode AS campaign_mode,
+                 COALESCE(c.pinned_account_id, c.sender_account_id) AS campaign_pinned_account_id,
+                 c.fallback_allowed AS campaign_fallback_allowed,
+                 c.custom_interval_ms AS campaign_custom_interval_ms
           FROM queue q
           JOIN campaigns c ON q.campaign_id = c.id
           WHERE q.status = 'queued'
@@ -90,8 +94,18 @@ class QueueWorker {
           `).run(item.campaign_id);
         }
 
-        // 3. Request an available account from the multi-account pool (or campaign-specific account)
-        const account = AccountPool.getAvailableAccount(item.campaign_sender_account_id || null);
+        // 3. Request an available account respecting policy (Controlled vs Smart)
+        let account = null;
+        if (item.campaign_mode === 'CONTROLLED' && item.campaign_pinned_account_id) {
+          account = AccountPool.getAvailableAccount(item.campaign_pinned_account_id);
+          // If pinned account unavailable and fallback is permitted, lease from healthy pool
+          if (!account && item.campaign_fallback_allowed === 1) {
+            account = AccountPool.getAvailableAccount(null);
+          }
+        } else {
+          // Smart Send mode or unpinned
+          account = AccountPool.getAvailableAccount(item.campaign_pinned_account_id || null);
+        }
 
         if (!account) {
           // All accounts are either in cooldown or hit daily limits
@@ -157,11 +171,13 @@ class QueueWorker {
             });
           }
 
-          // 6. Record Success
+          // 6. Record Success & Acceptance
           db.prepare(`
             UPDATE queue
             SET status = 'sent',
                 sent_at = datetime('now'),
+                accepted_at = datetime('now'),
+                provider_message_id = COALESCE(provider_message_id, 'msg_' || hex(randomblob(8))),
                 last_error = ''
             WHERE id = ?
           `).run(item.id);
