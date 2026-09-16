@@ -145,27 +145,50 @@ document.addEventListener('DOMContentLoaded', () => {
     btnPresetEnterprise.addEventListener('click', () => applyPacingPreset(100, btnPresetEnterprise));
   }
 
-  // Auto-presets on provider dropdown change
+  // Auto-presets & connection-specific hints on provider dropdown change
   const accProviderSelect = document.getElementById('accProvider');
+  const accProviderHelp = document.getElementById('accProviderHelp');
   const accDailyLimitInput = document.getElementById('accDailyLimit');
   const accCooldownInput = document.getElementById('accCooldown');
   const accEmailInput = document.getElementById('accEmail');
 
+  function updateProviderHelp(provider) {
+    if (!accProviderHelp) return;
+    if (provider === 'OCI') {
+      accProviderHelp.innerHTML = '🏛️ <strong>Oracle Cloud Infrastructure (OCI)</strong>: Direct SMTP Relay (Port 587). Enterprise PAYG: 1,500+ msgs/sec. Safe limits: 2k to 50k+/day, 0s cooldown.';
+    } else if (provider === 'AZURE_ACS') {
+      accProviderHelp.innerHTML = '⚡ <strong>Azure Communication Services (ACS)</strong>: Cloud REST SDK. Throughput: 100 msgs/sec. Safe limits: 10k to 100k+/day, 0s cooldown.';
+    } else {
+      accProviderHelp.innerHTML = '🔷 <strong>Microsoft Graph API</strong>: Mailbox REST API. Hard cap: 30 msgs/min per mailbox. Safe limits: 250 to 2,000/day, 60s cooldown.';
+    }
+  }
+
   if (accProviderSelect) {
     accProviderSelect.addEventListener('change', () => {
+      const p = accProviderSelect.value;
+      updateProviderHelp(p);
+
+      // Only pre-fill defaults when adding a new account, never overwrite custom numbers in edit mode
       if (editAccountId && editAccountId.value) return;
-      if (accProviderSelect.value === 'OCI') {
+
+      if (p === 'OCI') {
         if (accDailyLimitInput) accDailyLimitInput.value = 10000;
         if (accCooldownInput) accCooldownInput.value = 0;
         if (accEmailInput && !accEmailInput.value) {
-          accEmailInput.placeholder = 'newsletter@education.yourpaperedition.com';
+          accEmailInput.placeholder = 'editor@education.yourpaperpublication.com';
         }
-      } else if (accProviderSelect.value === 'GRAPH_API') {
+      } else if (p === 'AZURE_ACS') {
+        if (accDailyLimitInput) accDailyLimitInput.value = 10000;
+        if (accCooldownInput) accCooldownInput.value = 0;
+        if (accEmailInput && !accEmailInput.value) {
+          accEmailInput.placeholder = 'DoNotReply@mail.theparipexjournal.com';
+        }
+      } else {
         if (accDailyLimitInput) accDailyLimitInput.value = 500;
         if (accCooldownInput) accCooldownInput.value = 60;
-      } else if (accProviderSelect.value === 'AZURE_ACS') {
-        if (accDailyLimitInput) accDailyLimitInput.value = 500;
-        if (accCooldownInput) accCooldownInput.value = 60;
+        if (accEmailInput && !accEmailInput.value) {
+          accEmailInput.placeholder = 'editor@yourpaperdomain.com';
+        }
       }
     });
   }
@@ -479,6 +502,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnCancelEditAccount) btnCancelEditAccount.style.display = 'none';
     if (accDailyLimitInput) accDailyLimitInput.value = 500;
     if (accCooldownInput) accCooldownInput.value = 60;
+    updateProviderHelp(accProviderSelect ? accProviderSelect.value : 'GRAPH_API');
   }
 
   function startEditAccount(accId) {
@@ -495,6 +519,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (accDailyLimitInput) accDailyLimitInput.value = acc.daily_limit;
     if (accCooldownInput) accCooldownInput.value = acc.cooldown_seconds;
     if (accProviderSelect) accProviderSelect.value = acc.provider;
+    updateProviderHelp(acc.provider);
     if (accountFormTitle) accountFormTitle.textContent = `✏️ Edit Account: ${acc.email}`;
     if (btnSubmitAccount) btnSubmitAccount.innerHTML = '💾 Save Changes';
     if (btnCancelEditAccount) btnCancelEditAccount.style.display = 'inline-block';
@@ -506,6 +531,40 @@ document.addEventListener('DOMContentLoaded', () => {
       resetAccountForm();
     });
   }
+
+  // 1-Click Pool Quota Presets
+  document.querySelectorAll('.btn-quota-preset').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const limit = parseInt(btn.dataset.limit, 10);
+      const cooldown = btn.dataset.cooldown !== undefined ? parseInt(btn.dataset.cooldown, 10) : undefined;
+      const label = btn.textContent.trim();
+
+      if (!confirm(`Apply quota preset "${label}" (${limit} emails/day) to ALL registered accounts in the pool?`)) {
+        return;
+      }
+
+      try {
+        btn.disabled = true;
+        const res = await fetch('/api/settings/bulk-limits', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dailyLimit: limit, cooldownSeconds: cooldown })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          alert(`✅ Success: ${data.message}`);
+          loadAccounts();
+          refreshTelemetry();
+        } else {
+          alert(`❌ Failed: ${data.error}`);
+        }
+      } catch (err) {
+        alert(`Error applying bulk preset: ${err.message}`);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
 
   async function loadAccounts() {
     try {

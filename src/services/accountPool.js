@@ -23,6 +23,10 @@ class AccountPool {
           AND is_active = 1
           AND sent_today < daily_limit
           AND (
+            cooldown_until IS NULL
+            OR strftime('%s', 'now') >= strftime('%s', cooldown_until)
+          )
+          AND (
             cooldown_seconds = 0
             OR last_sent_at IS NULL
             OR (strftime('%s', 'now') - strftime('%s', last_sent_at)) >= cooldown_seconds
@@ -36,6 +40,10 @@ class AccountPool {
       SELECT * FROM accounts
       WHERE is_active = 1
         AND sent_today < daily_limit
+        AND (
+          cooldown_until IS NULL
+          OR strftime('%s', 'now') >= strftime('%s', cooldown_until)
+        )
         AND (
           cooldown_seconds = 0
           OR last_sent_at IS NULL
@@ -81,7 +89,8 @@ class AccountPool {
   }
 
   /**
-   * Temporarily puts an account into cooldown (e.g. after a 429 throttle)
+   * Temporarily puts an account into cooldown (e.g. after a 429 or 455 throttle)
+   * Decoupled from configured cooldown_seconds: preserves user settings!
    * @param {number} accountId
    * @param {number} cooldownSeconds
    */
@@ -89,14 +98,15 @@ class AccountPool {
     const stmt = db.prepare(`
       UPDATE accounts
       SET last_sent_at = datetime('now'),
-          cooldown_seconds = MAX(cooldown_seconds, ?)
+          cooldown_until = datetime('now', '+' || ? || ' seconds')
       WHERE id = ?
     `);
     stmt.run(cooldownSeconds, accountId);
   }
 
   /**
-   * Adds or updates a sender account in the pool
+   * Adds or updates a sender account in the pool.
+   * Preserves user-configured daily_limit and cooldown_seconds on conflict!
    * @param {Object} account
    */
   static upsertAccount({ email, displayName, provider = 'GRAPH_API', dailyLimit = 500, cooldownSeconds = 0 }) {
@@ -106,11 +116,35 @@ class AccountPool {
       ON CONFLICT(email) DO UPDATE SET
         display_name = excluded.display_name,
         provider = excluded.provider,
-        daily_limit = excluded.daily_limit,
-        cooldown_seconds = excluded.cooldown_seconds,
         is_active = 1
     `);
     stmt.run(email.toLowerCase().trim(), displayName, provider, dailyLimit, cooldownSeconds);
+  }
+
+  /**
+   * Bulk updates daily_limit and optionally cooldown_seconds across all or filtered accounts
+   * @param {Object} options
+   * @param {number} options.dailyLimit
+   * @param {number} [options.cooldownSeconds]
+   * @param {string} [options.provider] Optional provider filter ('GRAPH_API', 'AZURE_ACS', 'OCI', or 'ALL')
+   * @returns {number} number of affected accounts
+   */
+  static bulkUpdateLimits({ dailyLimit, cooldownSeconds, provider = 'ALL' }) {
+    let sql = 'UPDATE accounts SET daily_limit = ?';
+    const params = [parseInt(dailyLimit, 10)];
+
+    if (cooldownSeconds !== undefined && cooldownSeconds !== null) {
+      sql += ', cooldown_seconds = ?';
+      params.push(parseInt(cooldownSeconds, 10));
+    }
+
+    if (provider && provider !== 'ALL') {
+      sql += ' WHERE provider = ?';
+      params.push(provider);
+    }
+
+    const info = db.prepare(sql).run(...params);
+    return info.changes;
   }
 
   /**
@@ -149,9 +183,11 @@ class AccountPool {
     const stmt = db.prepare(`
       SELECT 
         id, email, display_name, provider, daily_limit, sent_today,
-        last_sent_at, cooldown_seconds, is_active,
+        last_sent_at, cooldown_seconds, cooldown_until, is_active,
         MAX(0, daily_limit - sent_today) AS remaining_today,
         CASE 
+          WHEN cooldown_until IS NOT NULL AND strftime('%s', cooldown_until) > strftime('%s', 'now')
+            THEN MAX(0, strftime('%s', cooldown_until) - strftime('%s', 'now'))
           WHEN last_sent_at IS NULL THEN 0
           ELSE MAX(0, cooldown_seconds - (strftime('%s', 'now') - strftime('%s', last_sent_at)))
         END AS cooldown_remaining_sec

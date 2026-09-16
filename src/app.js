@@ -34,11 +34,7 @@ app.get(['/health', '/heartbeat', '/ping'], (req, res) => {
 });
 
 function seedDefaultAccount() {
-  try {
-    db.prepare("UPDATE accounts SET cooldown_seconds = 0").run();
-  } catch (err) {
-    console.error("[Bootstrap] Failed to reset cooldowns:", err.message);
-  }
+  // Never overwrite user-configured cooldowns or daily limits on startup
 
   if (config.defaultSenderEmail) {
     const existing = db.prepare('SELECT id FROM accounts WHERE email = ?').get(config.defaultSenderEmail);

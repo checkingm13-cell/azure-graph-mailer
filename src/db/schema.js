@@ -8,11 +8,12 @@ CREATE TABLE IF NOT EXISTS accounts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT UNIQUE NOT NULL,
     display_name TEXT NOT NULL,
-    provider TEXT NOT NULL DEFAULT 'GRAPH_API', -- 'GRAPH_API' or 'AZURE_ACS'
+    provider TEXT NOT NULL DEFAULT 'GRAPH_API', -- 'GRAPH_API', 'AZURE_ACS', or 'OCI'
     daily_limit INTEGER NOT NULL DEFAULT 500,
     sent_today INTEGER NOT NULL DEFAULT 0,
     last_sent_at TEXT,
     cooldown_seconds INTEGER NOT NULL DEFAULT 0,
+    cooldown_until TEXT,
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
@@ -118,7 +119,12 @@ function initSchema(db) {
       db.exec("ALTER TABLE queue ADD COLUMN scheduled_at TEXT");
     }
 
-    db.exec("CREATE INDEX IF NOT EXISTS idx_queue_schedule ON queue(status, scheduled_at, id)");
+    const accountCols = db.prepare("PRAGMA table_info(accounts)").all().map(c => c.name);
+    if (!accountCols.includes('cooldown_until')) {
+      db.exec("ALTER TABLE accounts ADD COLUMN cooldown_until TEXT");
+    }
+
+    db.exec("CREATE INDEX IF NOT EXISTS idx_queue_schedule ON queue(status, scheduled_at, id);");
   } catch (err) {
     console.warn('[Schema] Migration notice:', err.message);
   }

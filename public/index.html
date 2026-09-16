@@ -239,12 +239,17 @@
               <div class="form-group"><label class="form-label">Cooldown (Seconds)</label><input type="number"
                   id="accCooldown" class="form-input" value="60" min="0" required></div>
             </div>
-            <div class="form-group"><label class="form-label">Dispatch Engine</label><select id="accProvider"
-                class="form-select">
-                <option value="GRAPH_API">Microsoft Graph API (Default)</option>
-                <option value="AZURE_ACS">Azure Communication Services (ACS)</option>
-                <option value="OCI">Oracle Cloud Infrastructure (OCI)</option>
-              </select></div>
+            <div class="form-group">
+              <label class="form-label">Dispatch Connection & Engine</label>
+              <select id="accProvider" class="form-select">
+                <option value="GRAPH_API">Microsoft Graph API (REST / 30 msgs/min cap)</option>
+                <option value="AZURE_ACS">Azure Communication Services (Cloud SDK / 100 msgs/sec)</option>
+                <option value="OCI">Oracle Cloud Infrastructure (SMTP Relay / Port 587)</option>
+              </select>
+              <span class="form-help" id="accProviderHelp" style="display: block; margin-top: 4px; font-size: 11px; color: var(--text-muted);">
+                Graph API: Mailbox REST API. Recommended 500/day limit, 60s cooldown to protect IP reputation.
+              </span>
+            </div>
             <div style="display: flex; gap: 8px;">
               <button type="submit" id="btnSubmitAccount" class="btn btn-primary btn-block">➕ Add Account to Pool</button>
               <button type="button" id="btnCancelEditAccount" class="btn btn-secondary" style="display: none; white-space: nowrap;">✕ Cancel</button>
@@ -253,9 +258,27 @@
         </div>
         <div class="panel-card">
           <div class="panel-header">
-            <h3>Registered Sender Accounts</h3><span id="badgeAccountCount" class="badge badge-completed">0
-              accounts</span>
+            <div>
+              <h3>Registered Sender Accounts</h3>
+              <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">Multi-sender pool with isolated per-account quotas & cooldowns</div>
+            </div>
+            <span id="badgeAccountCount" class="badge badge-completed">0 accounts</span>
           </div>
+
+          <!-- 1-Click Pool Quota Presets Toolbar -->
+          <div style="margin-bottom: 16px; padding: 10px 14px; background: rgba(30, 41, 59, 0.7); border: 1px solid var(--border-color); border-radius: 8px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 12px; font-weight: 700; color: var(--sky);">⚡ 1-Click Pool Quotas:</span>
+              <span style="font-size: 11px; color: var(--text-secondary);">(Batch-apply to all accounts)</span>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+              <button type="button" class="btn btn-secondary btn-sm btn-quota-preset" data-limit="500" data-cooldown="60" title="Safe for Microsoft Graph Mailboxes (500/day, 60s cooldown)">🛡️ Set All: 500</button>
+              <button type="button" class="btn btn-secondary btn-sm btn-quota-preset" data-limit="2000" data-cooldown="0" title="Standard Volume Dispatch (2,000/day, 0s cooldown)">⚡ Set All: 2,000</button>
+              <button type="button" class="btn btn-secondary btn-sm btn-quota-preset" data-limit="4000" data-cooldown="0" title="High Volume Dispatch (4,000/day, 0s cooldown)">🚀 Set All: 4,000</button>
+              <button type="button" class="btn btn-secondary btn-sm btn-quota-preset" data-limit="10000" data-cooldown="0" title="Enterprise Scale (10,000/day, 0s cooldown)">🏛️ Set All: 10,000</button>
+            </div>
+          </div>
+
           <div class="table-responsive">
             <table class="data-table">
               <thead>

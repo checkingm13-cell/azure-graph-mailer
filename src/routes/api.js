@@ -276,6 +276,48 @@ router.post('/settings', (req, res) => {
   res.json({ ok: true, sendIntervalMs: val, message: `Pacing delay updated to ${val}ms.` });
 });
 
+// Detailed engine telemetry and connection status
+router.get('/settings/engine', (req, res) => {
+  const row = db.prepare("SELECT value FROM settings WHERE key = 'send_interval_ms'").get();
+  const poolMetrics = AccountPool.getPoolMetrics();
+  res.json({
+    ok: true,
+    engine: {
+      sendIntervalMs: row ? parseInt(row.value, 10) : config.globalSendIntervalMs,
+      defaultProvider: config.defaultProvider,
+      defaultAccountDailyLimit: config.defaultAccountDailyLimit,
+      isWorkerRunning: queueWorker.isRunning,
+      isWorkerPaused: queueWorker.isPaused
+    },
+    poolMetrics
+  });
+});
+
+// 1-Click Bulk update limits across all accounts or filtered by provider
+router.post('/settings/bulk-limits', (req, res) => {
+  const { dailyLimit, cooldownSeconds, provider } = req.body;
+  if (dailyLimit === undefined || dailyLimit === null || isNaN(dailyLimit)) {
+    return res.status(400).json({ ok: false, error: 'dailyLimit is required and must be a number.' });
+  }
+
+  const limitVal = parseInt(dailyLimit, 10);
+  if (limitVal < 1) {
+    return res.status(400).json({ ok: false, error: 'dailyLimit must be at least 1.' });
+  }
+
+  const updatedCount = AccountPool.bulkUpdateLimits({
+    dailyLimit: limitVal,
+    cooldownSeconds: cooldownSeconds !== undefined ? parseInt(cooldownSeconds, 10) : undefined,
+    provider: provider || 'ALL'
+  });
+
+  res.json({
+    ok: true,
+    message: `Updated limits for ${updatedCount} account(s) to ${limitVal}/day.`,
+    updatedCount
+  });
+});
+
 // 3. ACCOUNT POOL MANAGEMENT
 router.get('/accounts', (req, res) => {
   const accounts = AccountPool.getAllAccounts();
