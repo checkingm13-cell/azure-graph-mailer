@@ -797,165 +797,177 @@
   </div>
 
   <!-- Campaign Preview & Re-run Modal -->
+  <!-- MODAL: Campaign Preview & Re-run (Progressive Disclosure & Eye-Comfort Layout) -->
   <div id="modalCampaignPreview" class="modal-overlay" style="display: none;">
-    <div class="modal-card" style="max-width: 760px; width: 90%;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+    <div class="modal-card" style="max-width: 820px; width: 92%; max-height: 90vh; display: flex; flex-direction: column;">
+      
+      <!-- Modal Header -->
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; flex-shrink: 0;">
         <div style="display: flex; align-items: center; gap: 10px;">
-          <span style="font-size: 24px;">📊</span>
+          <span style="font-size: 24px; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 4px 8px;">📊</span>
           <div>
-            <h3 id="previewModalCampName" style="margin: 0; font-size: 17px; color: var(--text-primary);">Campaign
-              Preview &amp; Re-run</h3>
-            <p id="previewModalCampMeta" style="margin: 0; font-size: 12px; color: var(--text-muted);">Inspect execution
-              status and trigger re-runs</p>
+            <h3 id="previewModalCampName" style="margin: 0; font-size: 16px; font-weight: 700; color: var(--text-primary);">Campaign Breakdown</h3>
+            <p id="previewModalCampMeta" style="margin: 2px 0 0; font-size: 11.5px; color: var(--text-muted);">Execution details & telemetry</p>
           </div>
         </div>
-        <button type="button" id="btnCloseCampaignPreview" class="btn btn-secondary btn-sm"
-          style="padding: 4px 10px; border-radius: 6px;">✕</button>
+        <button type="button" id="btnCloseCampaignPreview" class="btn btn-secondary btn-sm" style="padding: 4px 10px; border-radius: 6px;">✕</button>
       </div>
-      <div class="metrics-strip" style="margin-bottom: 16px;">
-        <div class="metric-card" style="padding: 10px;">
-          <div class="metric-label">Total</div>
-          <div class="metric-value text-sky" id="previewModalTotal">0</div>
+
+      <!-- Quick Metrics Strip -->
+      <div class="metrics-strip" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; padding: 0; flex-shrink: 0;">
+        <div class="metric-card" style="padding: 10px 12px;">
+          <div class="metric-label" style="font-size: 10.5px;">Total</div>
+          <div class="metric-value text-sky" id="previewModalTotal" style="font-size: 20px; margin: 4px 0 0;">0</div>
         </div>
-        <div class="metric-card" style="padding: 10px;">
-          <div class="metric-label">Delivered</div>
-          <div class="metric-value text-emerald" id="previewModalSent">0</div>
+        <div class="metric-card" style="padding: 10px 12px;">
+          <div class="metric-label" style="font-size: 10.5px;">Delivered</div>
+          <div class="metric-value text-emerald" id="previewModalSent" style="font-size: 20px; margin: 4px 0 0;">0</div>
         </div>
-        <div class="metric-card" style="padding: 10px;">
-          <div class="metric-label">Failed / Errored</div>
-          <div class="metric-value text-rose" id="previewModalFailed">0</div>
+        <div class="metric-card" style="padding: 10px 12px;">
+          <div class="metric-label" style="font-size: 10.5px;">Failed / Errored</div>
+          <div class="metric-value text-rose" id="previewModalFailed" style="font-size: 20px; margin: 4px 0 0;">0</div>
         </div>
-        <div class="metric-card" style="padding: 10px;">
-          <div class="metric-label">Queued / Pending</div>
-          <div class="metric-value text-amber" id="previewModalQueued">0</div>
+        <div class="metric-card" style="padding: 10px 12px;">
+          <div class="metric-label" style="font-size: 10.5px;">Queued / In-Flight</div>
+          <div class="metric-value text-amber" id="previewModalQueued" style="font-size: 20px; margin: 4px 0 0;">0</div>
         </div>
       </div>
-      <div
-        style="background: rgba(2, 132, 199, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
-        <div
-          style="font-size: 13px; font-weight: 700; color: var(--sky); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">
-          🔄 Re-run This Campaign (Full Launch Controls)</div>
-        
-        <!-- Row 1: Re-run Mode & New Name -->
-        <div class="form-row" style="margin-bottom: 12px;">
+
+      <!-- Action Strip: Re-run Toggle Button -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-shrink: 0;">
+        <div style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">📋 Recipient Dispatch Snapshot</div>
+        <button type="button" id="btnToggleRerunDrawer" class="btn btn-secondary btn-sm" style="border-color: rgba(56, 189, 248, 0.4); background: rgba(56, 189, 248, 0.08); color: var(--sky); font-weight: 600;">
+          🔄 Configure Re-run / Retry
+        </button>
+      </div>
+
+      <!-- Collapsible Re-run Configuration Drawer -->
+      <div id="rerunDrawerBox" style="display: none; background: rgba(15, 23, 42, 0.95); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 8px; padding: 14px; margin-bottom: 14px; flex-shrink: 0; box-shadow: 0 4px 20px rgba(0,0,0,0.35);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          <strong style="font-size: 12px; color: var(--sky); text-transform: uppercase; letter-spacing: 0.04em;">🔄 Re-run Launch Controls</strong>
+          <span style="font-size: 11px; color: var(--text-muted);">Creates a new tracked campaign</span>
+        </div>
+
+        <!-- Row 1: Scope & Campaign Name -->
+        <div class="form-row" style="margin-bottom: 10px;">
           <div class="form-group" style="margin-bottom: 0;">
-            <label class="form-label">Contacts Scope</label>
-            <select id="rerunModeSelect" class="form-select">
-              <option value="failed_only">⚠️ Failed / Errored Contacts Only (Recommended)</option>
-              <option value="all">🔁 All Contacts in Campaign (Full Re-run)</option>
-            </select>
+            <label class="form-label" style="font-size: 11px;">Contacts Scope</label>
+            <select id="rerunModeSelect" class="form-select" style="font-size: 12px; padding: 7px 10px;"></select>
           </div>
           <div class="form-group" style="margin-bottom: 0;">
-            <label class="form-label">New Campaign Batch Name</label>
-            <input type="text" id="rerunCampaignNameInput" class="form-input" placeholder="Auto-generated if blank">
+            <label class="form-label" style="font-size: 11px;">New Campaign Batch Name</label>
+            <input type="text" id="rerunCampaignNameInput" class="form-input" style="font-size: 12px; padding: 7px 10px;" placeholder="Auto-generated if blank">
           </div>
         </div>
 
-        <!-- Row 2: Template Selection / Rotation -->
-        <div class="form-group" style="margin-bottom: 14px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-            <label class="form-label" style="margin-bottom: 0;">Message Template(s)</label>
+        <!-- Row 2: Template Selection & Rotation -->
+        <div class="form-group" style="margin-bottom: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <label class="form-label" style="margin-bottom: 0; font-size: 11px;">Email Template(s)</label>
             <label class="checkbox-label" style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; font-weight: 600; color: var(--sky);">
               <input type="checkbox" id="chkRerunTemplateRotation">
               <span>🔀 Rotate Multiple Templates</span>
             </label>
           </div>
           <div id="rerunSingleTemplateBox">
-            <select id="rerunTemplateSelect" class="form-select"></select>
+            <select id="rerunTemplateSelect" class="form-select" style="font-size: 12px; padding: 7px 10px;"></select>
           </div>
-          <div id="rerunMultiTemplateBox" style="display: none; background: rgba(0,0,0,0.25); border: 1px dashed var(--border-color); border-radius: 6px; padding: 10px; margin-top: 6px;">
-            <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px;">Select templates to rotate across contacts:</div>
-            <div id="rerunTemplateCheckboxesList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px; max-height: 120px; overflow-y: auto;"></div>
+          <div id="rerunMultiTemplateBox" style="display: none; background: rgba(0,0,0,0.3); border: 1px dashed var(--border-color); border-radius: 6px; padding: 8px; margin-top: 6px;">
+            <div style="font-size: 10.5px; color: var(--text-secondary); margin-bottom: 6px;">Check templates to rotate across recipients:</div>
+            <div id="rerunTemplateCheckboxesList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; max-height: 110px; overflow-y: auto;"></div>
           </div>
         </div>
 
         <!-- Row 3: Sender Strategy -->
-        <div class="form-group" style="margin-bottom: 14px;">
-          <label class="form-label" style="font-size: 12px;">Who Should Send? (Sender Strategy)</label>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px;">
-            <label style="display: flex; align-items: center; gap: 8px; background: rgba(56, 189, 248, 0.06); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px; padding: 8px 12px; cursor: pointer;">
+        <div class="form-group" style="margin-bottom: 10px;">
+          <label class="form-label" style="font-size: 11px;">Sender Strategy</label>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px;">
+            <label style="display: flex; align-items: center; gap: 6px; background: rgba(56, 189, 248, 0.06); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px; padding: 6px 10px; cursor: pointer;">
               <input type="radio" name="rerunStrategyRadio" value="SMART" checked>
               <div>
-                <strong style="color: var(--sky); font-size: 12px; display: block;">⚡ Smart Send Pool</strong>
-                <span style="font-size: 10px; color: var(--text-muted);">Auto-balance across active senders</span>
+                <strong style="color: var(--sky); font-size: 11px; display: block;">⚡ Smart Send Pool</strong>
+                <span style="font-size: 9.5px; color: var(--text-muted);">Auto-rotates active accounts</span>
               </div>
             </label>
-            <label style="display: flex; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 12px; cursor: pointer;">
+            <label style="display: flex; align-items: center; gap: 6px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; cursor: pointer;">
               <input type="radio" name="rerunStrategyRadio" value="CONTROLLED">
               <div>
-                <strong style="color: var(--text-primary); font-size: 12px; display: block;">🎯 Controlled Send</strong>
-                <span style="font-size: 10px; color: var(--text-muted);">Assign specific primary sender</span>
+                <strong style="color: var(--text-primary); font-size: 11px; display: block;">🎯 Controlled Send</strong>
+                <span style="font-size: 9.5px; color: var(--text-muted);">Pinned to specific sender</span>
               </div>
             </label>
           </div>
 
-          <div id="rerunControlledOptions" style="display: none; padding: 10px; background: rgba(0,0,0,0.25); border: 1px dashed var(--border-color); border-radius: 6px; margin-bottom: 10px;">
-            <label class="form-label" style="font-size: 11px;">Primary Sender Account</label>
-            <select id="rerunSenderAccountSelect" class="form-select" style="margin-bottom: 6px;"></select>
-            <label class="checkbox-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px;">
+          <div id="rerunControlledOptions" style="display: none; padding: 8px 10px; background: rgba(0,0,0,0.3); border: 1px dashed var(--border-color); border-radius: 6px; margin-top: 6px;">
+            <label class="form-label" style="font-size: 10.5px;">Primary Sender Account</label>
+            <select id="rerunSenderAccountSelect" class="form-select" style="font-size: 12px; padding: 6px 8px; margin-bottom: 6px;"></select>
+            <label class="checkbox-label" style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 10.5px;">
               <input type="checkbox" id="chkRerunFallbackAllowed" checked>
               <span>Fallback to pool if daily limit reached</span>
             </label>
           </div>
         </div>
 
-        <!-- Row 4: Sending Speed -->
-        <div class="form-group" style="margin-bottom: 12px;">
-          <label class="form-label" style="font-size: 12px;">Sending Speed (Pacing)</label>
-          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px;">
-            <label class="speed-preset-card" style="display: block; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px; cursor: pointer; text-align: center;">
+        <!-- Row 4: Speed Presets -->
+        <div class="form-group" style="margin-bottom: 10px;">
+          <label class="form-label" style="font-size: 11px;">Sending Pacing</label>
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
+            <label class="speed-preset-card" style="display: block; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 5px; cursor: pointer; text-align: center;">
               <input type="radio" name="rerunSpeedPreset" value="SAFE">
-              <div style="font-weight: 700; color: var(--amber); font-size: 11px;">🛡️ Safe (6.5s)</div>
+              <div style="font-weight: 700; color: var(--amber); font-size: 10.5px;">🛡️ Safe (6.5s)</div>
             </label>
-            <label class="speed-preset-card" style="display: block; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 6px; padding: 6px; cursor: pointer; text-align: center;">
+            <label class="speed-preset-card" style="display: block; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 6px; padding: 5px; cursor: pointer; text-align: center;">
               <input type="radio" name="rerunSpeedPreset" value="BALANCED" checked>
-              <div style="font-weight: 700; color: var(--sky); font-size: 11px;">⚖️ Balanced (2.5s)</div>
+              <div style="font-weight: 700; color: var(--sky); font-size: 10.5px;">⚖️ Balanced (2.5s)</div>
             </label>
-            <label class="speed-preset-card" style="display: block; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px; cursor: pointer; text-align: center;">
+            <label class="speed-preset-card" style="display: block; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 5px; cursor: pointer; text-align: center;">
               <input type="radio" name="rerunSpeedPreset" value="FAST">
-              <div style="font-weight: 700; color: var(--emerald); font-size: 11px;">⚡ Fast (1.0s)</div>
+              <div style="font-weight: 700; color: var(--emerald); font-size: 10.5px;">⚡ Fast (1.0s)</div>
             </label>
-            <label class="speed-preset-card" style="display: block; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px; cursor: pointer; text-align: center;">
+            <label class="speed-preset-card" style="display: block; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 5px; cursor: pointer; text-align: center;">
               <input type="radio" name="rerunSpeedPreset" value="CUSTOM">
-              <div style="font-weight: 700; color: var(--purple); font-size: 11px;">🛠️ Custom</div>
+              <div style="font-weight: 700; color: var(--purple); font-size: 10.5px;">🛠️ Custom</div>
             </label>
           </div>
-          <div id="rerunCustomIntervalBox" style="display: none; padding: 8px 10px; background: rgba(0,0,0,0.25); border-radius: 6px; font-size: 11px; align-items: center; gap: 8px;">
-            <span>Send one email every:</span>
-            <input type="number" id="inputRerunCustomIntervalSec" value="2.5" step="0.5" min="0.1" style="width: 60px; padding: 3px 6px; font-size: 11px; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px;">
-            <span>seconds</span>
+          <div id="rerunCustomIntervalBox" style="display: none; padding: 6px 8px; background: rgba(0,0,0,0.3); border-radius: 6px; font-size: 11px; align-items: center; gap: 8px; margin-top: 6px;">
+            <span>Interval per email:</span>
+            <input type="number" id="inputRerunCustomIntervalSec" value="2.5" step="0.5" min="0.1" style="width: 55px; padding: 3px 6px; font-size: 11px; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px;">
+            <span>sec</span>
           </div>
         </div>
 
-        <div style="display: flex; justify-content: flex-end; margin-top: 14px; gap: 8px;">
-          <button type="button" id="btnTriggerRerun" class="btn btn-primary"
-            style="background: linear-gradient(135deg, #0284c7, #0369a1); font-weight: 600; padding: 10px 20px;">🚀 Launch Re-run Campaign</button>
+        <div style="display: flex; justify-content: flex-end; margin-top: 10px;">
+          <button type="button" id="btnTriggerRerun" class="btn btn-primary" style="font-size: 12px; padding: 8px 18px;">
+            🚀 Launch Re-run Batch
+          </button>
         </div>
       </div>
 
-      <div style="font-size: 13px; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px;">📋 Recipient Dispatch & Rotation Breakdown (Sample up to 100)</div>
-      <div class="table-responsive"
-        style="max-height: 220px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px;">
+      <!-- Recipient Breakdown Table (Clean Scrollable Area) -->
+      <div class="table-responsive" style="flex: 1 1 auto; max-height: 280px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; margin-bottom: 12px;">
         <table class="data-table" style="font-size: 12px;">
-          <thead>
+          <thead style="position: sticky; top: 0; z-index: 2;">
             <tr>
               <th>Recipient</th>
               <th>Template Variant</th>
               <th>Assigned Sender</th>
               <th>Status</th>
               <th>Attempts</th>
-              <th>Last Error / Note</th>
+              <th>Delivery Timestamp / Error</th>
             </tr>
           </thead>
           <tbody id="previewModalTableBody">
             <tr>
-              <td colspan="6" class="table-empty">Loading contacts...</td>
+              <td colspan="6" class="table-empty">Loading recipient snapshot...</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <div style="display: flex; justify-content: flex-end; margin-top: 16px;"><button type="button"
-          id="btnCancelCampaignPreview" class="btn btn-secondary">Close</button></div>
+
+      <!-- Modal Footer -->
+      <div style="display: flex; justify-content: flex-end; flex-shrink: 0;">
+        <button type="button" id="btnCancelCampaignPreview" class="btn btn-secondary btn-sm">Close</button>
+      </div>
     </div>
   </div>
 

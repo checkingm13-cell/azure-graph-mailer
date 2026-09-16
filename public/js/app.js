@@ -1742,13 +1742,31 @@ document.addEventListener('DOMContentLoaded', () => {
         rerunCustomIntervalBox.style.display = r.value === 'CUSTOM' ? 'flex' : 'none';
       }
     });
-  });
+  const btnToggleRerunDrawer = document.getElementById('btnToggleRerunDrawer');
+  const rerunDrawerBox = document.getElementById('rerunDrawerBox');
+
+  if (btnToggleRerunDrawer && rerunDrawerBox) {
+    btnToggleRerunDrawer.addEventListener('click', () => {
+      const isClosed = rerunDrawerBox.style.display === 'none' || !rerunDrawerBox.style.display;
+      rerunDrawerBox.style.display = isClosed ? 'block' : 'none';
+      btnToggleRerunDrawer.textContent = isClosed ? '✕ Close Re-run Controls' : '🔄 Configure Re-run / Retry';
+      btnToggleRerunDrawer.classList.toggle('btn-primary', isClosed);
+      btnToggleRerunDrawer.classList.toggle('btn-secondary', !isClosed);
+    });
+  }
 
   async function openCampaignPreviewModal(campaignId) {
     if (!modalCampaignPreview) return;
     activePreviewCampaignId = campaignId; 
     modalCampaignPreview.style.display = 'flex';
     previewModalTableBody.innerHTML = '<tr><td colspan="6" class="table-empty">⏳ Loading campaign details and queue snapshot...</td></tr>';
+
+    // Reset drawer state
+    if (rerunDrawerBox) rerunDrawerBox.style.display = 'none';
+    if (btnToggleRerunDrawer) {
+      btnToggleRerunDrawer.textContent = '🔄 Configure Re-run / Retry';
+      btnToggleRerunDrawer.className = 'btn btn-secondary btn-sm';
+    }
 
     // Populate templates dropdown and checkboxes in Re-run modal
     if (rerunTemplateSelect && allLoadedTemplates.length > 0) {
@@ -1773,10 +1791,47 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const senderText = c.sender_email ? `${c.sender_email} (${c.sender_provider})` : '⚡ All Active Pool (Auto-Rotate)';
       previewModalCampMeta.textContent = `Template: ${c.template_name || 'Standard'} | Sender: ${senderText} | Status: ${c.status}`;
-      previewModalTotal.textContent = s.total || 0; 
-      previewModalSent.textContent = s.sent || 0; 
-      previewModalFailed.textContent = s.failed || 0; 
-      previewModalQueued.textContent = (s.queued || 0) + (s.sending || 0);
+      
+      const totalCount = s.total || 0;
+      const sentCount = s.sent || 0;
+      const failedCount = s.failed || 0;
+      const queuedCount = (s.queued || 0) + (s.sending || 0);
+
+      previewModalTotal.textContent = totalCount; 
+      previewModalSent.textContent = sentCount; 
+      previewModalFailed.textContent = failedCount; 
+      previewModalQueued.textContent = queuedCount;
+
+      // Smart Scope Auto-Detect
+      if (rerunModeSelect) {
+        if (failedCount > 0) {
+          rerunModeSelect.innerHTML = `
+            <option value="failed_only" selected>⚠️ Failed / Errored Contacts Only (${failedCount})</option>
+            <option value="all">🔁 All Contacts in Campaign (${totalCount}) (Full Re-run)</option>
+          `;
+          if (btnToggleRerunDrawer) {
+            btnToggleRerunDrawer.textContent = `🔄 Retry ${failedCount} Failed Contacts`;
+            btnToggleRerunDrawer.className = 'btn btn-primary btn-sm';
+          }
+        } else {
+          rerunModeSelect.innerHTML = `
+            <option value="all" selected>🔁 All Contacts in Campaign (${totalCount}) (Full Re-run)</option>
+            <option value="failed_only" disabled>⚠️ Failed Contacts (0 failed)</option>
+          `;
+        }
+      }
+
+      const updateLaunchButtonText = () => {
+        if (!btnTriggerRerun) return;
+        const mode = rerunModeSelect ? rerunModeSelect.value : 'all';
+        const count = mode === 'failed_only' ? failedCount : totalCount;
+        btnTriggerRerun.textContent = `🚀 Launch Re-run (${count} Contacts)`;
+      };
+
+      if (rerunModeSelect) {
+        rerunModeSelect.onchange = updateLaunchButtonText;
+      }
+      updateLaunchButtonText();
 
       // Preselect template & sender if present
       if (rerunTemplateSelect && c.template_id) rerunTemplateSelect.value = String(c.template_id);
