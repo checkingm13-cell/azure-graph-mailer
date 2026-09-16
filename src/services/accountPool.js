@@ -176,7 +176,7 @@ class AccountPool {
   }
 
   /**
-   * Returns list of all accounts with live telemetry
+   * Returns list of all accounts with live telemetry & cognitive fields
    */
   static getAllAccounts() {
     this.refreshRollingQuotas();
@@ -184,6 +184,8 @@ class AccountPool {
       SELECT 
         id, email, display_name, provider, daily_limit, sent_today,
         last_sent_at, cooldown_seconds, cooldown_until, is_active,
+        status, health_score, sending_speed, custom_interval_ms,
+        failure_count, bounce_count, complaint_count,
         MAX(0, daily_limit - sent_today) AS remaining_today,
         CASE 
           WHEN cooldown_until IS NOT NULL AND strftime('%s', cooldown_until) > strftime('%s', 'now')
@@ -194,7 +196,158 @@ class AccountPool {
       FROM accounts
       ORDER BY id ASC
     `);
-    return stmt.all();
+    const list = stmt.all();
+
+    return list.map(acc => {
+      const remainingSec = acc.cooldown_remaining_sec || 0;
+      let effectiveStatus = acc.status || 'ACTIVE';
+      let humanStatus = 'Ready';
+      let statusColor = 'emerald';
+
+      if (acc.is_active === 0 || effectiveStatus === 'DISABLED') {
+        humanStatus = 'Disabled';
+        statusColor = 'muted';
+      } else if (effectiveStatus === 'AUTH_ERROR') {
+        humanStatus = 'Authentication Problem';
+        statusColor = 'rose';
+      } else if (remainingSec > 0) {
+        humanStatus = 'Temporarily paused';
+        statusColor = 'amber';
+      } else if (acc.remaining_today <= 0) {
+        humanStatus = 'Daily Limit Reached';
+        statusColor = 'amber';
+      } else if (effectiveStatus === 'DEGRADED') {
+        humanStatus = 'Reduced Sending';
+        statusColor = 'amber';
+      }
+
+      // Calculate dynamic cognitive health score (0-100)
+      let calculatedHealth = 100;
+      const recentErrors = acc.failure_count || 0;
+      const recentBounces = acc.bounce_count || 0;
+      calculatedHealth -= Math.min(40, recentErrors * 10);
+      calculatedHealth -= Math.min(40, recentBounces * 15);
+      if (acc.remaining_today <= 0) calculatedHealth = Math.min(calculatedHealth, 85);
+      if (effectiveStatus === 'AUTH_ERROR') calculatedHealth = 10;
+      calculatedHealth = Math.max(10, Math.min(100, calculatedHealth));
+
+      return {
+        ...acc,
+        computed_health_score: calculatedHealth,
+        human_status: humanStatus,
+        status_color: statusColor,
+        is_temporarily_paused: remainingSec > 0
+      };
+    });
+  }
+
+  /**
+   * Diagnostic engine: Determines plain-language reason why a campaign is waiting/paused
+   * @param {number} campaignId
+   * @returns {Object} { reason, nextAvailableAccount, secondsRemaining }
+   */
+  static getCampaignWaitReason(campaignId) {
+    const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+    if (!campaign) return { reason: 'Campaign not found.', canResume: false };
+
+    const waitingItems = db.prepare(`
+      SELECT COUNT(*) AS count FROM queue 
+      WHERE campaign_id = ? AND status IN ('queued', 'sending')
+    `).get(campaignId).count;
+
+    if (waitingItems === 0) {
+      return { reason: 'No items waiting in this campaign.', canResume: false };
+    }
+
+    const accounts = this.getAllAccounts();
+    const activeAccounts = accounts.filter(a => a.is_active === 1);
+
+    if (activeAccounts.length === 0) {
+      return {
+        reason: 'All sending accounts are currently disabled or inactive.',
+        nextAvailableAccount: null,
+        secondsRemaining: null,
+        canResume: false
+      };
+    }
+
+    // If campaign is pinned to a specific account
+    const pinnedId = campaign.pinned_account_id || campaign.sender_account_id;
+    if (pinnedId) {
+      const targetAcc = activeAccounts.find(a => a.id === pinnedId);
+      if (!targetAcc) {
+        return {
+          reason: 'The assigned sending account has been removed or disabled.',
+          nextAvailableAccount: null,
+          secondsRemaining: null,
+          canResume: false
+        };
+      }
+
+      if (targetAcc.remaining_today <= 0) {
+        if (campaign.fallback_allowed === 1) {
+          // Fallback allowed: check other accounts
+          const fallbackCandidates = activeAccounts.filter(a => a.id !== pinnedId && a.remaining_today > 0);
+          if (fallbackCandidates.length > 0) {
+            return {
+              reason: `Primary account "${targetAcc.email}" reached its daily sending limit. Automatically rotating to fallback account.`,
+              nextAvailableAccount: fallbackCandidates[0].display_name || fallbackCandidates[0].email,
+              secondsRemaining: 0,
+              canResume: true
+            };
+          }
+        }
+        return {
+          reason: `Assigned account "${targetAcc.email}" reached its daily sending limit (${targetAcc.daily_limit.toLocaleString()} emails). Waiting for window reset.`,
+          nextAvailableAccount: targetAcc.display_name || targetAcc.email,
+          secondsRemaining: null,
+          canResume: false
+        };
+      }
+
+      if (targetAcc.cooldown_remaining_sec > 0) {
+        return {
+          reason: `Assigned account "${targetAcc.display_name || targetAcc.email}" is temporarily resting to protect sender reputation.`,
+          nextAvailableAccount: targetAcc.display_name || targetAcc.email,
+          secondsRemaining: targetAcc.cooldown_remaining_sec,
+          canResume: true
+        };
+      }
+    }
+
+    // Smart Send Mode: check whole pool
+    const accountsWithCapacity = activeAccounts.filter(a => a.remaining_today > 0);
+    if (accountsWithCapacity.length === 0) {
+      return {
+        reason: 'All available sending accounts have reached their daily sending limits. Sending will resume as quota refreshes.',
+        nextAvailableAccount: null,
+        secondsRemaining: null,
+        canResume: false
+      };
+    }
+
+    // All capable accounts in cooldown
+    const cooldownTimes = accountsWithCapacity
+      .filter(a => a.cooldown_remaining_sec > 0)
+      .map(a => ({ name: a.display_name || a.email, seconds: a.cooldown_remaining_sec }))
+      .sort((a, b) => a.seconds - b.seconds);
+
+    if (cooldownTimes.length > 0) {
+      const nextOne = cooldownTimes[0];
+      return {
+        reason: 'Sending accounts are temporarily pacing dispatch to maintain inbox reputation.',
+        nextAvailableAccount: nextOne.name,
+        secondsRemaining: nextOne.seconds,
+        canResume: true
+      };
+    }
+
+    return {
+      reason: 'Campaign is ready and worker is processing queue.',
+      nextAvailableAccount: null,
+      secondsRemaining: 0,
+      canResume: true
+    };
   }
 
   /**
