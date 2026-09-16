@@ -812,6 +812,20 @@ document.addEventListener('DOMContentLoaded', () => {
       const batchTplSelect = document.getElementById('batchTemplateSelect');
       if (batchTplSelect) batchTplSelect.innerHTML = tplOptions;
 
+      const templateCheckboxesList = document.getElementById('templateCheckboxesList');
+      if (templateCheckboxesList) {
+        templateCheckboxesList.innerHTML = allLoadedTemplates.map((t, idx) => `
+          <label style="display: flex; align-items: center; gap: 8px; background: var(--bg-surface); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); cursor: pointer; font-size: 12px;">
+            <input type="checkbox" class="chk-rotate-tpl" value="${t.id}" ${idx < 2 ? 'checked' : ''}>
+            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500;">${escapeHtml(t.name)}</span>
+          </label>
+        `).join('');
+
+        document.querySelectorAll('.chk-rotate-tpl').forEach(cb => {
+          cb.addEventListener('change', updateSampleEmailPreview);
+        });
+      }
+
       if (allLoadedTemplates.length === 0) {
         templatesList.innerHTML = `<div class="loading-placeholder">No templates saved yet.</div>`;
       } else {
@@ -1090,14 +1104,38 @@ document.addEventListener('DOMContentLoaded', () => {
     btnConfirmLaunchBatches.textContent = `🚀 Confirm & Schedule All ${totalBatches} Batches (${contacts.length} Total Emails)`;
   }
 
+  const chkEnableTemplateRotation = document.getElementById('chkEnableTemplateRotation');
+  const singleTemplateContainer = document.getElementById('singleTemplateContainer');
+  const multiTemplateContainer = document.getElementById('multiTemplateContainer');
+
+  if (chkEnableTemplateRotation) {
+    chkEnableTemplateRotation.addEventListener('change', () => {
+      const isRotation = chkEnableTemplateRotation.checked;
+      if (singleTemplateContainer) singleTemplateContainer.style.display = isRotation ? 'none' : 'block';
+      if (multiTemplateContainer) multiTemplateContainer.style.display = isRotation ? 'block' : 'none';
+      updateSampleEmailPreview();
+    });
+  }
+
   function updateSampleEmailPreview() {
     if (!currentPreviewData || !currentPreviewData.contacts.length) return;
-    const templateId = batchTemplateSelect.value;
+    const isRotation = chkEnableTemplateRotation && chkEnableTemplateRotation.checked;
+    let templateId = null;
+
+    if (isRotation) {
+      const checkedBoxes = Array.from(document.querySelectorAll('.chk-rotate-tpl:checked'));
+      if (checkedBoxes.length > 0) {
+        templateId = checkedBoxes[0].value;
+      }
+    } else {
+      templateId = batchTemplateSelect.value;
+    }
+
     const firstContact = currentPreviewData.contacts[0];
     sampleRecipientEmail.textContent = `Recipient: ${firstContact.email} (${firstContact.name || 'Author'})`;
     if (!templateId) {
-      sampleSubjectLine.textContent = 'Subject: (Choose a template above)';
-      sampleEmailBody.innerHTML = 'Choose a template above to preview how the email will look with merged variables.';
+      sampleSubjectLine.textContent = isRotation ? 'Subject: (Select templates in rotation list above)' : 'Subject: (Choose a template above)';
+      sampleEmailBody.innerHTML = 'Choose or check template(s) above to preview how the email will look with merged variables.';
       return;
     }
     const template = allLoadedTemplates.find((t) => String(t.id) === String(templateId));
@@ -1118,7 +1156,8 @@ document.addEventListener('DOMContentLoaded', () => {
       out = out.replace(/href=["'](\/(?!\/)[^"']*)["']/gi, (match, path) => `href="https://${senderDomain}${path}"`);
       return out;
     }
-    sampleSubjectLine.textContent = `Subject: ${merge(template.subject, firstContact)}`;
+    const rotationNote = isRotation ? ` [Rotating across ${document.querySelectorAll('.chk-rotate-tpl:checked').length} templates - Sample 1 shown]` : '';
+    sampleSubjectLine.textContent = `Subject: ${merge(template.subject, firstContact)}${rotationNote}`;
     sampleEmailBody.innerHTML = merge(template.body_html, firstContact);
   }
 
@@ -1172,14 +1211,34 @@ document.addEventListener('DOMContentLoaded', () => {
     formLaunchBatches.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!currentPreviewData) return;
-      const templateId = batchTemplateSelect.value;
-      if (!templateId) { alert('Please select an Email Template to apply across all batches.'); return; }
+
+      const isRotation = chkEnableTemplateRotation && chkEnableTemplateRotation.checked;
+      let templateId = null;
+      let templateIds = [];
+
+      if (isRotation) {
+        const checkedBoxes = Array.from(document.querySelectorAll('.chk-rotate-tpl:checked'));
+        if (checkedBoxes.length < 2) {
+          alert('Please select at least 2 templates to enable Template Rotation, or uncheck the rotation option.');
+          return;
+        }
+        templateIds = checkedBoxes.map(b => parseInt(b.value, 10));
+        templateId = templateIds[0];
+      } else {
+        templateId = batchTemplateSelect.value ? parseInt(batchTemplateSelect.value, 10) : null;
+        if (!templateId) {
+          alert('Please select an Email Template to apply across all batches.');
+          return;
+        }
+      }
+
       btnConfirmLaunchBatches.disabled = true; btnConfirmLaunchBatches.textContent = '⏳ Creating Campaigns & Scheduling Queue...';
       
       const senderAccountIdVal = document.getElementById('batchSenderAccountSelect')?.value;
       const selectedStrategy = document.querySelector('input[name="sendingStrategyRadio"]:checked')?.value || 'SMART';
       const fallbackAllowed = document.getElementById('chkFallbackAllowed') ? document.getElementById('chkFallbackAllowed').checked : true;
       const selectedSpeedPreset = document.querySelector('input[name="sendingSpeedPreset"]:checked')?.value || 'BALANCED';
+      const templateRotationStrategy = document.querySelector('input[name="templateRotationStrategy"]:checked')?.value || 'PER_EMAIL';
       
       let customMs = 2500;
       if (selectedSpeedPreset === 'SAFE') customMs = 6500;
@@ -1191,7 +1250,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const payload = {
         baseCampaignName: batchBaseCampaignName.value.trim() || currentPreviewData.baseCampaignName,
-        templateId: parseInt(templateId, 10),
+        templateId: templateId,
+        templateIds: templateIds,
+        templateRotationStrategy: templateRotationStrategy,
         batchSize: parseInt(batchSizeInput.value || '50', 10),
         skipPreviouslyContacted: chkSkipPreviouslyContacted.checked,
         scheduleMode: campaignScheduleMode ? campaignScheduleMode.value : 'immediate',

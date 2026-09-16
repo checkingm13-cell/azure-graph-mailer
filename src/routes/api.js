@@ -690,6 +690,8 @@ router.post('/campaigns/launch-batches', (req, res) => {
   const {
     baseCampaignName,
     templateId,
+    templateIds = [],
+    templateRotationStrategy = 'PER_EMAIL',
     batchSize = 50,
     skipPreviouslyContacted = false,
     scheduleMode = 'immediate',
@@ -699,13 +701,20 @@ router.post('/campaigns/launch-batches', (req, res) => {
     senderAccountId = null
   } = req.body;
 
-  if (!baseCampaignName || !templateId) {
-    return res.status(400).json({ ok: false, error: 'baseCampaignName and templateId are required.' });
+  // Resolve active templates (supports single template or multi-template rotation)
+  let activeTemplates = [];
+  if (Array.isArray(templateIds) && templateIds.length > 0) {
+    for (const tid of templateIds) {
+      const t = db.prepare('SELECT * FROM templates WHERE id = ?').get(parseInt(tid, 10));
+      if (t) activeTemplates.push(t);
+    }
+  } else if (templateId) {
+    const t = db.prepare('SELECT * FROM templates WHERE id = ?').get(parseInt(templateId, 10));
+    if (t) activeTemplates.push(t);
   }
 
-  const template = db.prepare('SELECT * FROM templates WHERE id = ?').get(templateId);
-  if (!template) {
-    return res.status(404).json({ ok: false, error: 'Template not found.' });
+  if (!baseCampaignName || activeTemplates.length === 0) {
+    return res.status(400).json({ ok: false, error: 'baseCampaignName and at least one valid template are required.' });
   }
 
   const parsedSenderAccountId = senderAccountId ? parseInt(senderAccountId, 10) : null;
@@ -792,9 +801,14 @@ router.post('/campaigns/launch-batches', (req, res) => {
       const isFuture = startMs > (Date.now() + 5000);
       const initialStatus = isFuture ? 'SCHEDULED' : 'QUEUED';
 
+      // If PER_BATCH rotation, pick template based on batch index; otherwise pick primary template
+      const batchPrimaryTemplate = templateRotationStrategy === 'PER_BATCH'
+        ? activeTemplates[i % activeTemplates.length]
+        : activeTemplates[0];
+
       const campRes = campInsert.run(
         batchName,
-        templateId,
+        batchPrimaryTemplate.id,
         initialStatus,
         batchSlice.length,
         batchScheduledAt,
@@ -807,17 +821,24 @@ router.post('/campaigns/launch-batches', (req, res) => {
       );
       const campaignId = campRes.lastInsertRowid;
 
-      for (const c of batchSlice) {
+      for (let cIdx = 0; cIdx < batchSlice.length; cIdx++) {
+        const c = batchSlice[cIdx];
         const contactId = contactIdMap.get(c.email) || null;
-        const renderedSubject = renderTemplate(template.subject, c);
-        const renderedBody = renderTemplate(template.body_html, c);
+
+        // Choose template: PER_EMAIL rotates round-robin per recipient; PER_BATCH rotates per batch
+        const assignedTemplate = templateRotationStrategy === 'PER_EMAIL'
+          ? activeTemplates[(i * numericBatchSize + cIdx) % activeTemplates.length]
+          : batchPrimaryTemplate;
+
+        const renderedSubject = renderTemplate(assignedTemplate.subject, c);
+        const renderedBody = renderTemplate(assignedTemplate.body_html, c);
         queueInsert.run(campaignId, contactId, c.email, c.name || '', renderedSubject, renderedBody, batchScheduledAt);
       }
 
       db.prepare(`
         INSERT INTO logs (campaign_id, level, message)
         VALUES (?, 'INFO', ?)
-      `).run(campaignId, `Auto-split batch "${batchName}" created with ${batchSlice.length} recipients.`);
+      `).run(campaignId, `Auto-split batch "${batchName}" created with ${batchSlice.length} recipients (Template rotation: ${activeTemplates.length} templates, mode: ${templateRotationStrategy}).`);
 
       createdCampaigns.push({
         campaignId,

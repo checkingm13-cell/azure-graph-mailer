@@ -387,10 +387,43 @@
                   class="form-help">Default 50 emails per batch for safe multi-account dispatch.</span></div>
             </div>
             <div class="form-row">
-              <div class="form-group" style="flex-grow: 1;"><label class="form-label">Select Email Template</label><select
-                  id="batchTemplateSelect" class="form-select" required>
-                  <option value="">-- Choose Template --</option>
-                </select></div>
+              <div class="form-group" style="flex-grow: 1;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <label class="form-label" style="margin-bottom: 0;">Select Email Template(s)</label>
+                  <label class="checkbox-label" style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--sky);">
+                    <input type="checkbox" id="chkEnableTemplateRotation">
+                    <span>🔀 Rotate Multiple Templates</span>
+                  </label>
+                </div>
+
+                <!-- Single Template Mode (Default) -->
+                <div id="singleTemplateContainer">
+                  <select id="batchTemplateSelect" class="form-select">
+                    <option value="">-- Choose Template --</option>
+                  </select>
+                </div>
+
+                <!-- Multi-Template Rotation Mode -->
+                <div id="multiTemplateContainer" style="display: none; background: rgba(0,0,0,0.25); border: 1px dashed var(--border-color); border-radius: 6px; padding: 12px; margin-top: 6px;">
+                  <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">
+                    Select 2 or more templates to rotate across recipients / batches to improve inbox placement and avoid spam filters:
+                  </div>
+                  <div id="templateCheckboxesList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; max-height: 160px; overflow-y: auto; padding-right: 4px;">
+                    <!-- Dynamically populated checkboxes -->
+                  </div>
+                  <div style="display: flex; gap: 16px; margin-top: 10px; font-size: 12px; align-items: center;">
+                    <span style="font-weight: 600; color: var(--text-primary);">Rotation Style:</span>
+                    <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                      <input type="radio" name="templateRotationStrategy" value="PER_EMAIL" checked>
+                      <span>Per Recipient (Round-robin 1 by 1)</span>
+                    </label>
+                    <label style="cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                      <input type="radio" name="templateRotationStrategy" value="PER_BATCH">
+                      <span>Per Batch (Rotate by 50/batch)</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
             </div>
             <div class="form-group" style="margin-top: 4px; margin-bottom: 18px;"><label class="checkbox-label"
                 style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox"
