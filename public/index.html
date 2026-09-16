@@ -186,8 +186,15 @@
         <div class="loading-placeholder">Loading account pool status...</div>
       </div>
       <div class="panel-card" style="margin-top: 24px;">
-        <div class="panel-header">
-          <h3>In-Flight Queue Pipeline</h3><span class="badge badge-queued" id="badgeQueueTotal">0 in pipeline</span>
+        <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <h3>In-Flight Queue Pipeline</h3>
+            <span class="badge badge-queued" id="badgeQueueTotal">0 in pipeline</span>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button type="button" id="btnRetryFailedQueue" class="btn btn-secondary btn-sm" style="color: var(--amber); border-color: rgba(245, 158, 11, 0.4);" title="Retry all failed messages in queue">↻ Retry Failed (<span id="countFailedBadge">0</span>)</button>
+            <button type="button" id="btnClearCompletedQueue" class="btn btn-secondary btn-sm" title="Clear sent messages from pipeline view">🧹 Clear Completed</button>
+          </div>
         </div>
         <div class="table-responsive">
           <table class="data-table">
@@ -499,7 +506,8 @@
               <label class="form-label">Subject Line</label>
               <div class="tag-pills"><span class="tag-pill" data-target="tplSubject" data-tag="{{Name}}">+
                   {{Name}}</span><span class="tag-pill" data-target="tplSubject" data-tag="{{domain}}" title="Recipient email domain">+
-                  {{domain}}</span><span class="tag-pill" data-target="tplSubject" data-tag="{{Paper Title}}">+ {{Paper
+                  {{domain}}</span><span class="tag-pill" data-target="tplSubject" data-tag="{{senderDomain}}" title="Sender mailbox domain (e.g. theparipexjournal.com)">+
+                  {{senderDomain}}</span><span class="tag-pill" data-target="tplSubject" data-tag="{{Paper Title}}">+ {{Paper
                   Title}}</span></div>
               <input type="text" id="tplSubject" class="form-input"
                 placeholder="Invitation: {{Paper Title}} - Journal ParipEx" required>
@@ -508,7 +516,9 @@
               <label class="form-label">Email Body (HTML supported)</label>
               <div class="tag-pills"><span class="tag-pill" data-target="tplBody" data-tag="{{Name}}">+
                   {{Name}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{domain}}" title="Auto-extracts recipient domain (e.g. stanford.edu)">+
-                  {{domain}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{email}}">+
+                  {{domain}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{senderDomain}}" title="Sender mailbox domain - auto resolves relative links">+
+                  {{senderDomain}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{senderEmail}}" title="Sender mailbox email">+
+                  {{senderEmail}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{email}}">+
                   {{email}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{Paper Title}}">+ {{Paper
                   Title}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{Affiliation}}">+
                   {{Affiliation}}</span><span class="tag-pill" data-target="tplBody" data-tag="{{Date}}">+

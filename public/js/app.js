@@ -271,6 +271,11 @@ document.addEventListener('DOMContentLoaded', () => {
       statQueuePending.textContent = worker.queue.queued;
       statQueueSending.textContent = `${worker.queue.sending} currently in transit`;
       badgeQueueTotal.textContent = `${worker.queue.queued} waiting`;
+      const countFailedBadge = document.getElementById('countFailedBadge');
+      if (countFailedBadge) {
+        countFailedBadge.textContent = worker.queue?.failed || 0;
+      }
+      loadQueue();
 
       // Live Campaign Monitor Hero Card
       if (monitorCampaignName) {
@@ -388,6 +393,77 @@ document.addEventListener('DOMContentLoaded', () => {
     await fetch(endpoint, { method: 'POST' });
     await refreshTelemetry();
   });
+
+  // 3b. IN-FLIGHT QUEUE PIPELINE
+  async function loadQueue() {
+    if (!queueTableBody) return;
+    try {
+      const res = await fetch('/api/queue?limit=50');
+      const data = await res.json();
+      if (!data.ok || !data.items || data.items.length === 0) {
+        queueTableBody.innerHTML = `<tr><td colspan="7" class="table-empty">Queue is empty. Ready for new campaigns.</td></tr>`;
+        return;
+      }
+      queueTableBody.innerHTML = data.items.map(item => {
+        let badgeClass = 'badge-queued';
+        if (item.status === 'sending') badgeClass = 'badge-sending';
+        else if (item.status === 'sent') badgeClass = 'badge-completed';
+        else if (item.status === 'failed') badgeClass = 'badge-failed';
+
+        return `
+          <tr>
+            <td>#${item.id}</td>
+            <td><strong>${escapeHtml(item.email)}</strong></td>
+            <td>${escapeHtml(item.name || '--')}</td>
+            <td><span class="account-badge">${escapeHtml(item.assigned_sender_email || 'Auto-Rotate')}</span></td>
+            <td title="${escapeHtml(item.subject)}">${escapeHtml(item.subject ? (item.subject.length > 35 ? item.subject.slice(0, 35) + '...' : item.subject) : '--')}</td>
+            <td><span class="badge ${badgeClass}">${item.status.toUpperCase()}</span></td>
+            <td>${item.attempts || 0}</td>
+          </tr>
+        `;
+      }).join('');
+    } catch (_) {}
+  }
+
+  const btnRetryFailedQueue = document.getElementById('btnRetryFailedQueue');
+  const btnClearCompletedQueue = document.getElementById('btnClearCompletedQueue');
+
+  if (btnRetryFailedQueue) {
+    btnRetryFailedQueue.addEventListener('click', async () => {
+      btnRetryFailedQueue.disabled = true;
+      btnRetryFailedQueue.textContent = '↻ Retrying...';
+      try {
+        const res = await fetch('/api/queue/retry-failed', { method: 'POST' });
+        const data = await res.json();
+        alert(data.message || 'Retry initiated');
+        refreshTelemetry();
+        loadQueue();
+      } catch (e) {
+        alert('Failed to retry queue: ' + e.message);
+      } finally {
+        btnRetryFailedQueue.disabled = false;
+        refreshTelemetry();
+      }
+    });
+  }
+
+  if (btnClearCompletedQueue) {
+    btnClearCompletedQueue.addEventListener('click', async () => {
+      if (!confirm('Clear all completed (sent) emails from queue view? Historical audit logs and metrics will remain intact.')) return;
+      btnClearCompletedQueue.disabled = true;
+      try {
+        const res = await fetch('/api/queue/clear-completed', { method: 'POST' });
+        const data = await res.json();
+        alert(data.message || 'Queue cleaned');
+        refreshTelemetry();
+        loadQueue();
+      } catch (e) {
+        alert('Failed to clear queue: ' + e.message);
+      } finally {
+        btnClearCompletedQueue.disabled = false;
+      }
+    });
+  }
 
   // 4. LOAD ACCOUNTS POOL
   function resetAccountForm() {

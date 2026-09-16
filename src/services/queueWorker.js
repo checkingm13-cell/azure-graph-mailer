@@ -9,6 +9,7 @@ const AccountPool = require('./accountPool');
 const { sendViaGraph } = require('./graphMailer');
 const { sendViaACS } = require('./acsMailer');
 const { sendViaOCI } = require('./ociMailer');
+const { renderTemplate } = require('./templateEngine');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -121,27 +122,38 @@ class QueueWorker {
         try {
           console.log(`[QueueWorker] ✉️ Sending to "${item.email}" via [${account.provider}] ${account.email}...`);
 
+          const dynamicSubject = renderTemplate(item.subject, {
+            sender_email: account.email,
+            email: item.email,
+            name: item.author_name
+          });
+          const dynamicHtml = renderTemplate(item.rendered_html, {
+            sender_email: account.email,
+            email: item.email,
+            name: item.author_name
+          });
+
           if (account.provider === 'AZURE_ACS') {
             await sendViaACS({
               fromEmail: account.email,
               toEmail: item.email,
-              subject: item.subject,
-              htmlBody: item.rendered_html
+              subject: dynamicSubject,
+              htmlBody: dynamicHtml
             });
           } else if (account.provider === 'OCI') {
             await sendViaOCI({
               fromEmail: account.email,
               toEmail: item.email,
-              subject: item.subject,
-              htmlBody: item.rendered_html
+              subject: dynamicSubject,
+              htmlBody: dynamicHtml
             });
           } else {
             // Default to Graph API
             await sendViaGraph({
               fromEmail: account.email,
               toEmail: item.email,
-              subject: item.subject,
-              htmlBody: item.rendered_html
+              subject: dynamicSubject,
+              htmlBody: dynamicHtml
             });
           }
 

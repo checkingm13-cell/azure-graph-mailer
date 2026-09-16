@@ -178,6 +178,82 @@ router.post('/worker/resume', (req, res) => {
   res.json({ ok: true, message: 'Worker resumed' });
 });
 
+// QUEUE LISTING & MAINTENANCE
+router.get('/queue', (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
+  const items = db.prepare(`
+    SELECT 
+      q.id, q.email, q.name, q.subject, q.status, q.attempts, q.scheduled_at, q.sent_at, q.last_error,
+      a.email AS assigned_sender_email, a.provider AS assigned_provider
+    FROM queue q
+    LEFT JOIN accounts a ON q.account_id = a.id
+    ORDER BY 
+      CASE 
+        WHEN q.status = 'sending' THEN 1
+        WHEN q.status = 'queued' THEN 2
+        WHEN q.status = 'failed' THEN 3
+        ELSE 4
+      END,
+      q.id DESC
+    LIMIT ?
+  `).all(limit);
+
+  res.json({ ok: true, items });
+});
+
+router.post('/queue/retry-failed', (req, res) => {
+  const { campaignId } = req.body || {};
+  let result;
+  if (campaignId) {
+    result = db.prepare(`
+      UPDATE queue 
+      SET status = 'queued', 
+          attempts = 0, 
+          last_error = '' 
+      WHERE campaign_id = ? AND status = 'failed'
+    `).run(campaignId);
+
+    db.prepare(`
+      UPDATE campaigns 
+      SET status = 'RUNNING' 
+      WHERE id = ? AND status = 'FAILED'
+    `).run(campaignId);
+  } else {
+    result = db.prepare(`
+      UPDATE queue 
+      SET status = 'queued', 
+          attempts = 0, 
+          last_error = '' 
+      WHERE status = 'failed'
+    `).run();
+
+    db.prepare(`
+      UPDATE campaigns 
+      SET status = 'RUNNING' 
+      WHERE status = 'FAILED'
+    `).run();
+  }
+
+  res.json({
+    ok: true,
+    message: `Re-queued ${result.changes} failed message(s) back into live dispatch pipeline.`,
+    count: result.changes
+  });
+});
+
+router.post('/queue/clear-completed', (req, res) => {
+  const result = db.prepare(`
+    DELETE FROM queue 
+    WHERE status = 'sent'
+  `).run();
+
+  res.json({
+    ok: true,
+    message: `Cleaned up ${result.changes} sent email(s) from queue pipeline.`,
+    count: result.changes
+  });
+});
+
 // RUNTIME DYNAMIC SETTINGS
 router.get('/settings', (req, res) => {
   const row = db.prepare("SELECT value FROM settings WHERE key = 'send_interval_ms'").get();
