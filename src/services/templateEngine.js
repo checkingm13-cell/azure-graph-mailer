@@ -17,10 +17,16 @@ function renderTemplate(templateStr, data = {}) {
     ? senderEmail.split('@')[1].trim().toLowerCase()
     : (data.sender_domain || data.senderDomain || data.senderdomain || '');
 
+  const firstName = (data.name || '').split(' ')[0] || data.name || 'Researcher';
+  const fullName = data.name || 'Researcher';
+
   // Normalized key-value map for case-insensitive and flexible replacement
   const map = {
-    name: data.name || '',
-    'first name': (data.name || '').split(' ')[0] || '',
+    fname: firstName,
+    'fname': firstName,
+    'first name': firstName,
+    firstname: firstName,
+    name: fullName,
     email: data.email || '',
     domain: recipientDomain,
     recipient_domain: recipientDomain,
@@ -36,10 +42,10 @@ function renderTemplate(templateStr, data = {}) {
     date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
   };
 
-  // Replace {{tag}} and {tag} variations
+  // Replace {{tag}}, {tag}, and [tag] variations (e.g. [FNAME], {{Name}})
   for (const [key, value] of Object.entries(map)) {
     const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`\\{\\{\\s*${escapedKey}\\s*\\}\\}|\\{\\s*${escapedKey}\\s*\\}`, 'gi');
+    const regex = new RegExp(`\\{\\{\\s*${escapedKey}\\s*\\}\\}|\\{\\s*${escapedKey}\\s*\\}|\\[\\s*${escapedKey}\\s*\\]`, 'gi');
     result = result.replace(regex, value);
   }
 
