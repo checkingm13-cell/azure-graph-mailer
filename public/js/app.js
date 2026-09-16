@@ -1464,6 +1464,9 @@ document.addEventListener('DOMContentLoaded', () => {
           senderBadge = `<div><strong style="color: var(--emerald); font-size: 11px;">⚡ Auto-Rotate Pool</strong></div><span class="account-badge" style="font-size: 9px; padding: 1px 5px; background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.3);">${sendersCount}</span>`;
         }
 
+        const timeDisplay = c.started_at ? `Started: ${formatDateTime(c.started_at)}` : (c.scheduled_at ? `Scheduled: ${formatDateTime(c.scheduled_at)}` : '--');
+        const progressPct = c.total_count > 0 ? Math.round(((c.sent_count + c.failed_count) / c.total_count) * 100) : 0;
+
         return `
           <tr>
             <td>#${c.id}</td>
