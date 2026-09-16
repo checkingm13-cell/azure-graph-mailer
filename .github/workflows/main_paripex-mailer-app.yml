@@ -26,7 +26,7 @@ jobs:
       - name: Install Production Dependencies
         run: npm ci --omit=dev
 
-      # Package directly into a single zip (10x faster upload than raw folder)
+      # Package directly into a single zip (exclude dev/test files)
       - name: Create Clean Deployment Archive
         run: |
           zip -q -r release.zip . -x ".git/*" ".github/*" "tests/*" "*.md"
@@ -37,6 +37,13 @@ jobs:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_EECFD65A373B4B7B964F0D953BC008D4 }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_ADDF7064233A4843AD97AC6BDD366422 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_B86E2BDB93B14E92B6BD707FD34B6FE2 }}
+
+      # Disable remote Oryx build (saves 30-45s) & enable fast deployment
+      - name: Configure Azure App Pacing
+        uses: azure/CLI@v2
+        with:
+          inlineScript: |
+            az webapp config appsettings set --name paripex-mailer-app --resource-group $(az webapp show --name paripex-mailer-app --query "resourceGroup" -o tsv) --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false
 
       # Fast Zip Deploy
       - name: Deploy to Azure Web App
