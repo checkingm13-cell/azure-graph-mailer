@@ -742,7 +742,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   <strong style="color: var(--text-primary);">${(a.remaining_today !== undefined ? a.remaining_today : (a.daily_limit - a.sent_today)).toLocaleString()} / ${a.daily_limit.toLocaleString()}</strong>
                 </div>
                 <div class="gauge-bar-bg" style="height: 6px; margin-bottom: 8px;">
-                  <div class="gauge-bar-fill" style="width: ${pct}%; background-color: ${pct > 90 ? 'var(--rose)' : 'var(--sky)'};"></div>
+                  <div class="gauge-bar-fill" style="width: ${a.daily_limit > 0 ? Math.min(100, Math.round(((a.remaining_today !== undefined ? a.remaining_today : (a.daily_limit - a.sent_today)) / a.daily_limit) * 100)) : 0}%; background-color: ${(a.remaining_today !== undefined ? a.remaining_today : (a.daily_limit - a.sent_today)) <= 0 ? 'var(--rose)' : 'var(--emerald)'};"></div>
                 </div>
               </div>
 
