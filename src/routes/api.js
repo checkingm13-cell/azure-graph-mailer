@@ -116,23 +116,38 @@ router.post('/worker/resume', (req, res) => {
   res.json({ ok: true, message: 'Worker resumed' });
 });
 
-// QUEUE LISTING & MAINTENANCE (Server-Side Pagination & Status Filtering)
+// QUEUE LISTING & MAINTENANCE (Server-Side Pagination, Search & Status Filtering)
 router.get('/queue', (req, res) => {
   const page = Math.max(1, parseInt(req.query.page || '1', 10));
   const limit = Math.min(Math.max(1, parseInt(req.query.limit || '25', 10)), 200);
   const offset = (page - 1) * limit;
   const statusFilter = req.query.status || 'all';
+  const searchTerm = String(req.query.search || '').trim();
 
-  let whereClause = '';
+  const whereConditions = [];
   const params = [];
+
   if (statusFilter === 'active') {
-    whereClause = "WHERE q.status IN ('queued', 'sending')";
+    whereConditions.push("q.status IN ('queued', 'sending')");
   } else if (statusFilter !== 'all') {
-    whereClause = 'WHERE q.status = ?';
+    whereConditions.push('q.status = ?');
     params.push(statusFilter);
   }
 
-  const countRow = db.prepare(`SELECT COUNT(*) AS total FROM queue q ${whereClause}`).get(...params);
+  if (searchTerm) {
+    whereConditions.push('(q.email LIKE ? OR q.name LIKE ? OR q.subject LIKE ? OR c.name LIKE ?)');
+    const searchPattern = `%${searchTerm}%`;
+    params.push(searchPattern, searchPattern, searchPattern, searchPattern);
+  }
+
+  const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+
+  const countRow = db.prepare(`
+    SELECT COUNT(*) AS total 
+    FROM queue q 
+    LEFT JOIN campaigns c ON q.campaign_id = c.id 
+    ${whereClause}
+  `).get(...params);
   const total = countRow ? countRow.total : 0;
 
   const items = db.prepare(`

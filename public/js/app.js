@@ -501,13 +501,17 @@ document.addEventListener('DOMContentLoaded', () => {
     await refreshTelemetry();
   });
 
-  // 3b. IN-FLIGHT QUEUE PIPELINE (Paginated, Filterable & Zero-Flicker)
+  // 3b. IN-FLIGHT QUEUE PIPELINE (Paginated, Searchable, Filterable & Zero-Flicker)
   let queueCurrentPage = 1;
   let queueTotalPages = 1;
   let queuePageSize = 25;
   let queueFilterStatus = 'all';
+  let queueSearchTerm = '';
+  let queueSearchDebounceTimer = null;
   let isQueueFetching = false;
 
+  const queueSearchInput = document.getElementById('queueSearchInput');
+  const btnClearQueueSearch = document.getElementById('btnClearQueueSearch');
   const queuePageIndicator = document.getElementById('queuePageIndicator');
   const btnQueuePrevPage = document.getElementById('btnQueuePrevPage');
   const btnQueueNextPage = document.getElementById('btnQueueNextPage');
@@ -521,7 +525,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const params = new URLSearchParams({
         page: queueCurrentPage,
         limit: queuePageSize,
-        status: queueFilterStatus
+        status: queueFilterStatus,
+        search: queueSearchTerm
       });
 
       const res = await fetch(`/api/queue?${params}`);
@@ -535,8 +540,11 @@ document.addEventListener('DOMContentLoaded', () => {
           return loadQueue();
         }
         queueTotalPages = 1;
-        queueTableBody.innerHTML = `<tr><td colspan="9" class="table-empty">Queue is empty. Ready for new campaigns.</td></tr>`;
-        if (queuePageIndicator) queuePageIndicator.textContent = 'Page 1 of 1';
+        const emptyMsg = queueSearchTerm
+          ? `No matching queue records found for "${escapeHtml(queueSearchTerm)}"`
+          : 'Queue is empty. Ready for new campaigns.';
+        queueTableBody.innerHTML = `<tr><td colspan="9" class="table-empty">${emptyMsg}</td></tr>`;
+        if (queuePageIndicator) queuePageIndicator.textContent = 'Page 1 of 1 (0 items)';
         if (btnQueuePrevPage) btnQueuePrevPage.disabled = true;
         if (btnQueueNextPage) btnQueueNextPage.disabled = true;
         return;
@@ -576,6 +584,32 @@ document.addEventListener('DOMContentLoaded', () => {
     } finally {
       isQueueFetching = false;
     }
+  }
+
+  // Queue Search Bar Listeners
+  if (queueSearchInput) {
+    queueSearchInput.addEventListener('input', () => {
+      const val = queueSearchInput.value.trim();
+      if (btnClearQueueSearch) {
+        btnClearQueueSearch.style.display = val ? 'inline-block' : 'none';
+      }
+      clearTimeout(queueSearchDebounceTimer);
+      queueSearchDebounceTimer = setTimeout(() => {
+        queueSearchTerm = val;
+        queueCurrentPage = 1;
+        loadQueue();
+      }, 250);
+    });
+  }
+
+  if (btnClearQueueSearch) {
+    btnClearQueueSearch.addEventListener('click', () => {
+      if (queueSearchInput) queueSearchInput.value = '';
+      btnClearQueueSearch.style.display = 'none';
+      queueSearchTerm = '';
+      queueCurrentPage = 1;
+      loadQueue();
+    });
   }
 
   // Queue Pagination & Filter Event Listeners

@@ -240,13 +240,19 @@
             </tbody>
           </table>
         </div>
-        <!-- Queue Pagination & Status Filter Bar -->
+        <!-- Queue Search, Status Filters & Pagination Bar -->
         <div class="queue-pagination-bar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-color);">
-          <div class="filter-pills" style="display: flex; gap: 6px; flex-wrap: wrap;">
-            <button type="button" class="filter-pill active queue-filter-pill" data-status="all">All</button>
-            <button type="button" class="filter-pill queue-filter-pill" data-status="active">⚡ In Transit / Queued</button>
-            <button type="button" class="filter-pill queue-filter-pill" data-status="failed">❌ Failed</button>
-            <button type="button" class="filter-pill queue-filter-pill" data-status="sent">✅ Sent</button>
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; flex: 1; min-width: 280px;">
+            <div style="position: relative; flex: 1; max-width: 320px;">
+              <input type="text" id="queueSearchInput" class="form-input" placeholder="🔍 Search email, name, subject, batch..." style="padding-left: 28px; padding-right: 26px; height: 32px; font-size: 12px; width: 100%;">
+              <button type="button" id="btnClearQueueSearch" style="display: none; position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 13px; padding: 2px;">✕</button>
+            </div>
+            <div class="filter-pills" style="display: flex; gap: 6px; flex-wrap: wrap;">
+              <button type="button" class="filter-pill active queue-filter-pill" data-status="all">All</button>
+              <button type="button" class="filter-pill queue-filter-pill" data-status="active">⚡ In Transit / Queued</button>
+              <button type="button" class="filter-pill queue-filter-pill" data-status="failed">❌ Failed</button>
+              <button type="button" class="filter-pill queue-filter-pill" data-status="sent">✅ Sent</button>
+            </div>
           </div>
           <div style="display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-secondary);">
             <span id="queuePageIndicator">Page 1 of 1</span>
