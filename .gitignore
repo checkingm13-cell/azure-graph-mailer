@@ -8,8 +8,28 @@ uploads/*
 *.log
 
 diagnostic-delivery.js
-test-final-csv.js
 *.csv
 all_code_text.txt
 *.txt
 *.bat
+
+# Test folders, scratch scripts, and temporary files
+tests/
+test/
+*test*.js
+*live*.js
+test-*.js
+*scratch*
+scratch/
+temp_*
+temp/
+
+# Deployment packages & archives
+deploy.zip
+*.zip
+
+# Sensitive settings & credentials
+paripex-mailer-app.PublishSettings
+*.PublishSettings
+*.xml
+

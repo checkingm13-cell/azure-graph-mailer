@@ -2,6 +2,8 @@
  * Main Express Application Server & Process Lifecycle
  */
 
+process.env.TZ = 'Asia/Kolkata';
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');

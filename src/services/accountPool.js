@@ -24,12 +24,12 @@ class AccountPool {
           AND sent_today < daily_limit
           AND (
             cooldown_until IS NULL
-            OR strftime('%s', 'now') >= strftime('%s', cooldown_until)
+            OR strftime('%s', 'now', '+330 minutes') >= strftime('%s', cooldown_until)
           )
           AND (
             cooldown_seconds = 0
             OR last_sent_at IS NULL
-            OR (strftime('%s', 'now') - strftime('%s', last_sent_at)) >= cooldown_seconds
+            OR (strftime('%s', 'now', '+330 minutes') - strftime('%s', last_sent_at)) >= cooldown_seconds
           )
         LIMIT 1
       `);
@@ -42,12 +42,12 @@ class AccountPool {
         AND sent_today < daily_limit
         AND (
           cooldown_until IS NULL
-          OR strftime('%s', 'now') >= strftime('%s', cooldown_until)
+          OR strftime('%s', 'now', '+330 minutes') >= strftime('%s', cooldown_until)
         )
         AND (
           cooldown_seconds = 0
           OR last_sent_at IS NULL
-          OR (strftime('%s', 'now') - strftime('%s', last_sent_at)) >= cooldown_seconds
+          OR (strftime('%s', 'now', '+330 minutes') - strftime('%s', last_sent_at)) >= cooldown_seconds
         )
       ORDER BY 
         CASE WHEN last_sent_at IS NULL THEN 0 ELSE 1 END ASC,
@@ -71,7 +71,7 @@ class AccountPool {
     }
     this._lastQuotaRefresh = now;
 
-    // Count sends in the last 24 hours per account from queue table, respecting any manual quota_reset_at
+    // Count sends in the last 24 hours per account from queue table in IST
     const stmt = db.prepare(`
       UPDATE accounts
       SET sent_today = (
@@ -79,7 +79,7 @@ class AccountPool {
         FROM queue
         WHERE queue.account_id = accounts.id
           AND queue.status = 'sent'
-          AND queue.sent_at >= datetime('now', '-24 hours')
+          AND queue.sent_at >= datetime('now', '+330 minutes', '-24 hours')
           AND (accounts.quota_reset_at IS NULL OR queue.sent_at > accounts.quota_reset_at)
       )
     `);
@@ -94,7 +94,7 @@ class AccountPool {
     const stmt = db.prepare(`
       UPDATE accounts
       SET sent_today = sent_today + 1,
-          last_sent_at = datetime('now')
+          last_sent_at = datetime('now', '+330 minutes')
       WHERE id = ?
     `);
     stmt.run(accountId);
@@ -109,8 +109,8 @@ class AccountPool {
   static putOnCooldown(accountId, cooldownSeconds = 120) {
     const stmt = db.prepare(`
       UPDATE accounts
-      SET last_sent_at = datetime('now'),
-          cooldown_until = datetime('now', '+' || ? || ' seconds')
+      SET last_sent_at = datetime('now', '+330 minutes'),
+          cooldown_until = datetime('now', '+330 minutes', '+' || ? || ' seconds')
       WHERE id = ?
     `);
     stmt.run(cooldownSeconds, accountId);
@@ -202,10 +202,10 @@ class AccountPool {
         failure_count, bounce_count, complaint_count,
         MAX(0, daily_limit - sent_today) AS remaining_today,
         CASE 
-          WHEN cooldown_until IS NOT NULL AND strftime('%s', cooldown_until) > strftime('%s', 'now')
-            THEN MAX(0, strftime('%s', cooldown_until) - strftime('%s', 'now'))
+          WHEN cooldown_until IS NOT NULL AND strftime('%s', cooldown_until) > strftime('%s', 'now', '+330 minutes')
+            THEN MAX(0, strftime('%s', cooldown_until) - strftime('%s', 'now', '+330 minutes'))
           WHEN last_sent_at IS NULL THEN 0
-          ELSE MAX(0, cooldown_seconds - (strftime('%s', 'now') - strftime('%s', last_sent_at)))
+          ELSE MAX(0, cooldown_seconds - (strftime('%s', 'now', '+330 minutes') - strftime('%s', last_sent_at)))
         END AS cooldown_remaining_sec
       FROM accounts
       ORDER BY id ASC
@@ -299,20 +299,17 @@ class AccountPool {
       }
 
       if (targetAcc.remaining_today <= 0) {
-        if (campaign.fallback_allowed === 1) {
-          // Fallback allowed: check other accounts
-          const fallbackCandidates = activeAccounts.filter(a => a.id !== pinnedId && a.remaining_today > 0);
-          if (fallbackCandidates.length > 0) {
-            return {
-              reason: `Primary account "${targetAcc.email}" reached its daily sending limit. Automatically rotating to fallback account.`,
-              nextAvailableAccount: fallbackCandidates[0].display_name || fallbackCandidates[0].email,
-              secondsRemaining: 0,
-              canResume: true
-            };
-          }
+        const fallbackCandidates = activeAccounts.filter(a => a.id !== pinnedId && a.remaining_today > 0);
+        if (fallbackCandidates.length > 0) {
+          return {
+            reason: `Primary account "${targetAcc.email}" reached its daily sending limit (${targetAcc.daily_limit.toLocaleString()} emails). Automatically rotating to fallback account (${fallbackCandidates[0].email}).`,
+            nextAvailableAccount: fallbackCandidates[0].display_name || fallbackCandidates[0].email,
+            secondsRemaining: 0,
+            canResume: true
+          };
         }
         return {
-          reason: `Assigned account "${targetAcc.email}" reached its daily sending limit (${targetAcc.daily_limit.toLocaleString()} emails). Waiting for window reset.`,
+          reason: `Assigned account "${targetAcc.email}" and all pool accounts reached daily sending limits (${targetAcc.daily_limit.toLocaleString()} emails). Waiting for quota refresh.`,
           nextAvailableAccount: targetAcc.display_name || targetAcc.email,
           secondsRemaining: null,
           canResume: false
@@ -320,6 +317,15 @@ class AccountPool {
       }
 
       if (targetAcc.cooldown_remaining_sec > 0) {
+        const fallbackCandidates = activeAccounts.filter(a => a.id !== pinnedId && a.remaining_today > 0 && a.cooldown_remaining_sec === 0);
+        if (fallbackCandidates.length > 0) {
+          return {
+            reason: `Assigned account "${targetAcc.email}" is cooling down. Dispatching via pool fallback account (${fallbackCandidates[0].email}).`,
+            nextAvailableAccount: fallbackCandidates[0].display_name || fallbackCandidates[0].email,
+            secondsRemaining: 0,
+            canResume: true
+          };
+        }
         return {
           reason: `Assigned account "${targetAcc.display_name || targetAcc.email}" is temporarily resting to protect sender reputation.`,
           nextAvailableAccount: targetAcc.display_name || targetAcc.email,

@@ -217,9 +217,25 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  function toLocalDatetimeInputString(d = new Date()) {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+    const parts = formatter.formatToParts(d);
+    const p = {};
+    for (const part of parts) p[part.type] = part.value;
+    return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+  }
+
   function formatTimeUntil(dateStr) {
     if (!dateStr) return '--';
-    const cleanStr = dateStr.includes('Z') || dateStr.includes('+') ? dateStr : dateStr.replace(' ', 'T') + 'Z';
+    const cleanStr = dateStr.includes('Z') || dateStr.includes('+') ? dateStr : dateStr.replace(' ', 'T') + '+05:30';
     const target = new Date(cleanStr);
     const now = new Date();
     const diffMs = target.getTime() - now.getTime();
@@ -233,9 +249,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function formatDateTime(dateStr) {
     if (!dateStr) return '--';
-    const cleanStr = dateStr.includes('Z') || dateStr.includes('+') ? dateStr : dateStr.replace(' ', 'T') + 'Z';
+    const cleanStr = dateStr.includes('Z') || dateStr.includes('+') ? dateStr : dateStr.replace(' ', 'T') + '+05:30';
     const d = new Date(cleanStr);
-    return isNaN(d.getTime()) ? dateStr : d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return isNaN(d.getTime()) ? dateStr : d.toLocaleString([], { timeZone: 'Asia/Kolkata', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
   // 1. TAB NAVIGATION WITH ASYNC LAZY LOADING
@@ -1528,10 +1544,17 @@ document.addEventListener('DOMContentLoaded', () => {
       const mode = campaignScheduleMode.value;
       if (mode === 'scheduled') {
         groupScheduledStartTime.style.display = 'block'; groupStaggerInterval.style.display = 'none';
-        if (!campaignScheduledStartTime.value) { const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(9, 0, 0, 0); campaignScheduledStartTime.value = tomorrow.toISOString().slice(0, 16); }
+        if (!campaignScheduledStartTime.value) { 
+          const tomorrow = new Date(); 
+          tomorrow.setDate(tomorrow.getDate() + 1); 
+          tomorrow.setHours(9, 0, 0, 0); 
+          campaignScheduledStartTime.value = toLocalDatetimeInputString(tomorrow); 
+        }
       } else if (mode === 'staggered') {
         groupScheduledStartTime.style.display = 'block'; groupStaggerInterval.style.display = 'block';
-        if (!campaignScheduledStartTime.value) { const now = new Date(); campaignScheduledStartTime.value = now.toISOString().slice(0, 16); }
+        if (!campaignScheduledStartTime.value) { 
+          campaignScheduledStartTime.value = toLocalDatetimeInputString(new Date()); 
+        }
       } else {
         groupScheduledStartTime.style.display = 'none'; groupStaggerInterval.style.display = 'none';
       }
@@ -1628,7 +1651,7 @@ document.addEventListener('DOMContentLoaded', () => {
         batchSize: parseInt(batchSizeInput.value || '50', 10),
         skipPreviouslyContacted: chkSkipPreviouslyContacted.checked,
         scheduleMode: campaignScheduleMode ? campaignScheduleMode.value : 'immediate',
-        scheduledStartTime: (campaignScheduledStartTime && campaignScheduledStartTime.value) ? new Date(campaignScheduledStartTime.value).toISOString() : '',
+        scheduledStartTime: (campaignScheduledStartTime && campaignScheduledStartTime.value) ? campaignScheduledStartTime.value : '',
         staggerMinutes: parseInt(campaignStaggerMinutes ? campaignStaggerMinutes.value || '60' : '60', 10),
         contacts: currentPreviewData.contacts,
         senderAccountId: (!isNaN(parsedSenderId) && parsedSenderId) ? parsedSenderId : null,
@@ -1964,14 +1987,28 @@ document.addEventListener('DOMContentLoaded', () => {
         // Wire bulk send now
         aggregatedContainer.querySelectorAll('.btn-bulk-send-now').forEach(btn => {
           btn.addEventListener('click', async () => {
+            const origText = btn.innerHTML;
             btn.disabled = true;
+            btn.innerHTML = '⚡ Starting...';
             try {
-              await fetch(`/api/campaigns/${btn.dataset.id}/send-now`, { method: 'POST' });
+              const res = await fetch(`/api/campaigns/${btn.dataset.id}/send-now`, { method: 'POST' });
+              const data = await res.json();
+              if (!data.ok) throw new Error(data.error || 'Failed to trigger send');
+              btn.innerHTML = '⚡ Sending!';
               loadCampaigns();
               refreshTelemetry();
+
+              // Fast-poll telemetry every 1.5s for 15s to display rapid parallel progress
+              let polls = 0;
+              const pollInterval = setInterval(() => {
+                loadCampaigns();
+                refreshTelemetry();
+                polls++;
+                if (polls > 10) clearInterval(pollInterval);
+              }, 1500);
             } catch (err) {
               alert(err.message);
-            } finally {
+              btn.innerHTML = origText;
               btn.disabled = false;
             }
           });
@@ -2046,8 +2083,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
         campaignsTableBody.querySelectorAll('.btn-pause-camp').forEach(btn => btn.addEventListener('click', async () => { await fetch(`/api/campaigns/${btn.dataset.id}/pause`, { method: 'POST' }); loadCampaigns(); refreshTelemetry(); }));
         campaignsTableBody.querySelectorAll('.btn-resume-camp').forEach(btn => btn.addEventListener('click', async () => { await fetch(`/api/campaigns/${btn.dataset.id}/resume`, { method: 'POST' }); loadCampaigns(); refreshTelemetry(); }));
-        campaignsTableBody.querySelectorAll('.btn-cancel-camp').forEach(btn => btn.addEventListener('click', async () => { if (!confirm('Cancel this campaign? Any unsent emails will be stopped.')) return; await fetch(`/api/campaigns/${btn.dataset.id}/cancel`, { method: 'POST' }); loadCampaigns(); refreshTelemetry(); }));
-        campaignsTableBody.querySelectorAll('.btn-send-now').forEach(btn => btn.addEventListener('click', async () => { await fetch(`/api/campaigns/${btn.dataset.id}/send-now`, { method: 'POST' }); loadCampaigns(); refreshTelemetry(); }));
+        campaignsTableBody.querySelectorAll('.btn-send-now').forEach(btn => btn.addEventListener('click', async () => {
+          const orig = btn.innerHTML;
+          btn.disabled = true;
+          btn.innerHTML = '⚡ Starting...';
+          try {
+            const res = await fetch(`/api/campaigns/${btn.dataset.id}/send-now`, { method: 'POST' });
+            const data = await res.json();
+            if (!data.ok) throw new Error(data.error || 'Failed to trigger send');
+            btn.innerHTML = '⚡ Sending!';
+            loadCampaigns();
+            refreshTelemetry();
+            let polls = 0;
+            const pollInterval = setInterval(() => {
+              loadCampaigns();
+              refreshTelemetry();
+              polls++;
+              if (polls > 10) clearInterval(pollInterval);
+            }, 1500);
+          } catch (err) {
+            alert(err.message);
+            btn.innerHTML = orig;
+            btn.disabled = false;
+          }
+        }));
         campaignsTableBody.querySelectorAll('.btn-inspect-batch').forEach(btn => btn.addEventListener('click', () => { openCampaignInspectionDrawer(btn.dataset.id); }));
       }
 

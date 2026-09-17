@@ -7,21 +7,32 @@ class BatchChainManager {
    */
   async checkAndTriggerNextBatch(campaignId, completedBatchNumber) {
     const nextBatchNumber = completedBatchNumber + 1;
+    const nextBatchStr = String(nextBatchNumber).padStart(2, '0');
     
+    // Ensure we strictly trigger the next batch in the SAME series
+    const current = db.prepare('SELECT name FROM campaigns WHERE id = ?').get(campaignId);
+    let pattern = `%_Batch_${nextBatchStr}`;
+    if (current && current.name) {
+      const match = current.name.match(/^(.*)_Batch_\d+$/);
+      if (match) {
+        pattern = `${match[1]}_Batch_${nextBatchStr}`;
+      }
+    }
+
     // Check if next batch exists in scheduled queue
     const nextBatch = db.prepare(`
       SELECT c.*, COUNT(q.id) as total_items
       FROM campaigns c
       LEFT JOIN queue q ON q.campaign_id = c.id
-      WHERE c.name LIKE ? 
+      WHERE (c.name = ? OR c.name LIKE ?)
       AND c.status IN ('SCHEDULED', 'QUEUED')
       GROUP BY c.id
       ORDER BY c.scheduled_at ASC
       LIMIT 1
-    `).get(`%_Batch_${String(nextBatchNumber).padStart(2, '0')}`);
+    `).get(pattern, pattern);
     
     if (!nextBatch) {
-      console.log(`[BatchChain] No next batch #${nextBatchNumber} found.`);
+      console.log(`[BatchChain] No next batch #${nextBatchNumber} found for pattern "${pattern}".`);
       return null;
     }
     
@@ -43,7 +54,7 @@ class BatchChainManager {
     db.prepare(`
       UPDATE campaigns 
       SET status = 'RUNNING', 
-          started_at = datetime('now'),
+          started_at = datetime('now', '+330 minutes'),
           scheduled_at = NULL
       WHERE id = ?
     `).run(campaignId);
@@ -247,7 +258,7 @@ class BatchChainManager {
       db.prepare(`
         UPDATE campaigns 
         SET status = 'COMPLETED',
-            completed_at = datetime('now')
+            completed_at = datetime('now', '+330 minutes')
         WHERE id = ? AND status = 'RUNNING'
       `).run(batch.id);
       

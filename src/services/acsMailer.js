@@ -42,13 +42,30 @@ async function sendViaACS({ fromEmail, toEmail, subject, htmlBody }) {
   };
 
   const poller = await client.beginSend(message);
-  const response = await poller.pollUntilDone();
+  let response = null;
+  try {
+    response = await Promise.race([
+      poller.pollUntilDone(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('ACS_POLL_TIMEOUT')), 5000))
+    ]);
+  } catch (err) {
+    if (err.message === 'ACS_POLL_TIMEOUT') {
+      const opId = poller.getOperationState()?.operationId || `acs_${Date.now()}`;
+      return {
+        success: true,
+        provider: 'AZURE_ACS',
+        messageId: opId,
+        status: 'Accepted'
+      };
+    }
+    throw err;
+  }
 
   return {
     success: true,
     provider: 'AZURE_ACS',
-    messageId: response.id,
-    status: response.status
+    messageId: response.id || `acs_${Date.now()}`,
+    status: response.status || 'Accepted'
   };
 }
 

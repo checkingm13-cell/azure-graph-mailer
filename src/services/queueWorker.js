@@ -11,6 +11,7 @@ const { sendViaACS } = require('./acsMailer');
 const { sendViaOCI } = require('./ociMailer');
 const { renderTemplate } = require('./templateEngine');
 const batchChainManager = require('./batchChainManager');
+const { toISTString, IST_SQL_NOW } = require('../utils/time');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -25,13 +26,109 @@ function getSendIntervalMs() {
   return config.globalSendIntervalMs;
 }
 
+const withTimeout = (promise, ms, desc) => {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${desc || 'Operation'} timed out after ${ms}ms`)), ms)
+    )
+  ]);
+};
+
 class QueueWorker {
   constructor() {
     this.isRunning = false;
     this.isPaused = false;
     this.currentTask = null;
     this.lastDispatchedAt = null;
-    this.workerLoopPromise = null;
+    this.lastWatchdogRun = 0;
+    this.priorityCampaignIds = new Set();
+    this.sleepResolver = null;
+  }
+
+  wake() {
+    if (this.sleepResolver) {
+      const resolve = this.sleepResolver;
+      this.sleepResolver = null;
+      resolve();
+    }
+  }
+
+  interruptibleSleep(ms) {
+    return new Promise((resolve) => {
+      let timer = null;
+      const onWake = () => {
+        if (timer) clearTimeout(timer);
+        resolve();
+      };
+      this.sleepResolver = onWake;
+      timer = setTimeout(() => {
+        if (this.sleepResolver === onWake) {
+          this.sleepResolver = null;
+        }
+        resolve();
+      }, ms);
+    });
+  }
+
+  triggerInstantSend(campaignIds = []) {
+    if (Array.isArray(campaignIds)) {
+      for (const id of campaignIds) {
+        this.priorityCampaignIds.add(parseInt(id, 10));
+      }
+    } else if (campaignIds) {
+      this.priorityCampaignIds.add(parseInt(campaignIds, 10));
+    }
+    console.log(`[QueueWorker] ⚡ Instant send requested for campaigns: [${Array.from(this.priorityCampaignIds).join(', ')}]. Waking worker immediately!`);
+    this.isPaused = false;
+    this.wake();
+  }
+
+  checkWatchdog() {
+    const now = Date.now();
+    if (now - this.lastWatchdogRun < 30000) return;
+    this.lastWatchdogRun = now;
+    try {
+      // Auto-recover any item stranded in 'sending' for > 90 seconds
+      const res = db.prepare(`
+        UPDATE queue 
+        SET status = 'queued', account_id = NULL, scheduled_at = datetime('now', '+330 minutes')
+        WHERE status = 'sending'
+      `).run();
+      if (res.changes > 0) {
+        console.log(`[QueueWorker] 🔄 Watchdog: Auto-recovered ${res.changes} item(s) stranded in sending.`);
+      }
+    } catch (_) {}
+  }
+
+  checkCampaignCompletion(campaignId, campaignName) {
+    try {
+      const remaining = db.prepare(`
+        SELECT COUNT(*) AS count 
+        FROM queue 
+        WHERE campaign_id = ? AND status IN ('queued', 'sending')
+      `).get(campaignId).count;
+
+      if (remaining === 0) {
+        db.prepare(`
+          UPDATE campaigns
+          SET status = 'COMPLETED',
+              completed_at = datetime('now', '+330 minutes')
+          WHERE id = ? AND status != 'COMPLETED'
+        `).run(campaignId);
+        console.log(`[QueueWorker] 🏁 Campaign "${campaignName}" (ID: ${campaignId}) has COMPLETED!`);
+        this.priorityCampaignIds.delete(campaignId);
+
+        // Auto-Batch Chaining: Immediately trigger next sequential batch
+        const match = (campaignName || '').match(/Batch_(\d+)/);
+        if (match) {
+          const batchNumber = parseInt(match[1], 10);
+          batchChainManager.checkAndTriggerNextBatch(campaignId, batchNumber).catch(console.error);
+        }
+      }
+    } catch (e) {
+      console.error('[QueueWorker] Error checking campaign completion:', e);
+    }
   }
 
   start() {
@@ -74,10 +171,11 @@ class QueueWorker {
   resume() {
     this.isPaused = false;
     console.log('[QueueWorker] ▶️ Queue worker resumed.');
+    this.wake();
   }
 
   async loop() {
-    // Dynamic concurrency limit (default: 5 concurrent dispatch slots)
+    // Dynamic concurrency limit (default: 10 concurrent dispatch slots)
     const getConcurrencyLimit = () => {
       try {
         const row = db.prepare("SELECT value FROM settings WHERE key = 'worker_concurrency'").get();
@@ -86,16 +184,17 @@ class QueueWorker {
           if (!isNaN(parsed) && parsed > 0) return Math.min(parsed, 20);
         }
       } catch (e) {}
-      return 5;
+      return 10;
     };
 
     while (this.isRunning) {
       if (this.isPaused) {
-        await sleep(2000);
+        await this.interruptibleSleep(2000);
         continue;
       }
 
       try {
+        this.checkWatchdog();
         const concurrency = getConcurrencyLimit();
         AccountPool.refreshRollingQuotas();
 
@@ -104,27 +203,37 @@ class QueueWorker {
           SELECT * FROM accounts
           WHERE is_active = 1
             AND sent_today < daily_limit
-            AND (cooldown_until IS NULL OR strftime('%s', 'now') >= strftime('%s', cooldown_until))
+            AND (cooldown_until IS NULL OR strftime('%s', 'now', '+330 minutes') >= strftime('%s', cooldown_until))
             AND (
               cooldown_seconds = 0
               OR last_sent_at IS NULL
-              OR (strftime('%s', 'now') - strftime('%s', last_sent_at)) >= cooldown_seconds
+              OR (strftime('%s', 'now', '+330 minutes') - strftime('%s', last_sent_at)) >= cooldown_seconds
             )
           ORDER BY 
             CASE WHEN last_sent_at IS NULL THEN 0 ELSE 1 END ASC,
             last_sent_at ASC,
             sent_today ASC,
             id ASC
-          LIMIT ?
-        `).all(concurrency);
+        `).all();
 
         if (!availableAccounts || availableAccounts.length === 0) {
           // All accounts are either throttled or reached daily limits
-          await sleep(3000);
+          await this.interruptibleSleep(2000);
           continue;
         }
 
-        // 2. Fetch eligible queue items up to available account count
+        // 2. Fetch eligible queue items up to available account count with priority ordering
+        const priorityIds = Array.from(this.priorityCampaignIds || []);
+        let priorityOrderClause = '';
+        if (priorityIds.length > 0) {
+          const idList = priorityIds.join(',');
+          priorityOrderClause = `CASE WHEN q.campaign_id IN (${idList}) THEN 0 WHEN c.status = 'RUNNING' THEN 1 ELSE 2 END ASC,`;
+        } else {
+          priorityOrderClause = `CASE WHEN c.status = 'RUNNING' THEN 0 ELSE 1 END ASC,`;
+        }
+
+        const maxDispatchCount = Math.min(availableAccounts.length, concurrency);
+
         const queueItems = db.prepare(`
           SELECT q.*, c.name AS campaign_name, c.status AS campaign_status,
                  c.mode AS campaign_mode,
@@ -134,15 +243,25 @@ class QueueWorker {
           FROM queue q
           JOIN campaigns c ON q.campaign_id = c.id
           WHERE q.status = 'queued'
-            AND (q.scheduled_at IS NULL OR q.scheduled_at <= datetime('now'))
+            AND (q.scheduled_at IS NULL OR q.scheduled_at <= datetime('now', '+330 minutes'))
             AND c.status IN ('SCHEDULED', 'QUEUED', 'RUNNING')
-          ORDER BY q.scheduled_at ASC, q.id ASC
+          ORDER BY 
+            ${priorityOrderClause}
+            CASE WHEN q.scheduled_at IS NULL THEN 0 ELSE 1 END ASC,
+            q.scheduled_at ASC,
+            q.id ASC
           LIMIT ?
-        `).all(availableAccounts.length);
+        `).all(maxDispatchCount);
 
         if (!queueItems || queueItems.length === 0) {
-          // No items ready to send; check if any campaigns should be marked completed
-          await sleep(2000);
+          // Clean up any finished priority campaign IDs
+          if (this.priorityCampaignIds.size > 0) {
+            for (const pid of Array.from(this.priorityCampaignIds)) {
+              const pending = db.prepare("SELECT COUNT(*) as c FROM queue WHERE campaign_id = ? AND status IN ('queued', 'sending')").get(pid).c;
+              if (pending === 0) this.priorityCampaignIds.delete(pid);
+            }
+          }
+          await this.interruptibleSleep(1000);
           continue;
         }
 
@@ -152,7 +271,7 @@ class QueueWorker {
           db.prepare(`
             UPDATE campaigns
             SET status = 'RUNNING',
-                started_at = COALESCE(started_at, datetime('now'))
+                started_at = COALESCE(started_at, datetime('now', '+330 minutes'))
             WHERE id = ? AND status IN ('SCHEDULED', 'QUEUED')
           `).run(campId);
         }
@@ -161,27 +280,33 @@ class QueueWorker {
         const assignedAccountIds = new Set();
 
         const dispatchPromises = queueItems.map(async (item, idx) => {
-          // Match account respecting campaign policy
+          // Match account respecting campaign policy:
+          // Pinned/assigned account has first preference, but AUTOMATICALLY falls back to any available
+          // healthy account in the pool if pinned is maxed out, cooled down, throttled, or already busy.
           let account = null;
 
-          if (item.campaign_mode === 'CONTROLLED' && item.campaign_pinned_account_id) {
+          if (item.campaign_pinned_account_id) {
+            // First priority: lease pinned account if healthy and not already leased in this cycle
             account = availableAccounts.find(a => a.id === item.campaign_pinned_account_id && !assignedAccountIds.has(a.id));
-            // Auto-Fallback: If pinned account is exhausted (e.g. 500/500 daily limit) or cooled down, fall back to healthy pool accounts so the queue never stalls
+
+            // Auto-Fallback: If pinned account is throttled, cooled down, or has reached daily limit (sent_today >= daily_limit),
+            // AUTOMATICALLY fall back to any available healthy account in the pool so no batch is EVER stuck!
             if (!account) {
-              account = availableAccounts.find(a => !assignedAccountIds.has(a.id));
+              account = availableAccounts.find(a => !assignedAccountIds.has(a.id)) || availableAccounts[idx % availableAccounts.length];
               if (account) {
-                console.log(`[QueueWorker] 🔄 Pinned sender (${item.campaign_pinned_account_id}) busy/quota reached. Auto-falling back to pool account: ${account.email}`);
+                console.log(`[QueueWorker] 🔄 Pinned/assigned sender (ID: ${item.campaign_pinned_account_id}) busy, cooled down, or reached daily limit. Auto-falling back to pool account: ${account.email}`);
               }
             }
           } else {
+            // General pool rotation: Fair round-robin across healthy accounts
             account = availableAccounts.find(a => !assignedAccountIds.has(a.id)) || availableAccounts[idx % availableAccounts.length];
           }
 
           if (!account) {
-            // Anti-Deadlock Guard: Postpone this item by 60s so it doesn't starve the head of the queue on every tick
+            // Anti-Deadlock Guard: Postpone this item by 60s in IST so it doesn't starve the head of the queue on every tick
             db.prepare(`
               UPDATE queue
-              SET scheduled_at = datetime('now', '+60 seconds'),
+              SET scheduled_at = datetime('now', '+330 minutes', '+60 seconds'),
                   last_error = 'All eligible senders busy or reached daily limits. Postponed 60s.'
               WHERE id = ?
             `).run(item.id);
@@ -205,7 +330,7 @@ class QueueWorker {
                 campaign_id, queue_id, account_id, recipient_email, recipient_name,
                 sender_email, sender_provider, subject, template_name, status,
                 queued_at, started_at, created_at, attempts
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'sending', datetime('now'), datetime('now'), datetime('now'), ?)
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'sending', datetime('now', '+330 minutes'), datetime('now', '+330 minutes'), datetime('now', '+330 minutes'), ?)
             `).run(
               item.campaign_id,
               item.id,
@@ -223,7 +348,7 @@ class QueueWorker {
           // Advance last_sent_at immediately so round-robin cycles cleanly
           db.prepare(`
             UPDATE accounts
-            SET last_sent_at = datetime('now')
+            SET last_sent_at = datetime('now', '+330 minutes')
             WHERE id = ?
           `).run(account.id);
 
@@ -251,34 +376,34 @@ class QueueWorker {
             });
 
             if (account.provider === 'AZURE_ACS') {
-              await sendViaACS({
+              await withTimeout(sendViaACS({
                 fromEmail: account.email,
                 toEmail: item.email,
                 subject: dynamicSubject,
                 htmlBody: dynamicHtml
-              });
+              }), 15000, 'Azure ACS dispatch');
             } else if (account.provider === 'OCI') {
-              await sendViaOCI({
+              await withTimeout(sendViaOCI({
                 fromEmail: account.email,
                 toEmail: item.email,
                 subject: dynamicSubject,
                 htmlBody: dynamicHtml
-              });
+              }), 15000, 'OCI SMTP dispatch');
             } else {
-              await sendViaGraph({
+              await withTimeout(sendViaGraph({
                 fromEmail: account.email,
                 toEmail: item.email,
                 subject: dynamicSubject,
                 htmlBody: dynamicHtml
-              });
+              }), 15000, 'Microsoft Graph dispatch');
             }
 
             // Record Success
             db.prepare(`
               UPDATE queue
               SET status = 'sent',
-                  sent_at = datetime('now'),
-                  accepted_at = datetime('now'),
+                  sent_at = datetime('now', '+330 minutes'),
+                  accepted_at = datetime('now', '+330 minutes'),
                   provider_message_id = COALESCE(provider_message_id, 'msg_' || hex(randomblob(8))),
                   last_error = ''
               WHERE id = ?
@@ -289,7 +414,7 @@ class QueueWorker {
               db.prepare(`
                 UPDATE delivery_logs 
                 SET status = 'sent', 
-                    completed_at = datetime('now'),
+                    completed_at = datetime('now', '+330 minutes'),
                     provider_message_id = COALESCE(provider_message_id, 'msg_' || hex(randomblob(8))),
                     error_message = ''
                 WHERE queue_id = ?
@@ -305,28 +430,7 @@ class QueueWorker {
             `).run(item.campaign_id);
 
             // Check if campaign is now completed
-            const remaining = db.prepare(`
-              SELECT COUNT(*) AS count 
-              FROM queue 
-              WHERE campaign_id = ? AND status IN ('queued', 'sending')
-            `).get(item.campaign_id).count;
-
-            if (remaining === 0) {
-              db.prepare(`
-                UPDATE campaigns
-                SET status = 'COMPLETED',
-                    completed_at = datetime('now')
-                WHERE id = ?
-              `).run(item.campaign_id);
-              console.log(`[QueueWorker] 🏁 Campaign "${item.campaign_name}" (ID: ${item.campaign_id}) has COMPLETED!`);
-
-              // Auto-Batch Chaining: Immediately trigger next sequential batch
-              const match = (item.campaign_name || '').match(/Batch_(\d+)/);
-              if (match) {
-                const batchNumber = parseInt(match[1], 10);
-                batchChainManager.checkAndTriggerNextBatch(item.campaign_id, batchNumber).catch(console.error);
-              }
-            }
+            this.checkCampaignCompletion(item.campaign_id, item.campaign_name);
 
             db.prepare(`
               INSERT INTO logs (campaign_id, account_id, level, message)
@@ -399,7 +503,7 @@ class QueueWorker {
               db.prepare(`
                 UPDATE queue
                 SET status = 'queued',
-                    scheduled_at = datetime('now'),
+                    scheduled_at = datetime('now', '+330 minutes'),
                     account_id = NULL,
                     attempts = MAX(0, attempts - 1),
                     last_error = ?
@@ -417,7 +521,7 @@ class QueueWorker {
 
               // Tail-End 49/50 Fix: If other accounts exist, don't stall for 300s. Use minimal backoff (3s, 10s)
               const backoffSec = [3, 10, 30][Math.min(item.attempts || 0, 2)];
-              const nextScheduledAt = isPermanent ? null : new Date(Date.now() + backoffSec * 1000).toISOString().replace('T', ' ').slice(0, 19);
+              const nextScheduledAt = isPermanent ? null : toISTString(new Date(Date.now() + backoffSec * 1000));
 
               db.prepare(`
                 UPDATE queue
@@ -433,7 +537,7 @@ class QueueWorker {
                 db.prepare(`
                   UPDATE delivery_logs 
                   SET status = ?, 
-                      completed_at = datetime('now'),
+                      completed_at = datetime('now', '+330 minutes'),
                       error_message = ?,
                       attempts = ?
                   WHERE queue_id = ?
@@ -448,28 +552,7 @@ class QueueWorker {
                 `).run(item.campaign_id);
 
                 // Check if campaign is now completed
-                const remaining = db.prepare(`
-                  SELECT COUNT(*) AS count 
-                  FROM queue 
-                  WHERE campaign_id = ? AND status IN ('queued', 'sending')
-                `).get(item.campaign_id).count;
-
-                if (remaining === 0) {
-                  db.prepare(`
-                    UPDATE campaigns
-                    SET status = 'COMPLETED',
-                        completed_at = datetime('now')
-                    WHERE id = ?
-                  `).run(item.campaign_id);
-                  console.log(`[QueueWorker] 🏁 Campaign "${item.campaign_name}" (ID: ${item.campaign_id}) has COMPLETED!`);
-
-                  // Auto-Batch Chaining: Immediately trigger next sequential batch
-                  const match = (item.campaign_name || '').match(/Batch_(\d+)/);
-                  if (match) {
-                    const batchNumber = parseInt(match[1], 10);
-                    batchChainManager.checkAndTriggerNextBatch(item.campaign_id, batchNumber).catch(console.error);
-                  }
-                }
+                this.checkCampaignCompletion(item.campaign_id, item.campaign_name);
               }
 
               db.prepare(`
@@ -486,13 +569,14 @@ class QueueWorker {
         this.currentTask = null;
         this.lastDispatchedAt = Date.now();
 
-        // 6. Balanced batch pacing delay (default ~1000-2000ms between parallel batches)
-        const pacingMs = Math.max(500, Math.min(getSendIntervalMs(), 2000));
-        await sleep(pacingMs);
+        // 6. Balanced batch pacing delay: ultra-fast 100ms when priority Send-Now campaigns active, else configured interval
+        const hasPriority = this.priorityCampaignIds.size > 0;
+        const pacingMs = hasPriority ? 100 : Math.max(500, Math.min(getSendIntervalMs(), 2000));
+        await this.interruptibleSleep(pacingMs);
 
       } catch (loopErr) {
         console.error('[QueueWorker] Unexpected error in worker tick:', loopErr);
-        await sleep(3000);
+        await this.interruptibleSleep(2000);
       }
     }
   }
