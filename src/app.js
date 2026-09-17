@@ -32,8 +32,11 @@ app.use('/api', (req, res, next) => {
   return res.status(401).json({ ok: false, error: 'Unauthorized: Valid Admin API Key required.' });
 });
 
+const batchChainRoutes = require('./routes/batchChain');
+
 // Mount API routes
 app.use('/api', apiRoutes);
+app.use('/api/batch-chain', batchChainRoutes);
 
 // Static frontend dashboard
 app.use(express.static(path.resolve(__dirname, '../public')));

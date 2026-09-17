@@ -10,6 +10,7 @@ const { sendViaGraph } = require('./graphMailer');
 const { sendViaACS } = require('./acsMailer');
 const { sendViaOCI } = require('./ociMailer');
 const { renderTemplate } = require('./templateEngine');
+const batchChainManager = require('./batchChainManager');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -57,6 +58,11 @@ class QueueWorker {
       console.error('[QueueWorker] Fatal error in worker loop:', err);
       this.isRunning = false;
     });
+
+    // Auto-Batch Chaining: Periodic check for completed batches
+    setInterval(() => {
+      batchChainManager.monitorBatchCompletion().catch(console.error);
+    }, 30000);
   }
 
   pause() {
@@ -299,6 +305,13 @@ class QueueWorker {
                 WHERE id = ?
               `).run(item.campaign_id);
               console.log(`[QueueWorker] 🏁 Campaign "${item.campaign_name}" (ID: ${item.campaign_id}) has COMPLETED!`);
+
+              // Auto-Batch Chaining: Immediately trigger next sequential batch
+              const match = (item.campaign_name || '').match(/Batch_(\d+)/);
+              if (match) {
+                const batchNumber = parseInt(match[1], 10);
+                batchChainManager.checkAndTriggerNextBatch(item.campaign_id, batchNumber).catch(console.error);
+              }
             }
 
             db.prepare(`
@@ -404,6 +417,13 @@ class QueueWorker {
                     WHERE id = ?
                   `).run(item.campaign_id);
                   console.log(`[QueueWorker] 🏁 Campaign "${item.campaign_name}" (ID: ${item.campaign_id}) has COMPLETED!`);
+
+                  // Auto-Batch Chaining: Immediately trigger next sequential batch
+                  const match = (item.campaign_name || '').match(/Batch_(\d+)/);
+                  if (match) {
+                    const batchNumber = parseInt(match[1], 10);
+                    batchChainManager.checkAndTriggerNextBatch(item.campaign_id, batchNumber).catch(console.error);
+                  }
                 }
               }
 
