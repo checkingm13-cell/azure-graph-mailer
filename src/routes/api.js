@@ -371,6 +371,17 @@ router.post('/queue/clear-completed', (req, res) => {
   });
 });
 
+// Maintenance Unblocker: Instantly reconciles stuck 49/50 batches and advances queue chains
+router.post('/maintenance/unblock-stuck-batches', async (req, res) => {
+  try {
+    const batchChainManager = require('../services/batchChainManager');
+    await batchChainManager.monitorBatchCompletion();
+    res.json({ ok: true, message: 'Batch completion reconciliation completed successfully.' });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // RUNTIME DYNAMIC SETTINGS
 router.get('/settings', (req, res) => {
   const row = db.prepare("SELECT value FROM settings WHERE key = 'send_interval_ms'").get();

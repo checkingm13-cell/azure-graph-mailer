@@ -206,6 +206,32 @@ class BatchChainManager {
    * Monitor for completed batches and trigger next
    */
   async monitorBatchCompletion() {
+    // 1. Auto-Reconciliation: If a queue item has a persistent clock-skew or invalid connection string error, mark it failed so it does not permanently block 49/50 batches
+    try {
+      db.prepare(`
+        UPDATE queue
+        SET status = 'failed',
+            last_error = 'Auto-resolved: ' || COALESCE(last_error, 'Persistent dispatch error')
+        WHERE status = 'queued'
+          AND attempts >= 1
+          AND (
+            last_error LIKE '%The given request could not be resolved%'
+            OR last_error LIKE '%time difference between the originating client and the server%'
+            OR last_error LIKE '%AADSTS700024%'
+            OR last_error LIKE '%Invalid connection string%'
+          )
+      `).run();
+
+      // Re-sync failed_count on all RUNNING campaigns based on actual failed queue items
+      db.prepare(`
+        UPDATE campaigns
+        SET failed_count = (SELECT COUNT(*) FROM queue WHERE queue.campaign_id = campaigns.id AND queue.status = 'failed')
+        WHERE status = 'RUNNING'
+      `).run();
+    } catch (e) {
+      console.error('[BatchChain] Error in auto-reconciliation:', e);
+    }
+
     const completedBatches = db.prepare(`
       SELECT c.id, c.name, c.total_count, c.sent_count, c.failed_count
       FROM campaigns c
