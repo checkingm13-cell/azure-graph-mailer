@@ -123,6 +123,7 @@ router.get('/queue', (req, res) => {
   const offset = (page - 1) * limit;
   const statusFilter = req.query.status || 'all';
   const searchTerm = String(req.query.search || '').trim();
+  const dateFilter = String(req.query.date || '').trim();
 
   const whereConditions = [];
   const params = [];
@@ -138,6 +139,11 @@ router.get('/queue', (req, res) => {
     whereConditions.push('(q.email LIKE ? OR q.name LIKE ? OR q.subject LIKE ? OR c.name LIKE ?)');
     const searchPattern = `%${searchTerm}%`;
     params.push(searchPattern, searchPattern, searchPattern, searchPattern);
+  }
+
+  if (dateFilter) {
+    whereConditions.push('(substr(q.sent_at, 1, 10) = ? OR substr(q.scheduled_at, 1, 10) = ? OR substr(q.created_at, 1, 10) = ?)');
+    params.push(dateFilter, dateFilter, dateFilter);
   }
 
   const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';

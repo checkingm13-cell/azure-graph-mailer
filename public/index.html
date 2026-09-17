@@ -220,32 +220,16 @@
             <button type="button" id="btnClearCompletedQueue" class="btn btn-secondary btn-sm" title="Clear sent messages from pipeline view">🧹 Clear Completed</button>
           </div>
         </div>
-        <div class="table-responsive">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Recipient Email</th>
-                <th>Author</th>
-                <th>Campaign Batch</th>
-                <th>Email Template</th>
-                <th>Assigned Sender</th>
-                <th>Subject</th>
-                <th>Status</th>
-                <th>Attempts</th>
-              </tr>
-            </thead>
-            <tbody id="queueTableBody">
-              <tr class="skeleton-row"><td colspan="9" style="padding: 16px; text-align: center; color: var(--sky);"><span style="display: inline-block; animation: pulse 1.5s infinite;">⏳ Fetching in-flight queue pipeline...</span></td></tr>
-            </tbody>
-          </table>
-        </div>
-        <!-- Queue Search, Status Filters & Pagination Bar -->
-        <div class="queue-pagination-bar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-color);">
+        <!-- Queue Top Control Bar: Search, Date Filter, Status Filter & Page Navigator -->
+        <div class="queue-pagination-bar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border-color);">
           <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; flex: 1; min-width: 280px;">
-            <div style="position: relative; flex: 1; max-width: 320px;">
-              <input type="text" id="queueSearchInput" class="form-input" placeholder="🔍 Search email, name, subject, batch..." style="padding-left: 28px; padding-right: 26px; height: 32px; font-size: 12px; width: 100%;">
+            <div style="position: relative; flex: 1; max-width: 280px;">
+              <input type="text" id="queueSearchInput" class="form-input" placeholder="🔍 Search email, author, batch..." style="padding-left: 28px; padding-right: 26px; height: 32px; font-size: 12px; width: 100%;">
               <button type="button" id="btnClearQueueSearch" style="display: none; position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 13px; padding: 2px;">✕</button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <input type="date" id="queueDateFilter" class="form-input" title="Filter by date" style="height: 32px; font-size: 11px; padding: 2px 6px; width: 130px;">
+              <button type="button" id="btnClearQueueDate" class="btn btn-secondary btn-xs" style="display: none; padding: 4px 6px;" title="Clear date filter">✕</button>
             </div>
             <div class="filter-pills" style="display: flex; gap: 6px; flex-wrap: wrap;">
               <button type="button" class="filter-pill active queue-filter-pill" data-status="all">All</button>
@@ -266,6 +250,26 @@
               <option value="100">100 / page</option>
             </select>
           </div>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Recipient Email</th>
+                <th>Author</th>
+                <th>Campaign Batch</th>
+                <th>Email Template</th>
+                <th>Assigned Sender</th>
+                <th>Subject</th>
+                <th>Status</th>
+                <th>Attempts</th>
+              </tr>
+            </thead>
+            <tbody id="queueTableBody">
+              <tr class="skeleton-row"><td colspan="9" style="padding: 16px; text-align: center; color: var(--sky);"><span style="display: inline-block; animation: pulse 1.5s infinite;">⏳ Fetching in-flight queue pipeline...</span></td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </section>
