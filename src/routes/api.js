@@ -710,14 +710,24 @@ router.post('/campaigns/preview-upload', upload.single('file'), async (req, res)
     let invalidCount = 0;
     let duplicateInSheetCount = 0;
 
-    const historyStmt = db.prepare(`
-      SELECT c.name AS campaign_name, q.sent_at, q.status
+    // High-Speed Batch Optimization: Preload sent email history into an in-memory Map in 1 query
+    const sentHistoryRows = db.prepare(`
+      SELECT q.email, c.name AS campaign_name, q.sent_at, q.status
       FROM queue q
       JOIN campaigns c ON q.campaign_id = c.id
-      WHERE q.email = ? AND q.status = 'sent'
+      WHERE q.status = 'sent'
       ORDER BY q.id DESC
-      LIMIT 1
-    `);
+    `).all();
+
+    const sentHistoryMap = new Map();
+    for (const sh of sentHistoryRows) {
+      if (!sentHistoryMap.has(sh.email)) {
+        sentHistoryMap.set(sh.email, {
+          campaignName: sh.campaign_name,
+          sentAt: sh.sent_at
+        });
+      }
+    }
 
     for (const r of rows) {
       const emailKey = Object.keys(r).find((k) => /^email$/i.test(k.trim())) ||
@@ -743,17 +753,14 @@ router.post('/campaigns/preview-upload', upload.single('file'), async (req, res)
       }
 
       seenEmails.add(rawEmail);
-      const history = historyStmt.get(rawEmail);
+      const history = sentHistoryMap.get(rawEmail);
 
       validContacts.push({
         email: rawEmail,
         name: name,
         paper_title: paperTitle,
         affiliation: affiliation,
-        previouslyContacted: history ? {
-          campaignName: history.campaign_name,
-          sentAt: history.sent_at
-        } : null
+        previouslyContacted: history || null
       });
     }
 

@@ -339,7 +339,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (countFailedBadge) {
         countFailedBadge.textContent = worker.queue?.failed || 0;
       }
-      loadQueue();
+      // Only background-refresh queue table if user is looking at page 1 and overview tab is active
+      const activeNavTab = document.querySelector('.nav-tab.active')?.dataset.tab;
+      if (activeNavTab === 'tab-overview' && queueCurrentPage === 1) {
+        loadQueue();
+      }
 
       // Live Campaign Monitor Hero Card
       if (monitorCampaignName) {
@@ -499,6 +503,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 3b. IN-FLIGHT QUEUE PIPELINE (Paginated, Filterable & Zero-Flicker)
   let queueCurrentPage = 1;
+  let queueTotalPages = 1;
   let queuePageSize = 25;
   let queueFilterStatus = 'all';
   let isQueueFetching = false;
@@ -525,9 +530,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!data.ok || !data.items || data.items.length === 0) {
         if (data.pagination && data.pagination.total > 0 && queueCurrentPage > 1) {
           queueCurrentPage = Math.max(1, data.pagination.totalPages);
+          queueTotalPages = data.pagination.totalPages;
           isQueueFetching = false;
           return loadQueue();
         }
+        queueTotalPages = 1;
         queueTableBody.innerHTML = `<tr><td colspan="9" class="table-empty">Queue is empty. Ready for new campaigns.</td></tr>`;
         if (queuePageIndicator) queuePageIndicator.textContent = 'Page 1 of 1';
         if (btnQueuePrevPage) btnQueuePrevPage.disabled = true;
@@ -559,6 +566,8 @@ document.addEventListener('DOMContentLoaded', () => {
       // Update Pagination UI
       if (data.pagination) {
         const { page, totalPages, total } = data.pagination;
+        queueCurrentPage = page;
+        queueTotalPages = totalPages;
         if (queuePageIndicator) queuePageIndicator.textContent = `Page ${page} of ${totalPages} (${total} items)`;
         if (btnQueuePrevPage) btnQueuePrevPage.disabled = page <= 1;
         if (btnQueueNextPage) btnQueueNextPage.disabled = page >= totalPages;
@@ -582,7 +591,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (btnQueuePrevPage) {
     btnQueuePrevPage.addEventListener('click', () => {
-      if (queueCurrentPage > 1) {
+      if (queueCurrentPage > 1 && !isQueueFetching) {
         queueCurrentPage--;
         loadQueue();
       }
@@ -591,8 +600,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (btnQueueNextPage) {
     btnQueueNextPage.addEventListener('click', () => {
-      queueCurrentPage++;
-      loadQueue();
+      if (queueCurrentPage < queueTotalPages && !isQueueFetching) {
+        queueCurrentPage++;
+        loadQueue();
+      }
     });
   }
 
