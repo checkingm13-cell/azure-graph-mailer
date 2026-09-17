@@ -213,6 +213,11 @@ function initSchema(db) {
 
     db.exec("CREATE INDEX IF NOT EXISTS idx_campaigns_parent ON campaigns(parent_id);");
     db.exec("CREATE INDEX IF NOT EXISTS idx_queue_schedule ON queue(status, scheduled_at, id);");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_queue_campaign_id ON queue(campaign_id);");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_queue_campaign_status ON queue(campaign_id, status);");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_queue_account_sent ON queue(account_id, status, sent_at);");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(status);");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_queue_status_email ON queue(status, email);");
 
     // Seed/Upsert standard journal templates
     seedJournalTemplates(db);

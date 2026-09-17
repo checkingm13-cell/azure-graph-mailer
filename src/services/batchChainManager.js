@@ -207,10 +207,10 @@ class BatchChainManager {
    */
   async monitorBatchCompletion() {
     const completedBatches = db.prepare(`
-      SELECT c.id, c.name, c.total_count, c.sent_count
+      SELECT c.id, c.name, c.total_count, c.sent_count, c.failed_count
       FROM campaigns c
       WHERE c.status = 'RUNNING'
-      AND c.sent_count >= c.total_count
+      AND (c.sent_count + COALESCE(c.failed_count, 0)) >= c.total_count
       AND c.total_count > 0
     `).all();
     

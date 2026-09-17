@@ -2789,5 +2789,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (activeTab === 'tab-overview') {
       loadAccounts();
     }
+    if (activeTab === 'tab-campaigns') {
+      loadCampaigns();
+    }
   }, 3000);
 });

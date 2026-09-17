@@ -453,15 +453,26 @@ class QueueWorker {
   }
 
   getStatus() {
-    const queueCounts = db.prepare(`
+    // ponytail: avoid full table scan of queue (O(Q) at crore scale = frozen server).
+    // Count only active items from queue (small set, indexed), derive sent/failed from campaigns.
+    const active = db.prepare(`
       SELECT 
         COUNT(CASE WHEN status = 'queued' THEN 1 END) AS queued,
-        COUNT(CASE WHEN status = 'sending' THEN 1 END) AS sending,
-        COUNT(CASE WHEN status = 'sent' THEN 1 END) AS sent,
-        COUNT(CASE WHEN status = 'failed' THEN 1 END) AS failed,
-        COUNT(*) AS total
+        COUNT(CASE WHEN status = 'sending' THEN 1 END) AS sending
       FROM queue
+      WHERE status IN ('queued', 'sending')
     `).get();
+    const agg = db.prepare(`
+      SELECT COALESCE(SUM(sent_count), 0) AS sent, COALESCE(SUM(failed_count), 0) AS failed
+      FROM campaigns
+    `).get();
+    const queueCounts = {
+      queued: active.queued,
+      sending: active.sending,
+      sent: agg.sent,
+      failed: agg.failed,
+      total: active.queued + active.sending + agg.sent + agg.failed
+    };
 
     // Fetch primary active campaign
     const activeCamp = db.prepare(`

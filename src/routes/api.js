@@ -650,9 +650,7 @@ router.get('/campaigns', (req, res) => {
       c.*, 
       t.name AS template_name, 
       a.email AS sender_email, 
-      a.provider AS sender_provider,
-      (SELECT COUNT(DISTINCT COALESCE(q.template_id, c.template_id)) FROM queue q WHERE q.campaign_id = c.id) AS template_variants_count,
-      (SELECT COUNT(DISTINCT q.account_id) FROM queue q WHERE q.campaign_id = c.id AND q.account_id IS NOT NULL) AS active_senders_count
+      a.provider AS sender_provider
     FROM campaigns c
     LEFT JOIN templates t ON c.template_id = t.id
     LEFT JOIN accounts a ON c.sender_account_id = a.id
@@ -673,6 +671,11 @@ router.get('/campaigns/:id/preview', (req, res) => {
 
   if (!camp) return res.status(404).json({ ok: false, error: 'Campaign not found' });
 
+  // If parent campaign, query across all child batch IDs; otherwise just self
+  const childIds = db.prepare('SELECT id FROM campaigns WHERE parent_id = ?').all(campId).map(r => r.id);
+  const targetIds = childIds.length > 0 ? childIds : [parseInt(campId)];
+  const ph = targetIds.map(() => '?').join(',');
+
   const summary = db.prepare(`
     SELECT 
       COUNT(*) AS total,
@@ -681,8 +684,8 @@ router.get('/campaigns/:id/preview', (req, res) => {
       COUNT(CASE WHEN status = 'queued' THEN 1 END) AS queued,
       COUNT(CASE WHEN status = 'sending' THEN 1 END) AS sending
     FROM queue
-    WHERE campaign_id = ?
-  `).get(campId);
+    WHERE campaign_id IN (${ph})
+  `).get(...targetIds);
 
   const sampleItems = db.prepare(`
     SELECT 
@@ -693,10 +696,10 @@ router.get('/campaigns/:id/preview', (req, res) => {
     LEFT JOIN accounts a ON q.account_id = a.id
     LEFT JOIN campaigns c ON q.campaign_id = c.id
     LEFT JOIN templates t ON COALESCE(q.template_id, c.template_id) = t.id
-    WHERE q.campaign_id = ?
+    WHERE q.campaign_id IN (${ph})
     ORDER BY q.id ASC
     LIMIT 100
-  `).all(campId);
+  `).all(...targetIds);
 
   res.json({
     ok: true,
@@ -731,22 +734,34 @@ router.post('/campaigns/preview-upload', upload.single('file'), async (req, res)
     let invalidCount = 0;
     let duplicateInSheetCount = 0;
 
-    // High-Speed Batch Optimization: Preload sent email history into an in-memory Map in 1 query
-    const sentHistoryRows = db.prepare(`
-      SELECT q.email, c.name AS campaign_name, q.sent_at, q.status
-      FROM queue q
-      JOIN campaigns c ON q.campaign_id = c.id
-      WHERE q.status = 'sent'
-      ORDER BY q.id DESC
-    `).all();
+    // ponytail: extract CSV emails first, then query only those from queue.
+    // Old approach loaded ALL sent rows into RAM (OOM at crore scale).
+    const csvEmails = [];
+    for (const r of rows) {
+      const ek = Object.keys(r).find((k) => /^email$/i.test(k.trim())) ||
+        Object.keys(r).find((k) => /email|e-mail|mail/i.test(k));
+      const email = ek ? String(r[ek] || '').trim().toLowerCase() : '';
+      if (email && email.includes('@')) csvEmails.push(email);
+    }
 
     const sentHistoryMap = new Map();
-    for (const sh of sentHistoryRows) {
-      if (!sentHistoryMap.has(sh.email)) {
-        sentHistoryMap.set(sh.email, {
-          campaignName: sh.campaign_name,
-          sentAt: sh.sent_at
-        });
+    if (csvEmails.length > 0) {
+      // Batch lookup in chunks of 500 to avoid SQLite variable limit
+      for (let i = 0; i < csvEmails.length; i += 500) {
+        const chunk = csvEmails.slice(i, i + 500);
+        const ph = chunk.map(() => '?').join(',');
+        const sentRows = db.prepare(`
+          SELECT q.email, c.name AS campaign_name, q.sent_at
+          FROM queue q
+          JOIN campaigns c ON q.campaign_id = c.id
+          WHERE q.status = 'sent' AND q.email IN (${ph})
+          ORDER BY q.id DESC
+        `).all(...chunk);
+        for (const sh of sentRows) {
+          if (!sentHistoryMap.has(sh.email)) {
+            sentHistoryMap.set(sh.email, { campaignName: sh.campaign_name, sentAt: sh.sent_at });
+          }
+        }
       }
     }
 
