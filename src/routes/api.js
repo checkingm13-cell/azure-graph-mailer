@@ -116,9 +116,25 @@ router.post('/worker/resume', (req, res) => {
   res.json({ ok: true, message: 'Worker resumed' });
 });
 
-// QUEUE LISTING & MAINTENANCE
+// QUEUE LISTING & MAINTENANCE (Server-Side Pagination & Status Filtering)
 router.get('/queue', (req, res) => {
-  const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
+  const page = Math.max(1, parseInt(req.query.page || '1', 10));
+  const limit = Math.min(Math.max(1, parseInt(req.query.limit || '25', 10)), 200);
+  const offset = (page - 1) * limit;
+  const statusFilter = req.query.status || 'all';
+
+  let whereClause = '';
+  const params = [];
+  if (statusFilter === 'active') {
+    whereClause = "WHERE q.status IN ('queued', 'sending')";
+  } else if (statusFilter !== 'all') {
+    whereClause = 'WHERE q.status = ?';
+    params.push(statusFilter);
+  }
+
+  const countRow = db.prepare(`SELECT COUNT(*) AS total FROM queue q ${whereClause}`).get(...params);
+  const total = countRow ? countRow.total : 0;
+
   const items = db.prepare(`
     SELECT 
       q.id, q.email, q.name, q.subject, q.status, q.attempts, q.scheduled_at, q.sent_at, q.last_error,
@@ -129,6 +145,7 @@ router.get('/queue', (req, res) => {
     LEFT JOIN accounts a ON q.account_id = a.id
     LEFT JOIN campaigns c ON q.campaign_id = c.id
     LEFT JOIN templates t ON COALESCE(q.template_id, c.template_id) = t.id
+    ${whereClause}
     ORDER BY 
       CASE 
         WHEN q.status = 'sending' THEN 1
@@ -137,10 +154,147 @@ router.get('/queue', (req, res) => {
         ELSE 4
       END,
       q.id DESC
-    LIMIT ?
-  `).all(limit);
+    LIMIT ? OFFSET ?
+  `).all(...params, limit, offset);
 
-  res.json({ ok: true, items });
+  res.json({
+    ok: true,
+    items,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit) || 1
+    }
+  });
+});
+
+// DETAILED DELIVERY AUDIT LOGS ENDPOINTS (from read-from-this.txt)
+router.get('/delivery-logs', (req, res) => {
+  const {
+    search = '',
+    campaignId = '',
+    status = '',
+    startDate = '',
+    endDate = '',
+    limit = 100,
+    offset = 0
+  } = req.query;
+
+  let query = `
+    SELECT 
+      dl.*,
+      c.name AS campaign_name,
+      t.name AS template_name
+    FROM delivery_logs dl
+    LEFT JOIN campaigns c ON dl.campaign_id = c.id
+    LEFT JOIN templates t ON c.template_id = t.id
+    WHERE 1=1
+  `;
+  const params = [];
+
+  if (search) {
+    query += ` AND (dl.recipient_email LIKE ? OR dl.recipient_name LIKE ? OR dl.sender_email LIKE ?)`;
+    const searchPattern = `%${search}%`;
+    params.push(searchPattern, searchPattern, searchPattern);
+  }
+
+  if (campaignId) {
+    query += ` AND dl.campaign_id = ?`;
+    params.push(parseInt(campaignId, 10));
+  }
+
+  if (status) {
+    query += ` AND dl.status = ?`;
+    params.push(status);
+  }
+
+  if (startDate) {
+    query += ` AND dl.created_at >= ?`;
+    params.push(startDate);
+  }
+  if (endDate) {
+    query += ` AND dl.created_at <= ?`;
+    params.push(endDate + ' 23:59:59');
+  }
+
+  query += ` ORDER BY dl.created_at DESC LIMIT ? OFFSET ?`;
+  const numLimit = Math.max(1, parseInt(limit, 10));
+  const numOffset = Math.max(0, parseInt(offset, 10));
+  params.push(numLimit, numOffset);
+
+  const logs = db.prepare(query).all(...params);
+
+  // Total count for pagination
+  let countQuery = `SELECT COUNT(*) AS total FROM delivery_logs dl WHERE 1=1`;
+  const countParams = [];
+
+  if (search) {
+    countQuery += ` AND (dl.recipient_email LIKE ? OR dl.recipient_name LIKE ? OR dl.sender_email LIKE ?)`;
+    const searchPattern = `%${search}%`;
+    countParams.push(searchPattern, searchPattern, searchPattern);
+  }
+  if (campaignId) {
+    countQuery += ` AND dl.campaign_id = ?`;
+    countParams.push(parseInt(campaignId, 10));
+  }
+  if (status) {
+    countQuery += ` AND dl.status = ?`;
+    countParams.push(status);
+  }
+  if (startDate) {
+    countQuery += ` AND dl.created_at >= ?`;
+    countParams.push(startDate);
+  }
+  if (endDate) {
+    countQuery += ` AND dl.created_at <= ?`;
+    countParams.push(endDate + ' 23:59:59');
+  }
+
+  const { total } = db.prepare(countQuery).get(...countParams);
+
+  res.json({
+    ok: true,
+    logs,
+    total,
+    limit: numLimit,
+    offset: numOffset
+  });
+});
+
+router.get('/delivery-logs/stats/summary', (req, res) => {
+  const stats = db.prepare(`
+    SELECT 
+      COUNT(*) AS total,
+      COUNT(CASE WHEN status = 'sent' THEN 1 END) AS sent,
+      COUNT(CASE WHEN status = 'failed' THEN 1 END) AS failed,
+      COUNT(CASE WHEN status = 'queued' THEN 1 END) AS queued,
+      COUNT(CASE WHEN status = 'sending' THEN 1 END) AS sending,
+      COUNT(DISTINCT recipient_email) AS unique_recipients,
+      COUNT(DISTINCT campaign_id) AS campaigns_count
+    FROM delivery_logs
+  `).get();
+
+  res.json({ ok: true, stats });
+});
+
+router.get('/delivery-logs/:id', (req, res) => {
+  const log = db.prepare(`
+    SELECT 
+      dl.*,
+      c.name AS campaign_name,
+      t.name AS template_name
+    FROM delivery_logs dl
+    LEFT JOIN campaigns c ON dl.campaign_id = c.id
+    LEFT JOIN templates t ON c.template_id = t.id
+    WHERE dl.id = ?
+  `).get(req.params.id);
+
+  if (!log) {
+    return res.status(404).json({ ok: false, error: 'Log not found' });
+  }
+
+  res.json({ ok: true, log });
 });
 
 router.post('/queue/retry-failed', (req, res) => {

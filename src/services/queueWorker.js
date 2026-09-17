@@ -178,6 +178,28 @@ class QueueWorker {
             WHERE id = ?
           `).run(account.id, item.id);
 
+          // Detailed Delivery Audit Log: Record/Update dispatch lifecycle
+          try {
+            db.prepare(`
+              INSERT INTO delivery_logs (
+                campaign_id, queue_id, account_id, recipient_email, recipient_name,
+                sender_email, sender_provider, subject, template_name, status,
+                queued_at, started_at, created_at, attempts
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'sending', datetime('now'), datetime('now'), datetime('now'), ?)
+            `).run(
+              item.campaign_id,
+              item.id,
+              account.id,
+              item.email,
+              item.name || '',
+              account.email,
+              account.provider,
+              item.subject || '',
+              item.template_name || 'Standard',
+              item.attempts + 1
+            );
+          } catch (_) {}
+
           // Advance last_sent_at immediately so round-robin cycles cleanly
           db.prepare(`
             UPDATE accounts
@@ -241,6 +263,18 @@ class QueueWorker {
                   last_error = ''
               WHERE id = ?
             `).run(item.id);
+
+            // Detailed Delivery Audit Log: Record Success
+            try {
+              db.prepare(`
+                UPDATE delivery_logs 
+                SET status = 'sent', 
+                    completed_at = datetime('now'),
+                    provider_message_id = COALESCE(provider_message_id, 'msg_' || hex(randomblob(8))),
+                    error_message = ''
+                WHERE queue_id = ?
+              `).run(item.id);
+            } catch (_) {}
 
             AccountPool.recordSendSuccess(account.id);
 
@@ -335,6 +369,18 @@ class QueueWorker {
                     last_error = ?
                 WHERE id = ?
               `).run(isPermanent ? 'failed' : 'queued', nextScheduledAt, dispatchErr.message, item.id);
+
+              // Detailed Delivery Audit Log: Record Failure/Requeue
+              try {
+                db.prepare(`
+                  UPDATE delivery_logs 
+                  SET status = ?, 
+                      completed_at = datetime('now'),
+                      error_message = ?,
+                      attempts = ?
+                  WHERE queue_id = ?
+                `).run(isPermanent ? 'failed' : 'queued', dispatchErr.message || 'Unknown error', item.attempts + 1, item.id);
+              } catch (_) {}
 
               if (isPermanent) {
                 db.prepare(`

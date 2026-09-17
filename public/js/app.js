@@ -238,18 +238,32 @@ document.addEventListener('DOMContentLoaded', () => {
     return isNaN(d.getTime()) ? dateStr : d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   }
 
-  // 1. TAB NAVIGATION
+  // 1. TAB NAVIGATION WITH ASYNC LAZY LOADING
+  const loadedTabs = new Set(['tab-overview']); // Overview loaded on boot
+
   function switchTab(targetId) {
     document.querySelectorAll('.nav-tab').forEach((t) => t.classList.remove('active'));
     document.querySelectorAll('.tab-pane').forEach((p) => p.classList.remove('active'));
     const tabBtn = document.querySelector(`.nav-tab[data-tab="${targetId}"]`);
     if (tabBtn) tabBtn.classList.add('active');
     document.getElementById(targetId)?.classList.add('active');
-    if (targetId === 'tab-accounts') loadAccounts();
-    if (targetId === 'tab-templates') loadTemplates();
-    if (targetId === 'tab-campaigns') { loadTemplates(); loadCampaigns(); }
-    if (targetId === 'tab-contacts') loadContacts();
-    if (targetId === 'tab-logs') loadLogs();
+
+    // Lazy load tab data on first visit
+    if (!loadedTabs.has(targetId)) {
+      loadedTabs.add(targetId);
+      if (targetId === 'tab-accounts') loadAccounts();
+      if (targetId === 'tab-templates') loadTemplates();
+      if (targetId === 'tab-campaigns') { loadTemplates(); loadCampaigns(); }
+      if (targetId === 'tab-contacts') loadContacts();
+      if (targetId === 'tab-logs') {
+        loadDetailedLogs();
+        loadCampaignsForLogsFilter();
+      }
+    } else {
+      // Re-trigger fast lightweight refresh if needed
+      if (targetId === 'tab-accounts') loadAccounts();
+      if (targetId === 'tab-campaigns') loadCampaigns();
+    }
   }
   document.querySelectorAll('.nav-tab').forEach((tab) => {
     tab.addEventListener('click', () => { switchTab(tab.dataset.tab); });
@@ -483,16 +497,44 @@ document.addEventListener('DOMContentLoaded', () => {
     await refreshTelemetry();
   });
 
-  // 3b. IN-FLIGHT QUEUE PIPELINE
+  // 3b. IN-FLIGHT QUEUE PIPELINE (Paginated, Filterable & Zero-Flicker)
+  let queueCurrentPage = 1;
+  let queuePageSize = 25;
+  let queueFilterStatus = 'all';
+  let isQueueFetching = false;
+
+  const queuePageIndicator = document.getElementById('queuePageIndicator');
+  const btnQueuePrevPage = document.getElementById('btnQueuePrevPage');
+  const btnQueueNextPage = document.getElementById('btnQueueNextPage');
+  const queuePageSizeSelect = document.getElementById('queuePageSizeSelect');
+
   async function loadQueue() {
-    if (!queueTableBody) return;
+    if (!queueTableBody || isQueueFetching) return;
+    isQueueFetching = true;
+
     try {
-      const res = await fetch('/api/queue?limit=50');
+      const params = new URLSearchParams({
+        page: queueCurrentPage,
+        limit: queuePageSize,
+        status: queueFilterStatus
+      });
+
+      const res = await fetch(`/api/queue?${params}`);
       const data = await res.json();
+
       if (!data.ok || !data.items || data.items.length === 0) {
-        queueTableBody.innerHTML = `<tr><td colspan="7" class="table-empty">Queue is empty. Ready for new campaigns.</td></tr>`;
+        if (data.pagination && data.pagination.total > 0 && queueCurrentPage > 1) {
+          queueCurrentPage = Math.max(1, data.pagination.totalPages);
+          isQueueFetching = false;
+          return loadQueue();
+        }
+        queueTableBody.innerHTML = `<tr><td colspan="9" class="table-empty">Queue is empty. Ready for new campaigns.</td></tr>`;
+        if (queuePageIndicator) queuePageIndicator.textContent = 'Page 1 of 1';
+        if (btnQueuePrevPage) btnQueuePrevPage.disabled = true;
+        if (btnQueueNextPage) btnQueueNextPage.disabled = true;
         return;
       }
+
       queueTableBody.innerHTML = data.items.map(item => {
         let badgeClass = 'badge-queued';
         if (item.status === 'sending') badgeClass = 'badge-sending';
@@ -513,7 +555,53 @@ document.addEventListener('DOMContentLoaded', () => {
           </tr>
         `;
       }).join('');
-    } catch (_) {}
+
+      // Update Pagination UI
+      if (data.pagination) {
+        const { page, totalPages, total } = data.pagination;
+        if (queuePageIndicator) queuePageIndicator.textContent = `Page ${page} of ${totalPages} (${total} items)`;
+        if (btnQueuePrevPage) btnQueuePrevPage.disabled = page <= 1;
+        if (btnQueueNextPage) btnQueueNextPage.disabled = page >= totalPages;
+      }
+    } catch (_) {
+    } finally {
+      isQueueFetching = false;
+    }
+  }
+
+  // Queue Pagination & Filter Event Listeners
+  document.querySelectorAll('.queue-filter-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.queue-filter-pill').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      queueFilterStatus = btn.dataset.status || 'all';
+      queueCurrentPage = 1;
+      loadQueue();
+    });
+  });
+
+  if (btnQueuePrevPage) {
+    btnQueuePrevPage.addEventListener('click', () => {
+      if (queueCurrentPage > 1) {
+        queueCurrentPage--;
+        loadQueue();
+      }
+    });
+  }
+
+  if (btnQueueNextPage) {
+    btnQueueNextPage.addEventListener('click', () => {
+      queueCurrentPage++;
+      loadQueue();
+    });
+  }
+
+  if (queuePageSizeSelect) {
+    queuePageSizeSelect.addEventListener('change', () => {
+      queuePageSize = parseInt(queuePageSizeSelect.value, 10) || 25;
+      queueCurrentPage = 1;
+      loadQueue();
+    });
   }
 
   const btnRetryFailedQueue = document.getElementById('btnRetryFailedQueue');
@@ -2020,23 +2108,190 @@ document.addEventListener('DOMContentLoaded', () => {
     if (campCurrentPage < totalPages) { campCurrentPage++; renderCampaignsTable(); }
   });
 
-  // 9. AUDIT LOGS
-  async function loadLogs() {
+  // 9. DETAILED DELIVERY AUDIT LOGS (from read-from-this.txt)
+  async function loadDetailedLogs() {
+    const logsTableBody = document.getElementById('detailedLogsTableBody');
+    const logsSearchInput = document.getElementById('logsSearchInput');
+    const logsStatusFilter = document.getElementById('logsStatusFilter');
+    const logsCampaignFilter = document.getElementById('logsCampaignFilter');
+
+    if (!logsTableBody) return;
+
+    const search = logsSearchInput?.value.trim() || '';
+    const status = logsStatusFilter?.value || '';
+    const campaignId = logsCampaignFilter?.value || '';
+
     try {
-      const res = await fetch('/api/logs?limit=100');
+      const params = new URLSearchParams({ limit: 100 });
+      if (search) params.append('search', search);
+      if (status) params.append('status', status);
+      if (campaignId) params.append('campaignId', campaignId);
+
+      const res = await fetch(`/api/delivery-logs?${params}`);
+      const data = await res.json();
+
+      if (!data.ok || !data.logs || data.logs.length === 0) {
+        logsTableBody.innerHTML = `<tr><td colspan="10" class="table-empty">No delivery logs found.</td></tr>`;
+        const statsEl = document.getElementById('logsStatsSummary');
+        if (statsEl) statsEl.textContent = 'Showing 0 logs';
+        return;
+      }
+
+      logsTableBody.innerHTML = data.logs.map(log => {
+        let statusBadge = '';
+        if (log.status === 'sent') statusBadge = '<span class="badge badge-completed">✓ Sent</span>';
+        else if (log.status === 'failed') statusBadge = '<span class="badge badge-failed">✗ Failed</span>';
+        else if (log.status === 'sending') statusBadge = '<span class="badge badge-sending">⏳ Sending</span>';
+        else statusBadge = '<span class="badge badge-queued">⏸ Queued</span>';
+
+        const errorCell = log.error_message 
+          ? `<span style="color: var(--rose); font-size: 11px;" title="${escapeHtml(log.error_message)}">${escapeHtml(log.error_message.substring(0, 40))}${log.error_message.length > 40 ? '...' : ''}</span>`
+          : '<span style="color: var(--text-muted);">-</span>';
+
+        return `
+          <tr>
+            <td style="font-family: var(--font-mono); font-size: 11px;">${new Date(log.created_at).toLocaleTimeString()}</td>
+            <td><strong style="color: var(--sky);">${escapeHtml(log.recipient_email)}</strong></td>
+            <td style="font-size: 11px;">${escapeHtml(log.recipient_name || '-')}</td>
+            <td><span class="account-badge">${escapeHtml(log.sender_email)}</span></td>
+            <td style="font-size: 11px;">${escapeHtml(log.campaign_name || '-')}</td>
+            <td style="font-size: 11px;">${escapeHtml(log.template_name || '-')}</td>
+            <td>${statusBadge}</td>
+            <td style="font-family: var(--font-mono); font-size: 11px;">${log.attempts || 0}</td>
+            <td>${errorCell}</td>
+            <td>
+              <button type="button" class="btn btn-secondary btn-xs btn-view-log-detail" data-id="${log.id}" style="padding: 2px 6px; font-size: 10px;">
+                🔍 View
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      // Wire detail buttons
+      logsTableBody.querySelectorAll('.btn-view-log-detail').forEach(btn => {
+        btn.addEventListener('click', () => viewLogDetails(btn.dataset.id));
+      });
+
+      const statsEl = document.getElementById('logsStatsSummary');
+      if (statsEl && data.total !== undefined) {
+        statsEl.textContent = `Showing ${data.logs.length} of ${data.total} logs`;
+      }
+    } catch (err) {
+      logsTableBody.innerHTML = `<tr><td colspan="10" class="table-empty" style="color: var(--rose);">Error loading logs: ${escapeHtml(err.message)}</td></tr>`;
+    }
+  }
+
+  async function viewLogDetails(logId) {
+    try {
+      const res = await fetch(`/api/delivery-logs/${logId}`);
+      const data = await res.json();
+      if (!data.ok) {
+        alert('Failed to load log details');
+        return;
+      }
+      const log = data.log;
+      const detailsHtml = `
+        <div style="max-height: 70vh; overflow-y: auto;">
+          <h3 style="color: var(--sky); margin-bottom: 16px;">📧 Email Delivery Details</h3>
+          
+          <div style="background: var(--bg-input); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 13px;">
+              <div><strong>Recipient:</strong> ${escapeHtml(log.recipient_email)}</div>
+              <div><strong>Name:</strong> ${escapeHtml(log.recipient_name || '-')}</div>
+              <div><strong>Sender:</strong> ${escapeHtml(log.sender_email)}</div>
+              <div><strong>Provider:</strong> ${escapeHtml(log.sender_provider)}</div>
+              <div><strong>Campaign:</strong> ${escapeHtml(log.campaign_name || '-')}</div>
+              <div><strong>Template:</strong> ${escapeHtml(log.template_name || '-')}</div>
+              <div><strong>Status:</strong> <span class="badge badge-${log.status === 'sent' ? 'completed' : log.status === 'failed' ? 'failed' : 'queued'}">${log.status.toUpperCase()}</span></div>
+              <div><strong>Attempts:</strong> ${log.attempts || 0}</div>
+            </div>
+          </div>
+
+          <div style="background: var(--bg-input); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+            <h4 style="color: var(--text-primary); margin-bottom: 12px;">📋 Subject</h4>
+            <div style="font-size: 13px; color: var(--text-secondary);">${escapeHtml(log.subject)}</div>
+          </div>
+
+          ${log.error_message ? `
+          <div style="background: rgba(244, 63, 94, 0.1); border: 1px solid rgba(244, 63, 94, 0.3); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+            <h4 style="color: var(--rose); margin-bottom: 8px;">❌ Error Details</h4>
+            <div style="font-size: 12px; font-family: var(--font-mono); color: var(--text-primary); white-space: pre-wrap;">${escapeHtml(log.error_message)}</div>
+          </div>
+          ` : ''}
+
+          <div style="background: var(--bg-input); padding: 16px; border-radius: 8px; margin-bottom: 16px;">
+            <h4 style="color: var(--text-primary); margin-bottom: 12px;">🕐 Timeline</h4>
+            <div style="font-size: 12px; color: var(--text-secondary);">
+              <div><strong>Queued:</strong> ${log.queued_at ? new Date(log.queued_at).toLocaleString() : '-'}</div>
+              <div><strong>Started:</strong> ${log.started_at ? new Date(log.started_at).toLocaleString() : '-'}</div>
+              <div><strong>Completed:</strong> ${log.completed_at ? new Date(log.completed_at).toLocaleString() : '-'}</div>
+              <div><strong>Created:</strong> ${new Date(log.created_at).toLocaleString()}</div>
+            </div>
+          </div>
+
+          ${log.provider_message_id ? `
+          <div style="background: var(--bg-input); padding: 16px; border-radius: 8px;">
+            <h4 style="color: var(--text-primary); margin-bottom: 8px;">🔗 Provider Message ID</h4>
+            <div style="font-size: 11px; font-family: var(--font-mono); color: var(--sky); word-break: break-all;">${escapeHtml(log.provider_message_id)}</div>
+          </div>
+          ` : ''}
+        </div>
+      `;
+
+      const modal = document.getElementById('logDetailsModal');
+      if (modal) {
+        modal.querySelector('.modal-card').innerHTML = detailsHtml + `
+          <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+            <button class="btn btn-secondary btn-close-log-modal">Close</button>
+          </div>
+        `;
+        modal.querySelector('.btn-close-log-modal').onclick = () => { modal.style.display = 'none'; };
+        modal.style.display = 'flex';
+      }
+    } catch (err) {
+      alert('Error loading log details: ' + err.message);
+    }
+  }
+
+  window.viewLogDetails = viewLogDetails;
+
+  // Filter Listeners for Tab 6
+  const btnApplyLogsFilter = document.getElementById('btnApplyLogsFilter');
+  const btnClearLogsFilter = document.getElementById('btnClearLogsFilter');
+  const logsSearchInput = document.getElementById('logsSearchInput');
+
+  if (btnRefreshLogs) btnRefreshLogs.addEventListener('click', loadDetailedLogs);
+  if (btnApplyLogsFilter) btnApplyLogsFilter.addEventListener('click', loadDetailedLogs);
+  if (btnClearLogsFilter) {
+    btnClearLogsFilter.addEventListener('click', () => {
+      if (logsSearchInput) logsSearchInput.value = '';
+      const statusFilter = document.getElementById('logsStatusFilter');
+      const campaignFilter = document.getElementById('logsCampaignFilter');
+      if (statusFilter) statusFilter.value = '';
+      if (campaignFilter) campaignFilter.value = '';
+      loadDetailedLogs();
+    });
+  }
+
+  if (logsSearchInput) {
+    logsSearchInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') loadDetailedLogs();
+    });
+  }
+
+  async function loadCampaignsForLogsFilter() {
+    try {
+      const res = await fetch('/api/campaigns');
       const data = await res.json();
       if (!data.ok) return;
-      if (data.logs.length === 0) {
-        terminalLogs.innerHTML = `<div class="terminal-line">[LOG] No activity logs recorded yet.</div>`;
-      } else {
-        terminalLogs.innerHTML = data.logs.map((l) => {
-          const color = l.level === 'ERROR' ? 'var(--rose)' : (l.level === 'WARN' ? 'var(--amber)' : 'var(--emerald)');
-          return `<div class="terminal-line"><span style="color: var(--text-muted);">${new Date(l.timestamp).toLocaleTimeString()}</span><span style="color: ${color}; font-weight: 600;">[${l.level}]</span>${l.sender_email ? `<span style="color: var(--sky);">[${l.sender_email}]</span>` : ''}<span>${escapeHtml(l.message)}</span></div>`;
-        }).join('');
+      const campaignFilter = document.getElementById('logsCampaignFilter');
+      if (campaignFilter) {
+        campaignFilter.innerHTML = '<option value="">All Campaigns</option>' +
+          (data.campaigns || []).map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
       }
-    } catch (_) { }
+    } catch (_) {}
   }
-  btnRefreshLogs.addEventListener('click', loadLogs);
 
   function escapeHtml(str) {
     if (!str) return '';
@@ -2388,14 +2643,17 @@ document.addEventListener('DOMContentLoaded', () => {
   cardActionSampleCsv?.addEventListener('click', downloadSampleCsv);
   btnDownloadSampleCsvInner?.addEventListener('click', downloadSampleCsv);
 
-  // Initial Boot
-  refreshTelemetry(); loadAccounts(); loadContacts(); loadTemplates(); loadCampaigns();
+  // Initial Boot (Async Lazy Loading: Only load active Overview tab immediately)
+  refreshTelemetry();
+  loadAccounts();
+  loadQueue();
 
-  // 3s Telemetry Loop
+  // 3s Telemetry Loop (Lightweight status check; only refreshes active view)
   setInterval(() => {
     refreshTelemetry();
     const activeTab = document.querySelector('.nav-tab.active')?.dataset.tab;
-    if (activeTab === 'tab-overview') loadAccounts();
-    if (activeTab === 'tab-logs') loadLogs();
+    if (activeTab === 'tab-overview') {
+      loadAccounts();
+    }
   }, 3000);
 });

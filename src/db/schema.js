@@ -88,11 +88,41 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL
 );
 
+-- 8. DETAILED DELIVERY LOGS: Complete email dispatch tracking
+CREATE TABLE IF NOT EXISTS delivery_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    campaign_id INTEGER NOT NULL,
+    queue_id INTEGER NOT NULL,
+    account_id INTEGER,
+    recipient_email TEXT NOT NULL,
+    recipient_name TEXT DEFAULT '',
+    sender_email TEXT NOT NULL,
+    sender_provider TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    template_name TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'queued', -- 'queued', 'sending', 'sent', 'failed'
+    attempts INTEGER DEFAULT 0,
+    error_message TEXT DEFAULT '',
+    provider_message_id TEXT DEFAULT '',
+    queued_at TEXT,
+    started_at TEXT,
+    completed_at TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE,
+    FOREIGN KEY(queue_id) REFERENCES queue(id) ON DELETE CASCADE,
+    FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE SET NULL
+);
+
 -- Performance Indexes
 CREATE INDEX IF NOT EXISTS idx_queue_status_id ON queue(status, id);
 CREATE INDEX IF NOT EXISTS idx_queue_sent_at ON queue(status, sent_at);
 CREATE INDEX IF NOT EXISTS idx_accounts_active ON accounts(is_active, sent_today, last_sent_at);
 CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email);
+CREATE INDEX IF NOT EXISTS idx_delivery_logs_recipient ON delivery_logs(recipient_email);
+CREATE INDEX IF NOT EXISTS idx_delivery_logs_campaign ON delivery_logs(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_delivery_logs_status ON delivery_logs(status);
+CREATE INDEX IF NOT EXISTS idx_delivery_logs_created ON delivery_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_delivery_logs_queue_id ON delivery_logs(queue_id);
 `;
 
 function initSchema(db) {

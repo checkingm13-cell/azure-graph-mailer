@@ -236,11 +236,30 @@
               </tr>
             </thead>
             <tbody id="queueTableBody">
-              <tr>
-                <td colspan="9" class="table-empty">Queue is empty. Ready for new campaigns.</td>
-              </tr>
+              <tr class="skeleton-row"><td colspan="9" style="padding: 16px; text-align: center; color: var(--sky);"><span style="display: inline-block; animation: pulse 1.5s infinite;">⏳ Fetching in-flight queue pipeline...</span></td></tr>
             </tbody>
           </table>
+        </div>
+        <!-- Queue Pagination & Status Filter Bar -->
+        <div class="queue-pagination-bar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-color);">
+          <div class="filter-pills" style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <button type="button" class="filter-pill active queue-filter-pill" data-status="all">All</button>
+            <button type="button" class="filter-pill queue-filter-pill" data-status="active">⚡ In Transit / Queued</button>
+            <button type="button" class="filter-pill queue-filter-pill" data-status="failed">❌ Failed</button>
+            <button type="button" class="filter-pill queue-filter-pill" data-status="sent">✅ Sent</button>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-secondary);">
+            <span id="queuePageIndicator">Page 1 of 1</span>
+            <div style="display: flex; gap: 4px;">
+              <button type="button" id="btnQueuePrevPage" class="btn btn-secondary btn-xs" style="padding: 4px 10px;" disabled>◀ Prev</button>
+              <button type="button" id="btnQueueNextPage" class="btn btn-secondary btn-xs" style="padding: 4px 10px;" disabled>Next ▶</button>
+            </div>
+            <select id="queuePageSizeSelect" class="form-select" style="width: auto; padding: 3px 8px; font-size: 12px;">
+              <option value="25" selected>25 / page</option>
+              <option value="50">50 / page</option>
+              <option value="100">100 / page</option>
+            </select>
+          </div>
         </div>
       </div>
     </section>
@@ -754,15 +773,62 @@
       </div>
     </section>
 
-    <!-- TAB 6: AUDIT LOGS -->
+    <!-- TAB 6: AUDIT LOGS (Detailed Delivery Audit Logs with Full-Text Search & Filters) -->
     <section id="tab-logs" class="tab-pane">
       <div class="panel-card">
         <div class="panel-header">
-          <h3>Real-Time Audit Log Terminal</h3><button id="btnRefreshLogs" class="btn btn-secondary btn-sm">↻
-            Refresh</button>
+          <div>
+            <h3>📧 Detailed Delivery Audit Logs</h3>
+            <span class="section-desc">Complete tracking of every email dispatch with real-time search & filters</span>
+          </div>
+          <button id="btnRefreshLogs" class="btn btn-secondary btn-sm">↻ Refresh</button>
         </div>
-        <div id="terminalLogs" class="terminal-window">
-          <div class="terminal-line">[SYSTEM] Initializing audit log stream...</div>
+
+        <!-- Search & Filter Bar -->
+        <div style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;">
+          <input type="text" id="logsSearchInput" class="form-input" placeholder="🔍 Search by email, name, or sender..." style="flex: 1; min-width: 250px;">
+          <select id="logsStatusFilter" class="form-select" style="width: 150px;">
+            <option value="">All Status</option>
+            <option value="sent">✓ Sent</option>
+            <option value="failed">✗ Failed</option>
+            <option value="queued">⏸ Queued</option>
+            <option value="sending">⏳ Sending</option>
+          </select>
+          <select id="logsCampaignFilter" class="form-select" style="width: 200px;">
+            <option value="">All Campaigns</option>
+          </select>
+          <button id="btnApplyLogsFilter" class="btn btn-primary btn-sm">Apply Filters</button>
+          <button id="btnClearLogsFilter" class="btn btn-secondary btn-sm">Clear</button>
+        </div>
+
+        <!-- Stats Summary -->
+        <div id="logsStatsSummary" style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px;">
+          Loading logs...
+        </div>
+
+        <!-- Detailed Logs Table -->
+        <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+          <table class="data-table">
+            <thead style="position: sticky; top: 0; background: var(--bg-surface); z-index: 1;">
+              <tr>
+                <th>Timestamp</th>
+                <th>Recipient Email</th>
+                <th>Name</th>
+                <th>Sender Account</th>
+                <th>Campaign</th>
+                <th>Template</th>
+                <th>Status</th>
+                <th>Attempts</th>
+                <th>Error</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="detailedLogsTableBody">
+              <tr>
+                <td colspan="10" class="table-empty">Loading delivery logs...</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </section>
@@ -1072,6 +1138,13 @@
     </div>
     <div class="drawer-footer">
       <button type="button" id="btnDrawerCloseFooter" class="btn btn-secondary btn-sm">Close</button>
+    </div>
+  </div>
+
+  <!-- Log Details Modal -->
+  <div id="logDetailsModal" class="modal-overlay" style="display: none;">
+    <div class="modal-card" style="max-width: 700px; width: 90%;">
+      <!-- Content dynamically populated by viewLogDetails() -->
     </div>
   </div>
 
