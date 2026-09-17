@@ -5,16 +5,20 @@ tags:
   - index
   - architecture
   - documentation
-date: 2026-09-16
+date: 2026-09-17
 ---
 
 # 📚 Azure Graph Mailer — Knowledge Base & Vault Index
 
-Welcome to the **Azure Graph Mailer** Obsidian Vault. This vault documents the full multi-provider architecture, deployment CI/CD pipelines, templates, anti-spam warmup rules, and operational troubleshooting SOPs.
+Welcome to the **Azure Graph Mailer** Obsidian Vault. This vault documents the full multi-provider architecture, deployment CI/CD pipelines, templates, anti-spam warmup rules, Indian Standard Time (IST) queue scheduling, and operational troubleshooting SOPs.
 
 ---
 
-## 🚨 Critical Troubleshooting & NDR Fixes
+## 🚨 Incident Reports & Production Audits
+- **[[INCIDENT_REPORT_QUEUE_FREEZE_IST_TIMEZONE_AND_SEND_NOW_AUDIT]]**
+  *Detailed post-mortem and architectural fixes for the September 17, 2026 queue freeze: unbounded Azure ACS poller hang, UTC vs IST (+05:30) timezone skew, priority Send-Now worker wake engine, 100ms ultra-fast pacing, and automatic account fallback.*
+- **[[INCIDENT_REPORT_49_50_STUCK_BATCHES_AND_DSA_AUDIT]]**
+  *Complete analysis and resolution of the 49/50 batch completion deadlock, M365 OAuth clock-skew cooldown failover, and algorithmic $O(1)$ database indexing audit for 1 Crore scale.*
 - **[[MICROSOFT_550_5_7_708_ERROR_DIAGNOSIS_AND_FIX]]**
   *Complete analysis and step-by-step SOP for fixing NDR error `550 5.7.708 (Access denied, traffic not accepted from this IP)`.*
 - **[[DEPLOYMENT_GUIDE#4-troubleshooting-common-deployment-issues]]**
@@ -23,8 +27,8 @@ Welcome to the **Azure Graph Mailer** Obsidian Vault. This vault documents the f
 ---
 
 ## 🏗️ Architecture & Specifications
-- **[[ARCHITECTURE_AND_SYSTEM_DESIGN]]**: High-performance multi-provider engine (Graph API, Azure ACS, Oracle OCI SMTP), fair rotation, and dynamic link rewriting.
-- **[[SPEC_PRODUCTION_CAMPAIGN_SCHEDULER]]**: Production batch dispatch engine, rate limits, and staggered queue scheduling.
+- **[[ARCHITECTURE_AND_SYSTEM_DESIGN]]**: High-performance multi-provider engine (Graph API, Azure ACS, Oracle OCI SMTP), fair rotation, dynamic link rewriting, strict Indian Standard Time (IST) normalization (`+330 minutes`), and automatic account fallback upon saturation or cooldown.
+- **[[SPEC_PRODUCTION_CAMPAIGN_SCHEDULER]]**: Production batch dispatch engine, rate limits, staggered queue scheduling, priority rank ordering (Send Now Tier 0), and series prefix isolation.
 - **[[MICROSOFT_GRAPH_API_SPEC_AND_PERMISSIONS]]**: Microsoft Entra ID App Registrations, application permissions (`Mail.Send`), and token caching.
 - **[[GRAPH_VS_ACS_AND_GOOGLE_DORKING_LEADS]]**: Deep comparison between Microsoft Graph API, Azure Communication Services (ACS), and Oracle OCI.
 
