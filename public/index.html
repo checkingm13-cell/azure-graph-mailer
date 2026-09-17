@@ -26,9 +26,11 @@
       </div>
     </div>
     <div class="header-right">
+      <div id="throughputTicker" class="throughput-badge" title="Live sending throughput across all accounts">
+        ⚡ 0.0 emails/sec
+      </div>
       <button type="button" id="btnOpenQuickTest" class="btn btn-primary btn-sm"
-        style="background: linear-gradient(135deg, #0284c7, #0369a1); font-weight: 600; box-shadow: 0 2px 8px rgba(2, 132, 199, 0.4);">⚡
-        Quick Test Email</button>
+        style="font-weight: 600;">⚡ Quick Test</button>
       <div id="workerStateBadge" class="status-badge active">
         <span class="dot"></span>
         <span id="workerStatusText">WORKER RUNNING</span>
@@ -577,6 +579,9 @@
               placeholder="🔍 Search by name, template, or sender..." style="width: 100%;">
           </div>
           <div style="display: flex; gap: 8px; align-items: center;">
+            <button type="button" id="btnToggleCampaignViewMode" class="btn btn-secondary btn-sm" style="font-size: 11.5px; border-color: rgba(56, 189, 248, 0.35); color: var(--sky);">
+              🗂️ View: Grouped Master Sheets
+            </button>
             <select id="campaignSortSelect" class="form-select" style="width: auto;">
               <option value="newest">Newest First</option>
               <option value="running">Running First</option>
@@ -593,7 +598,10 @@
           </div>
         </div>
 
-        <div class="table-responsive">
+        <!-- NEW: Master Parent-Child Aggregated Cards Container -->
+        <div id="aggregatedCampaignsContainer" style="display: block; margin-bottom: 20px;"></div>
+
+        <div id="rawCampaignsTableWrapper" class="table-responsive" style="display: none;">
           <table class="data-table">
             <thead>
               <tr>
@@ -1012,6 +1020,58 @@
           <button type="submit" class="btn btn-primary" style="background: linear-gradient(135deg, #10b981, #059669);">➕ Insert Link Into Template</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Slide-Over Inspection Drawer -->
+  <div id="drawerBackdrop" class="slide-over-backdrop"></div>
+  <div id="campaignDrawer" class="slide-over-drawer">
+    <div class="drawer-header">
+      <div>
+        <h4 id="drawerBatchName" style="margin: 0; font-size: 15px; color: var(--text-primary);">Campaign Inspection</h4>
+        <span id="drawerBatchStatus" class="badge badge-queued" style="font-size: 10px; margin-top: 4px;">QUEUED</span>
+      </div>
+      <button type="button" id="btnCloseDrawer" class="btn btn-secondary btn-xs" style="font-size: 14px; padding: 4px 10px;">✕</button>
+    </div>
+    <div class="drawer-body">
+      <!-- Summary Metrics Strip -->
+      <div class="metrics-strip" style="margin-bottom: 16px;">
+        <div class="metric-card" style="padding: 10px;">
+          <div class="metric-label" style="font-size: 10px;">Total</div>
+          <div class="metric-value text-sky" id="drawerMetricTotal" style="font-size: 18px;">0</div>
+        </div>
+        <div class="metric-card" style="padding: 10px;">
+          <div class="metric-label" style="font-size: 10px;">Sent</div>
+          <div class="metric-value text-emerald" id="drawerMetricSent" style="font-size: 18px;">0</div>
+        </div>
+        <div class="metric-card" style="padding: 10px;">
+          <div class="metric-label" style="font-size: 10px;">Failed</div>
+          <div class="metric-value text-rose" id="drawerMetricFailed" style="font-size: 18px;">0</div>
+        </div>
+      </div>
+
+      <!-- Recipient Records Table -->
+      <h5 style="font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 8px;">📋 Recipient Pipeline Records</h5>
+      <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Recipient Email</th>
+              <th>Status</th>
+              <th>Attempts</th>
+              <th>Last Error</th>
+            </tr>
+          </thead>
+          <tbody id="drawerRecipientsTableBody">
+            <tr>
+              <td colspan="4" class="table-empty">Loading recipient snapshot...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="drawer-footer">
+      <button type="button" id="btnDrawerCloseFooter" class="btn btn-secondary btn-sm">Close</button>
     </div>
   </div>
 

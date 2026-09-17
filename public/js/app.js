@@ -63,13 +63,37 @@ document.addEventListener('DOMContentLoaded', () => {
   const groupStaggerInterval = document.getElementById('groupStaggerInterval');
   const campaignStaggerMinutes = document.getElementById('campaignStaggerMinutes');
 
-  // Campaign Table State
+  // Campaign Table State & View Mode
   let allCampaigns = [];
   let currentCampFilter = 'ALL';
   let campSearchQuery = '';
   let campSortOrder = 'newest';
   let campPageSize = 50;
   let campCurrentPage = 1;
+  let campaignViewMode = 'aggregated'; // 'aggregated' (Parent-Child) or 'table' (Raw)
+
+  // Smooth EMA Throughput Tracker
+  let currentThroughput = 0;
+  let lastSentCount = 0;
+  let lastCheckTime = Date.now();
+
+  function updateThroughputTicker(currentSentCount) {
+    const now = Date.now();
+    const timeDeltaSec = (now - lastCheckTime) / 1000;
+    
+    if (timeDeltaSec > 0 && lastSentCount > 0) {
+      const instantRate = Math.max(0, (currentSentCount - lastSentCount) / timeDeltaSec);
+      currentThroughput = (0.35 * instantRate) + (0.65 * currentThroughput);
+    }
+    
+    lastSentCount = currentSentCount;
+    lastCheckTime = now;
+    
+    const throughputEl = document.getElementById('throughputTicker');
+    if (throughputEl) {
+      throughputEl.textContent = currentThroughput > 0.05 ? `⚡ ${currentThroughput.toFixed(1)} emails/sec` : '⚡ Idle (0.0/s)';
+    }
+  }
 
   // Dynamic Pacing Delay Controls
   const inputSendInterval = document.getElementById('inputSendInterval');
@@ -265,6 +289,9 @@ document.addEventListener('DOMContentLoaded', () => {
         workerStatusText.textContent = 'WORKER ACTIVE';
         btnToggleWorker.textContent = '⏸️ Pause Worker';
       }
+
+      // Smooth EMA Throughput Calculation
+      updateThroughputTicker(pool.total_sent_today || 0);
 
       if (worker.sendIntervalMs && inputSendInterval && document.activeElement !== inputSendInterval) {
         inputSendInterval.value = worker.sendIntervalMs;
@@ -1488,6 +1515,79 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (_) { }
   }
 
+  // --- PARENT-CHILD CAMPAIGN GROUPING & AGGREGATION ---
+  function groupCampaignsByMaster(campaignList) {
+    const parentMap = new Map();
+    const standalone = [];
+
+    // Separate explicit parents vs child batches or infer by naming pattern
+    for (const c of campaignList) {
+      if (c.parent_id) {
+        if (!parentMap.has(c.parent_id)) {
+          parentMap.set(c.parent_id, []);
+        }
+        parentMap.get(c.parent_id).push(c);
+      } else {
+        // Check if this campaign has children or is a master
+        if (!parentMap.has(c.id)) {
+          parentMap.set(c.id, []);
+        }
+      }
+    }
+
+    const aggregatedGroups = [];
+
+    for (const [parentId, children] of parentMap.entries()) {
+      const parentCamp = campaignList.find(c => c.id === parentId);
+      if (!parentCamp) {
+        // If children without parent found in memory, add them standalone
+        for (const ch of children) standalone.push(ch);
+        continue;
+      }
+
+      // If parent has children, calculate aggregated metrics
+      if (children.length > 0) {
+        const totalCount = children.reduce((sum, ch) => sum + (ch.total_count || 0), 0);
+        const sentCount = children.reduce((sum, ch) => sum + (ch.sent_count || 0), 0);
+        const failedCount = children.reduce((sum, ch) => sum + (ch.failed_count || 0), 0);
+        
+        let aggregateStatus = 'COMPLETED';
+        const hasRunning = children.some(ch => ch.status === 'RUNNING');
+        const hasQueued = children.some(ch => ch.status === 'QUEUED' || ch.status === 'SCHEDULED');
+        const hasPaused = children.some(ch => ch.status === 'PAUSED');
+        const allCancelled = children.every(ch => ch.status === 'CANCELLED');
+
+        if (hasRunning) aggregateStatus = 'RUNNING';
+        else if (hasPaused) aggregateStatus = 'PAUSED';
+        else if (hasQueued) aggregateStatus = 'QUEUED';
+        else if (allCancelled) aggregateStatus = 'CANCELLED';
+
+        aggregatedGroups.push({
+          isMaster: true,
+          parent: parentCamp,
+          children: children.sort((a, b) => a.id - b.id),
+          totalCount,
+          sentCount,
+          failedCount,
+          status: aggregateStatus
+        });
+      } else {
+        // Master campaign itself with direct queue or legacy standalone batch
+        aggregatedGroups.push({
+          isMaster: false,
+          parent: parentCamp,
+          children: [],
+          totalCount: parentCamp.total_count || 0,
+          sentCount: parentCamp.sent_count || 0,
+          failedCount: parentCamp.failed_count || 0,
+          status: parentCamp.status
+        });
+      }
+    }
+
+    return aggregatedGroups;
+  }
+
   function renderCampaignsTable() {
     // 1. Filter
     let filtered = allCampaigns.filter(c => {
@@ -1543,84 +1643,333 @@ document.addEventListener('DOMContentLoaded', () => {
       return d === todayStr;
     }).length;
 
-    // 4. Pagination
-    const totalItems = filtered.length;
-    const totalPages = campPageSize === 'all' ? 1 : Math.ceil(totalItems / campPageSize) || 1;
-    if (campCurrentPage > totalPages) campCurrentPage = totalPages;
-    const startIdx = campPageSize === 'all' ? 0 : (campCurrentPage - 1) * campPageSize;
-    const endIdx = campPageSize === 'all' ? totalItems : startIdx + campPageSize;
-    const pageItems = filtered.slice(startIdx, endIdx);
+    const aggregatedContainer = document.getElementById('aggregatedCampaignsContainer');
+    const rawTableWrapper = document.getElementById('rawCampaignsTableWrapper');
 
-    // Render Table
-    if (pageItems.length === 0) {
-      campaignsTableBody.innerHTML = `<tr><td colspan="8" class="table-empty">No campaigns match your filters.</td></tr>`;
-    } else {
-      campaignsTableBody.innerHTML = pageItems.map((c) => {
-        let statusBadgeClass = 'badge-queued';
-        if (c.status === 'COMPLETED') statusBadgeClass = 'badge-completed';
-        else if (c.status === 'RUNNING') statusBadgeClass = 'badge-sending';
-        else if (c.status === 'PAUSED') statusBadgeClass = 'badge-paused';
-        else if (c.status === 'SCHEDULED') statusBadgeClass = 'badge-scheduled';
-        else if (c.status === 'CANCELLED') statusBadgeClass = 'badge-cancelled';
+    if (campaignViewMode === 'aggregated') {
+      aggregatedContainer.style.display = 'block';
+      rawTableWrapper.style.display = 'none';
 
-        let actionsHtml = '';
-        if (c.status === 'RUNNING') {
-          actionsHtml = `<button type="button" class="btn btn-secondary btn-sm btn-pause-camp" data-id="${c.id}" style="padding: 3px 8px; font-size: 11px;">Pause</button><button type="button" class="btn btn-danger btn-sm btn-cancel-camp" data-id="${c.id}" style="padding: 3px 8px; font-size: 11px;">Cancel</button>`;
-        } else if (c.status === 'PAUSED') {
-          actionsHtml = `<button type="button" class="btn btn-primary btn-sm btn-resume-camp" data-id="${c.id}" style="padding: 3px 8px; font-size: 11px;">Resume</button><button type="button" class="btn btn-danger btn-sm btn-cancel-camp" data-id="${c.id}" style="padding: 3px 8px; font-size: 11px;">Cancel</button>`;
-        } else if (c.status === 'SCHEDULED' || c.status === 'QUEUED') {
-          actionsHtml = `<button type="button" class="btn btn-danger btn-sm btn-cancel-camp" data-id="${c.id}" style="padding: 3px 8px; font-size: 11px;">Cancel</button>`;
-        } else {
-          actionsHtml = `<button type="button" class="btn btn-secondary btn-sm btn-preview-camp" data-id="${c.id}" data-name="${escapeHtml(c.name)}" style="padding: 3px 8px; font-size: 11px; background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.4); color: var(--sky);">🔍 Preview / Re-run</button>`;
-        }
+      const groups = groupCampaignsByMaster(filtered);
 
-        const isTemplateRotated = (c.template_variants_count && c.template_variants_count > 1);
-        const templateBadge = isTemplateRotated
-          ? `<span title="${escapeHtml(c.template_name || '')} (Rotating ${c.template_variants_count} templates)"><strong style="color: var(--sky); font-size: 11px;">🔀 ${c.template_variants_count} Templates Rotated</strong><div style="font-size: 10px; color: var(--text-muted);">${escapeHtml(c.template_name || '')}</div></span>`
-          : `<span title="${escapeHtml(c.template_name || '')}">${escapeHtml(c.template_name ? (c.template_name.length > 28 ? c.template_name.slice(0, 28) + '...' : c.template_name) : '--')}</span>`;
+      if (groups.length === 0) {
+        aggregatedContainer.innerHTML = `<div class="table-empty" style="padding: 30px; text-align: center;">No campaigns match your current filters.</div>`;
+      } else {
+        aggregatedContainer.innerHTML = groups.map(g => {
+          const p = g.parent;
+          const total = g.totalCount;
+          const sent = g.sentCount;
+          const failed = g.failedCount;
+          const pct = total > 0 ? Math.min(100, Math.round(((sent + failed) / total) * 100)) : 0;
 
-        let senderBadge = '';
-        if (c.mode === 'CONTROLLED' && c.sender_email) {
-          senderBadge = `<div style="font-size: 11px; font-weight: 600; color: var(--sky);">${escapeHtml(c.sender_email)}</div><span class="account-badge" style="font-size: 9px; padding: 1px 5px;">${c.sender_provider || 'CONTROLLED'}</span>`;
-        } else {
-          const sendersCount = c.active_senders_count > 0 ? `${c.active_senders_count} accounts leased` : 'Smart Send Pool';
-          senderBadge = `<div><strong style="color: var(--emerald); font-size: 11px;">⚡ Auto-Rotate Pool</strong></div><span class="account-badge" style="font-size: 9px; padding: 1px 5px; background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.3);">${sendersCount}</span>`;
-        }
+          let statusBadgeClass = 'badge-queued';
+          if (g.status === 'COMPLETED') statusBadgeClass = 'badge-completed';
+          else if (g.status === 'RUNNING') statusBadgeClass = 'badge-sending';
+          else if (g.status === 'PAUSED') statusBadgeClass = 'badge-paused';
+          else if (g.status === 'SCHEDULED') statusBadgeClass = 'badge-scheduled';
+          else if (g.status === 'CANCELLED') statusBadgeClass = 'badge-cancelled';
 
-        const timeDisplay = c.started_at ? `Started: ${formatDateTime(c.started_at)}` : (c.scheduled_at ? `Scheduled: ${formatDateTime(c.scheduled_at)}` : '--');
-        const progressPct = c.total_count > 0 ? Math.round(((c.sent_count + c.failed_count) / c.total_count) * 100) : 0;
+          const allChildIds = g.children.length > 0 ? g.children.map(ch => ch.id) : [p.id];
+          const childIdsAttr = allChildIds.join(',');
 
-        return `
-          <tr>
-            <td>#${c.id}</td>
-            <td><strong title="${escapeHtml(c.name)}">${escapeHtml(c.name ? (c.name.length > 25 ? c.name.slice(0, 25) + '...' : c.name) : '--')}</strong></td>
-            <td>${templateBadge}</td>
-            <td>${senderBadge}</td>
-            <td><span style="font-size: 11px; color: var(--text-secondary);">${timeDisplay}</span></td>
-            <td><span class="badge ${statusBadgeClass}">${c.status}</span></td>
-            <td>
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <div class="gauge-bar-bg" style="width: 60px; height: 6px; margin: 0;"><div class="gauge-bar-fill" style="width: ${progressPct}%;"></div></div>
-                <span style="font-size: 11px;">${c.sent_count} / ${c.total_count} ${c.failed_count > 0 ? `<span style="color: var(--rose);">(${c.failed_count} err)</span>` : ''}</span>
+          // Bulk Control Buttons
+          let bulkActionsHtml = '';
+          if (g.status === 'RUNNING') {
+            bulkActionsHtml = `
+              <button type="button" class="btn btn-secondary btn-xs btn-bulk-action" data-action="PAUSED" data-ids="${childIdsAttr}">⏸️ Pause All</button>
+              <button type="button" class="btn btn-danger btn-xs btn-bulk-action" data-action="CANCELLED" data-ids="${childIdsAttr}">✕ Cancel All</button>
+            `;
+          } else if (g.status === 'PAUSED') {
+            bulkActionsHtml = `
+              <button type="button" class="btn btn-primary btn-xs btn-bulk-action" data-action="RESUMED" data-ids="${childIdsAttr}">▶️ Resume All</button>
+              <button type="button" class="btn btn-danger btn-xs btn-bulk-action" data-action="CANCELLED" data-ids="${childIdsAttr}">✕ Cancel All</button>
+            `;
+          } else if (g.status === 'SCHEDULED' || g.status === 'QUEUED') {
+            bulkActionsHtml = `
+              <button type="button" class="btn btn-primary btn-xs btn-bulk-send-now" data-id="${p.id}" title="Trigger immediately">⚡ Send Now</button>
+              <button type="button" class="btn btn-danger btn-xs btn-bulk-action" data-action="CANCELLED" data-ids="${childIdsAttr}">✕ Cancel</button>
+            `;
+          }
+
+          // Sub-batches List
+          const childrenHtml = g.children.map(ch => {
+            const chPct = ch.total_count > 0 ? Math.min(100, Math.round((ch.sent_count / ch.total_count) * 100)) : 0;
+            let chStatusBadge = 'badge-queued';
+            if (ch.status === 'COMPLETED') chStatusBadge = 'badge-completed';
+            else if (ch.status === 'RUNNING') chStatusBadge = 'badge-sending';
+            else if (ch.status === 'PAUSED') chStatusBadge = 'badge-paused';
+            else if (ch.status === 'CANCELLED') chStatusBadge = 'badge-cancelled';
+
+            return `
+              <div class="child-batch-row">
+                <div>
+                  <strong style="color: var(--sky); cursor: pointer;" class="btn-inspect-batch" data-id="${ch.id}" title="Click to inspect batch details">${escapeHtml(ch.name)}</strong>
+                  <span class="mono" style="margin-left: 6px;">#${ch.id}</span>
+                </div>
+                <div><span class="badge ${chStatusBadge}" style="font-size: 10px;">${ch.status}</span></div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <div class="gauge-bar-bg" style="width: 50px; height: 5px; margin: 0;"><div class="gauge-bar-fill" style="width: ${chPct}%;"></div></div>
+                  <span style="font-size: 11px;">${ch.sent_count}/${ch.total_count}</span>
+                </div>
+                <div class="mono" style="font-size: 11px; color: var(--text-muted);">${formatDateTime(ch.started_at || ch.scheduled_at)}</div>
+                <div>
+                  <button type="button" class="btn btn-secondary btn-xs btn-inspect-batch" data-id="${ch.id}">🔍 Inspect</button>
+                </div>
               </div>
-            </td>
-            <td>${actionsHtml}</td>
-          </tr>
-        `;
-      }).join('');
+            `;
+          }).join('');
 
-      // Wire up buttons
-      campaignsTableBody.querySelectorAll('.btn-pause-camp').forEach(btn => btn.addEventListener('click', async () => { await fetch(`/api/campaigns/${btn.dataset.id}/pause`, { method: 'POST' }); loadCampaigns(); refreshTelemetry(); }));
-      campaignsTableBody.querySelectorAll('.btn-resume-camp').forEach(btn => btn.addEventListener('click', async () => { await fetch(`/api/campaigns/${btn.dataset.id}/resume`, { method: 'POST' }); loadCampaigns(); refreshTelemetry(); }));
-      campaignsTableBody.querySelectorAll('.btn-cancel-camp').forEach(btn => btn.addEventListener('click', async () => { if (!confirm('Cancel this campaign? Any unsent emails will be stopped.')) return; await fetch(`/api/campaigns/${btn.dataset.id}/cancel`, { method: 'POST' }); loadCampaigns(); refreshTelemetry(); }));
-      campaignsTableBody.querySelectorAll('.btn-preview-camp').forEach(btn => btn.addEventListener('click', () => { openCampaignPreviewModal(btn.dataset.id); }));
+          return `
+            <div class="parent-campaign-card" id="parentCard_${p.id}">
+              <div class="parent-campaign-header" data-id="${p.id}">
+                <div class="parent-title-group">
+                  <span class="parent-chevron">▶</span>
+                  <div>
+                    <h4 style="margin: 0; font-size: 14px; color: var(--text-primary);">${escapeHtml(p.name)}</h4>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                      ${g.children.length > 0 ? `📁 Master Sheet (${g.children.length} Batches)` : 'Single Campaign'} • ${escapeHtml(p.template_name || 'Template')}
+                    </div>
+                  </div>
+                  <span class="badge ${statusBadgeClass}" style="margin-left: 6px;">${g.status}</span>
+                </div>
+
+                <div class="parent-metrics-group">
+                  <div class="parent-progress-bar-bg">
+                    <div class="parent-progress-bar-fill" style="width: ${pct}%;"></div>
+                  </div>
+                  <div style="font-size: 11.5px; font-weight: 600; min-width: 90px; text-align: right;">
+                    ${sent} / ${total} <span style="color: var(--text-muted);">(${pct}%)</span>
+                  </div>
+                </div>
+
+                <div class="parent-actions-group" onclick="event.stopPropagation();">
+                  ${bulkActionsHtml}
+                  ${g.children.length > 0 ? `<button type="button" class="btn btn-secondary btn-xs btn-toggle-expand" data-id="${p.id}">Expand Batches (${g.children.length})</button>` : `<button type="button" class="btn btn-secondary btn-xs btn-inspect-batch" data-id="${p.id}">🔍 Inspect</button>`}
+                </div>
+              </div>
+
+              ${g.children.length > 0 ? `<div class="child-batches-container" id="childrenContainer_${p.id}">${childrenHtml}</div>` : ''}
+            </div>
+          `;
+        }).join('');
+
+        // Wire parent card accordion toggles
+        aggregatedContainer.querySelectorAll('.parent-campaign-header').forEach(header => {
+          header.addEventListener('click', () => {
+            const card = header.closest('.parent-campaign-card');
+            card.classList.toggle('open');
+            const expandBtn = card.querySelector('.btn-toggle-expand');
+            if (expandBtn) {
+              expandBtn.textContent = card.classList.contains('open') ? 'Collapse' : `Expand Batches (${card.querySelectorAll('.child-batch-row').length})`;
+            }
+          });
+        });
+
+        // Wire bulk action buttons
+        aggregatedContainer.querySelectorAll('.btn-bulk-action').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const action = btn.dataset.action;
+            const ids = btn.dataset.ids.split(',').map(id => parseInt(id, 10));
+            if (action === 'CANCELLED' && !confirm(`Cancel all ${ids.length} batch(es)? Remaining emails will be cancelled.`)) return;
+
+            btn.disabled = true;
+            try {
+              await fetch('/api/campaigns/bulk-action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ campaignIds: ids, action })
+              });
+              loadCampaigns();
+              refreshTelemetry();
+            } catch (err) {
+              alert(err.message);
+            } finally {
+              btn.disabled = false;
+            }
+          });
+        });
+
+        // Wire bulk send now
+        aggregatedContainer.querySelectorAll('.btn-bulk-send-now').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            try {
+              await fetch(`/api/campaigns/${btn.dataset.id}/send-now`, { method: 'POST' });
+              loadCampaigns();
+              refreshTelemetry();
+            } catch (err) {
+              alert(err.message);
+            } finally {
+              btn.disabled = false;
+            }
+          });
+        });
+
+        // Wire inspection drawer trigger
+        aggregatedContainer.querySelectorAll('.btn-inspect-batch').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openCampaignInspectionDrawer(btn.dataset.id);
+          });
+        });
+      }
+
+    } else {
+      // RAW TABLE VIEW
+      aggregatedContainer.style.display = 'none';
+      rawTableWrapper.style.display = 'block';
+
+      // 4. Pagination
+      const totalItems = filtered.length;
+      const totalPages = campPageSize === 'all' ? 1 : Math.ceil(totalItems / campPageSize) || 1;
+      if (campCurrentPage > totalPages) campCurrentPage = totalPages;
+      const startIdx = campPageSize === 'all' ? 0 : (campCurrentPage - 1) * campPageSize;
+      const endIdx = campPageSize === 'all' ? totalItems : startIdx + campPageSize;
+      const pageItems = filtered.slice(startIdx, endIdx);
+
+      // Render Table
+      if (pageItems.length === 0) {
+        campaignsTableBody.innerHTML = `<tr><td colspan="8" class="table-empty">No campaigns match your filters.</td></tr>`;
+      } else {
+        campaignsTableBody.innerHTML = pageItems.map((c) => {
+          let statusBadgeClass = 'badge-queued';
+          if (c.status === 'COMPLETED') statusBadgeClass = 'badge-completed';
+          else if (c.status === 'RUNNING') statusBadgeClass = 'badge-sending';
+          else if (c.status === 'PAUSED') statusBadgeClass = 'badge-paused';
+          else if (c.status === 'SCHEDULED') statusBadgeClass = 'badge-scheduled';
+          else if (c.status === 'CANCELLED') statusBadgeClass = 'badge-cancelled';
+
+          let actionsHtml = '';
+          if (c.status === 'RUNNING') {
+            actionsHtml = `<button type="button" class="btn btn-secondary btn-xs btn-pause-camp" data-id="${c.id}">Pause</button><button type="button" class="btn btn-danger btn-xs btn-cancel-camp" data-id="${c.id}">Cancel</button>`;
+          } else if (c.status === 'PAUSED') {
+            actionsHtml = `<button type="button" class="btn btn-primary btn-xs btn-resume-camp" data-id="${c.id}">Resume</button><button type="button" class="btn btn-danger btn-xs btn-cancel-camp" data-id="${c.id}">Cancel</button>`;
+          } else if (c.status === 'SCHEDULED' || c.status === 'QUEUED') {
+            actionsHtml = `<button type="button" class="btn btn-primary btn-xs btn-send-now" data-id="${c.id}">⚡ Send</button><button type="button" class="btn btn-danger btn-xs btn-cancel-camp" data-id="${c.id}">Cancel</button>`;
+          } else {
+            actionsHtml = `<button type="button" class="btn btn-secondary btn-xs btn-inspect-batch" data-id="${c.id}">🔍 Inspect</button>`;
+          }
+
+          const timeDisplay = c.started_at ? `Started: ${formatDateTime(c.started_at)}` : (c.scheduled_at ? `Scheduled: ${formatDateTime(c.scheduled_at)}` : '--');
+          const progressPct = c.total_count > 0 ? Math.round(((c.sent_count + c.failed_count) / c.total_count) * 100) : 0;
+
+          return `
+            <tr>
+              <td>#${c.id}</td>
+              <td><strong title="${escapeHtml(c.name)}" class="btn-inspect-batch" data-id="${c.id}" style="cursor: pointer; color: var(--sky);">${escapeHtml(c.name)}</strong></td>
+              <td>${escapeHtml(c.template_name || '--')}</td>
+              <td><span class="account-badge">${c.sender_email || 'Smart Pool'}</span></td>
+              <td><span style="font-size: 11px; color: var(--text-secondary);">${timeDisplay}</span></td>
+              <td><span class="badge ${statusBadgeClass}">${c.status}</span></td>
+              <td>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <div class="gauge-bar-bg" style="width: 50px; height: 5px; margin: 0;"><div class="gauge-bar-fill" style="width: ${progressPct}%;"></div></div>
+                  <span style="font-size: 11px;">${c.sent_count} / ${c.total_count}</span>
+                </div>
+              </td>
+              <td>${actionsHtml}</td>
+            </tr>
+          `;
+        }).join('');
+
+        campaignsTableBody.querySelectorAll('.btn-pause-camp').forEach(btn => btn.addEventListener('click', async () => { await fetch(`/api/campaigns/${btn.dataset.id}/pause`, { method: 'POST' }); loadCampaigns(); refreshTelemetry(); }));
+        campaignsTableBody.querySelectorAll('.btn-resume-camp').forEach(btn => btn.addEventListener('click', async () => { await fetch(`/api/campaigns/${btn.dataset.id}/resume`, { method: 'POST' }); loadCampaigns(); refreshTelemetry(); }));
+        campaignsTableBody.querySelectorAll('.btn-cancel-camp').forEach(btn => btn.addEventListener('click', async () => { if (!confirm('Cancel this campaign? Any unsent emails will be stopped.')) return; await fetch(`/api/campaigns/${btn.dataset.id}/cancel`, { method: 'POST' }); loadCampaigns(); refreshTelemetry(); }));
+        campaignsTableBody.querySelectorAll('.btn-send-now').forEach(btn => btn.addEventListener('click', async () => { await fetch(`/api/campaigns/${btn.dataset.id}/send-now`, { method: 'POST' }); loadCampaigns(); refreshTelemetry(); }));
+        campaignsTableBody.querySelectorAll('.btn-inspect-batch').forEach(btn => btn.addEventListener('click', () => { openCampaignInspectionDrawer(btn.dataset.id); }));
+      }
+
+      document.getElementById('campaignPageInfo').textContent = `Showing ${totalItems === 0 ? 0 : startIdx + 1}–${endIdx} of ${totalItems} campaigns`;
+      document.getElementById('campPageNumbers').textContent = `Page ${campCurrentPage} / ${totalPages}`;
+      document.getElementById('btnCampPrev').disabled = campCurrentPage <= 1;
+      document.getElementById('btnCampNext').disabled = campCurrentPage >= totalPages;
     }
+  }
 
-    // Render Pagination Controls
-    document.getElementById('campaignPageInfo').textContent = `Showing ${totalItems === 0 ? 0 : startIdx + 1}–${endIdx} of ${totalItems} campaigns`;
-    document.getElementById('campPageNumbers').textContent = `Page ${campCurrentPage} / ${totalPages}`;
-    document.getElementById('btnCampPrev').disabled = campCurrentPage <= 1;
-    document.getElementById('btnCampNext').disabled = campCurrentPage >= totalPages;
+  // View Mode Switcher Listener
+  const btnToggleCampaignViewMode = document.getElementById('btnToggleCampaignViewMode');
+  if (btnToggleCampaignViewMode) {
+    btnToggleCampaignViewMode.addEventListener('click', () => {
+      campaignViewMode = campaignViewMode === 'aggregated' ? 'table' : 'aggregated';
+      btnToggleCampaignViewMode.textContent = campaignViewMode === 'aggregated' ? '🗂️ View: Grouped Master Sheets' : '📋 View: Raw Batches Table';
+      renderCampaignsTable();
+    });
+  }
+
+  // --- SLIDE-OVER INSPECTION DRAWER CONTROLLER ---
+  const campaignDrawer = document.getElementById('campaignDrawer');
+  const drawerBackdrop = document.getElementById('drawerBackdrop');
+  const btnCloseDrawer = document.getElementById('btnCloseDrawer');
+  const btnDrawerCloseFooter = document.getElementById('btnDrawerCloseFooter');
+
+  function closeCampaignDrawer() {
+    if (campaignDrawer) campaignDrawer.classList.remove('active');
+    if (drawerBackdrop) drawerBackdrop.classList.remove('active');
+  }
+
+  if (btnCloseDrawer) btnCloseDrawer.addEventListener('click', closeCampaignDrawer);
+  if (btnDrawerCloseFooter) btnDrawerCloseFooter.addEventListener('click', closeCampaignDrawer);
+  if (drawerBackdrop) drawerBackdrop.addEventListener('click', closeCampaignDrawer);
+
+  async function openCampaignInspectionDrawer(campaignId) {
+    if (!campaignDrawer) return;
+
+    campaignDrawer.classList.add('active');
+    drawerBackdrop.classList.add('active');
+
+    const drawerBatchName = document.getElementById('drawerBatchName');
+    const drawerBatchStatus = document.getElementById('drawerBatchStatus');
+    const drawerMetricTotal = document.getElementById('drawerMetricTotal');
+    const drawerMetricSent = document.getElementById('drawerMetricSent');
+    const drawerMetricFailed = document.getElementById('drawerMetricFailed');
+    const drawerTableBody = document.getElementById('drawerRecipientsTableBody');
+
+    drawerBatchName.textContent = `Loading Campaign #${campaignId}...`;
+    drawerTableBody.innerHTML = `<tr><td colspan="4" class="table-empty">Loading live recipient records...</td></tr>`;
+
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/preview`);
+      const data = await res.json();
+      if (!data.ok || !data.campaign) {
+        drawerBatchName.textContent = `Campaign #${campaignId}`;
+        drawerTableBody.innerHTML = `<tr><td colspan="4" class="table-empty">Campaign records not found.</td></tr>`;
+        return;
+      }
+
+      drawerBatchName.textContent = data.campaign.name || `Campaign #${campaignId}`;
+      drawerBatchStatus.textContent = data.campaign.status;
+      drawerBatchStatus.className = `badge badge-${data.campaign.status.toLowerCase()}`;
+
+      if (data.summary) {
+        drawerMetricTotal.textContent = data.summary.total || 0;
+        drawerMetricSent.textContent = data.summary.sent || 0;
+        drawerMetricFailed.textContent = data.summary.failed || 0;
+      }
+
+      if (!data.sampleItems || data.sampleItems.length === 0) {
+        drawerTableBody.innerHTML = `<tr><td colspan="4" class="table-empty">No queue records found for this batch.</td></tr>`;
+      } else {
+        drawerTableBody.innerHTML = data.sampleItems.map(item => {
+          let stColor = 'var(--text-muted)';
+          if (item.status === 'sent') stColor = 'var(--emerald)';
+          else if (item.status === 'failed') stColor = 'var(--rose)';
+          else if (item.status === 'sending') stColor = 'var(--sky)';
+
+          return `
+            <tr>
+              <td style="font-family: var(--font-mono); font-size: 11px;">${escapeHtml(item.email)}</td>
+              <td><span style="color: ${stColor}; font-weight: 600; font-size: 11px;">${item.status}</span></td>
+              <td>${item.attempts || 0}</td>
+              <td style="font-size: 10.5px; color: ${item.last_error ? 'var(--rose)' : 'var(--text-muted)'}; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(item.last_error || '')}">
+                ${escapeHtml(item.last_error || '--')}
+              </td>
+            </tr>
+          `;
+        }).join('');
+      }
+    } catch (err) {
+      drawerTableBody.innerHTML = `<tr><td colspan="4" class="table-empty" style="color: var(--rose);">Error: ${err.message}</td></tr>`;
+    }
   }
 
   // Campaign Filter, Search, Sort, Pagination Event Listeners

@@ -781,10 +781,33 @@ router.post('/campaigns/launch-batches', (req, res) => {
     const campInsert = db.prepare(`
       INSERT INTO campaigns (
         name, template_id, status, total_count, scheduled_at,
-        sender_account_id, pinned_account_id, mode, fallback_allowed, sending_speed, custom_interval_ms
+        sender_account_id, pinned_account_id, mode, fallback_allowed, sending_speed, custom_interval_ms,
+        parent_id, is_batch
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
+
+    // Insert Parent Master Campaign if multi-batch, or single master
+    let parentCampaignId = null;
+    const parentScheduledAt = formatSqliteDateTime(new Date(baseMs));
+    const parentStatus = baseMs > (Date.now() + 5000) ? 'SCHEDULED' : 'QUEUED';
+
+    const parentCampRes = campInsert.run(
+      baseCampaignName,
+      activeTemplates[0].id,
+      parentStatus,
+      filteredContacts.length,
+      parentScheduledAt,
+      parsedSenderAccountId,
+      parsedSenderAccountId,
+      mode,
+      fallbackAllowed,
+      sendingSpeed,
+      customIntervalMs,
+      null,
+      0 // is_batch = 0 (Master Parent)
+    );
+    parentCampaignId = parentCampRes.lastInsertRowid;
 
     const queueInsert = db.prepare(`
       INSERT INTO queue (campaign_id, contact_id, email, name, subject, rendered_html, status, scheduled_at, template_id)
@@ -827,7 +850,9 @@ router.post('/campaigns/launch-batches', (req, res) => {
         mode,
         fallbackAllowed,
         sendingSpeed,
-        customIntervalMs
+        customIntervalMs,
+        parentCampaignId,
+        1 // is_batch = 1 (Child Sub-Batch)
       );
       const campaignId = campRes.lastInsertRowid;
 
@@ -852,6 +877,7 @@ router.post('/campaigns/launch-batches', (req, res) => {
 
       createdCampaigns.push({
         campaignId,
+        parentId: parentCampaignId,
         name: batchName,
         status: initialStatus,
         scheduledAt: batchScheduledAt,
@@ -859,18 +885,105 @@ router.post('/campaigns/launch-batches', (req, res) => {
       });
     }
 
-    return createdCampaigns;
+    return { parentCampaignId, baseCampaignName, createdCampaigns };
   });
 
-  const createdCampaigns = launchTx();
+  const launchResult = launchTx();
   res.json({
     ok: true,
-    message: `Successfully created ${createdCampaigns.length} campaigns across ${filteredContacts.length} recipients!`,
-    totalCampaigns: createdCampaigns.length,
+    message: `Successfully created Master Campaign "${launchResult.baseCampaignName}" across ${launchResult.createdCampaigns.length} batch(es) for ${filteredContacts.length} recipients!`,
+    parentCampaignId: launchResult.parentCampaignId,
+    totalCampaigns: launchResult.createdCampaigns.length,
     totalQueued: filteredContacts.length,
     scheduleMode,
-    campaigns: createdCampaigns
+    campaigns: launchResult.createdCampaigns
   });
+});
+
+// BULK ACTIONS FOR CAMPAIGNS (Pause, Resume, Cancel All)
+router.post('/campaigns/bulk-action', (req, res) => {
+  const { campaignIds, action } = req.body; // action: 'PAUSED', 'RESUMED', or 'CANCELLED'
+  if (!Array.isArray(campaignIds) || campaignIds.length === 0) {
+    return res.status(400).json({ ok: false, error: 'Invalid or empty campaign IDs array' });
+  }
+
+  const validActions = ['PAUSED', 'RESUMED', 'CANCELLED'];
+  if (!validActions.includes(action)) {
+    return res.status(400).json({ ok: false, error: 'Action must be PAUSED, RESUMED, or CANCELLED' });
+  }
+
+  const placeholders = campaignIds.map(() => '?').join(',');
+
+  try {
+    const bulkTx = db.transaction(() => {
+      if (action === 'CANCELLED') {
+        db.prepare(`
+          UPDATE queue 
+          SET status = 'failed', last_error = 'Cancelled via bulk action' 
+          WHERE campaign_id IN (${placeholders}) AND status = 'queued'
+        `).run(...campaignIds);
+
+        db.prepare(`
+          UPDATE campaigns 
+          SET status = 'CANCELLED', completed_at = datetime('now') 
+          WHERE id IN (${placeholders})
+        `).run(...campaignIds);
+      } else if (action === 'PAUSED') {
+        db.prepare(`
+          UPDATE campaigns 
+          SET status = 'PAUSED' 
+          WHERE id IN (${placeholders}) AND status NOT IN ('COMPLETED', 'CANCELLED')
+        `).run(...campaignIds);
+      } else if (action === 'RESUMED') {
+        db.prepare(`
+          UPDATE campaigns 
+          SET status = CASE WHEN started_at IS NOT NULL THEN 'RUNNING' ELSE 'QUEUED' END 
+          WHERE id IN (${placeholders}) AND status = 'PAUSED'
+        `).run(...campaignIds);
+      }
+    });
+
+    bulkTx();
+    res.json({ ok: true, message: `Successfully applied ${action} across ${campaignIds.length} campaign(s).` });
+  } catch (err) {
+    console.error('Bulk action error:', err);
+    res.status(500).json({ ok: false, error: 'Failed to execute bulk action: ' + err.message });
+  }
+});
+
+// INSTANT TRIGGER: SEND NOW (Move scheduled/queued campaign to immediate dispatch)
+router.post('/campaigns/:id/send-now', (req, res) => {
+  const campId = req.params.id;
+  const camp = db.prepare('SELECT id, name, status, parent_id FROM campaigns WHERE id = ?').get(campId);
+  if (!camp) return res.status(404).json({ ok: false, error: 'Campaign not found' });
+
+  try {
+    const triggerTx = db.transaction(() => {
+      // Find all target campaigns (if parent, include all child batches)
+      const targetIds = [camp.id];
+      const children = db.prepare('SELECT id FROM campaigns WHERE parent_id = ?').all(camp.id);
+      for (const ch of children) targetIds.push(ch.id);
+
+      const placeholders = targetIds.map(() => '?').join(',');
+
+      db.prepare(`
+        UPDATE queue 
+        SET scheduled_at = datetime('now') 
+        WHERE campaign_id IN (${placeholders}) AND status = 'queued'
+      `).run(...targetIds);
+
+      db.prepare(`
+        UPDATE campaigns 
+        SET status = 'QUEUED', scheduled_at = datetime('now') 
+        WHERE id IN (${placeholders}) AND status IN ('SCHEDULED', 'QUEUED', 'PAUSED')
+      `).run(...targetIds);
+    });
+
+    triggerTx();
+    res.json({ ok: true, message: `Campaign "${camp.name}" moved to immediate dispatch!` });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 // PAUSE, RESUME, CANCEL, RE-RUN & AUDIT LOGS
@@ -883,7 +996,7 @@ router.post('/campaigns/:id/pause', (req, res) => {
     return res.status(400).json({ ok: false, error: `Cannot pause a ${camp.status} campaign.` });
   }
 
-  db.prepare("UPDATE campaigns SET status = 'PAUSED' WHERE id = ?").run(campId);
+  db.prepare("UPDATE campaigns SET status = 'PAUSED' WHERE id = ? OR parent_id = ?").run(campId, campId);
   db.prepare("INSERT INTO logs (campaign_id, level, message) VALUES (?, 'WARN', ?)").run(campId, `Campaign "${camp.name}" paused.`);
   res.json({ ok: true, message: `Campaign "${camp.name}" paused.` });
 });
@@ -898,7 +1011,7 @@ router.post('/campaigns/:id/resume', (req, res) => {
   }
 
   const nextStatus = camp.started_at ? 'RUNNING' : 'QUEUED';
-  db.prepare("UPDATE campaigns SET status = ? WHERE id = ?").run(nextStatus, campId);
+  db.prepare("UPDATE campaigns SET status = ? WHERE id = ? OR parent_id = ?").run(nextStatus, campId, campId);
   db.prepare("INSERT INTO logs (campaign_id, level, message) VALUES (?, 'INFO', ?)").run(campId, `Campaign "${camp.name}" resumed.`);
   res.json({ ok: true, message: `Campaign "${camp.name}" resumed.` });
 });

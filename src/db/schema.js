@@ -174,6 +174,14 @@ function initSchema(db) {
       db.exec("ALTER TABLE queue ADD COLUMN template_id INTEGER REFERENCES templates(id)");
     }
 
+    if (!campaignCols.includes('parent_id')) {
+      db.exec("ALTER TABLE campaigns ADD COLUMN parent_id INTEGER REFERENCES campaigns(id) ON DELETE CASCADE");
+    }
+    if (!campaignCols.includes('is_batch')) {
+      db.exec("ALTER TABLE campaigns ADD COLUMN is_batch INTEGER DEFAULT 0");
+    }
+
+    db.exec("CREATE INDEX IF NOT EXISTS idx_campaigns_parent ON campaigns(parent_id);");
     db.exec("CREATE INDEX IF NOT EXISTS idx_queue_schedule ON queue(status, scheduled_at, id);");
 
     // Seed/Upsert standard journal templates
