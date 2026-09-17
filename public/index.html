@@ -824,11 +824,27 @@
               </tr>
             </thead>
             <tbody id="detailedLogsTableBody">
-              <tr>
-                <td colspan="10" class="table-empty">Loading delivery logs...</td>
-              </tr>
+              <tr class="skeleton-row"><td colspan="10" style="padding: 16px; text-align: center; color: var(--sky);"><span style="display: inline-block; animation: pulse 1.5s infinite;">⏳ Fetching detailed delivery audit logs...</span></td></tr>
             </tbody>
           </table>
+        </div>
+
+        <!-- Delivery Logs Pagination & Page Size Toolbar -->
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-color);">
+          <div style="font-size: 12px; color: var(--text-muted);">
+            <span id="logsPageIndicator">Page 1 of 1 (0 logs)</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px; font-size: 12px;">
+            <div style="display: flex; gap: 4px;">
+              <button type="button" id="btnLogsPrevPage" class="btn btn-secondary btn-xs" style="padding: 4px 10px;" disabled>◀ Prev</button>
+              <button type="button" id="btnLogsNextPage" class="btn btn-secondary btn-xs" style="padding: 4px 10px;" disabled>Next ▶</button>
+            </div>
+            <select id="logsPageSizeSelect" class="form-select" style="width: auto; padding: 3px 8px; font-size: 12px;">
+              <option value="25">25 / page</option>
+              <option value="50" selected>50 / page</option>
+              <option value="100">100 / page</option>
+            </select>
+          </div>
         </div>
       </div>
     </section>

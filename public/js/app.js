@@ -2108,21 +2108,35 @@ document.addEventListener('DOMContentLoaded', () => {
     if (campCurrentPage < totalPages) { campCurrentPage++; renderCampaignsTable(); }
   });
 
-  // 9. DETAILED DELIVERY AUDIT LOGS (from read-from-this.txt)
+  // 9. DETAILED DELIVERY AUDIT LOGS (Paginated & Zero-Flicker)
+  let logsCurrentPage = 1;
+  let logsPageSize = 50;
+  let isLogsFetching = false;
+
+  const logsPageIndicator = document.getElementById('logsPageIndicator');
+  const btnLogsPrevPage = document.getElementById('btnLogsPrevPage');
+  const btnLogsNextPage = document.getElementById('btnLogsNextPage');
+  const logsPageSizeSelect = document.getElementById('logsPageSizeSelect');
+
   async function loadDetailedLogs() {
     const logsTableBody = document.getElementById('detailedLogsTableBody');
     const logsSearchInput = document.getElementById('logsSearchInput');
     const logsStatusFilter = document.getElementById('logsStatusFilter');
     const logsCampaignFilter = document.getElementById('logsCampaignFilter');
 
-    if (!logsTableBody) return;
+    if (!logsTableBody || isLogsFetching) return;
+    isLogsFetching = true;
 
     const search = logsSearchInput?.value.trim() || '';
     const status = logsStatusFilter?.value || '';
     const campaignId = logsCampaignFilter?.value || '';
+    const offset = (logsCurrentPage - 1) * logsPageSize;
 
     try {
-      const params = new URLSearchParams({ limit: 100 });
+      const params = new URLSearchParams({
+        limit: logsPageSize,
+        offset: offset
+      });
       if (search) params.append('search', search);
       if (status) params.append('status', status);
       if (campaignId) params.append('campaignId', campaignId);
@@ -2131,9 +2145,17 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await res.json();
 
       if (!data.ok || !data.logs || data.logs.length === 0) {
+        if (data.total && data.total > 0 && logsCurrentPage > 1) {
+          logsCurrentPage = Math.max(1, Math.ceil(data.total / logsPageSize));
+          isLogsFetching = false;
+          return loadDetailedLogs();
+        }
         logsTableBody.innerHTML = `<tr><td colspan="10" class="table-empty">No delivery logs found.</td></tr>`;
         const statsEl = document.getElementById('logsStatsSummary');
         if (statsEl) statsEl.textContent = 'Showing 0 logs';
+        if (logsPageIndicator) logsPageIndicator.textContent = 'Page 1 of 1 (0 logs)';
+        if (btnLogsPrevPage) btnLogsPrevPage.disabled = true;
+        if (btnLogsNextPage) btnLogsNextPage.disabled = true;
         return;
       }
 
@@ -2173,13 +2195,50 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.addEventListener('click', () => viewLogDetails(btn.dataset.id));
       });
 
+      const totalLogs = data.total !== undefined ? data.total : data.logs.length;
+      const totalPages = Math.ceil(totalLogs / logsPageSize) || 1;
+
       const statsEl = document.getElementById('logsStatsSummary');
-      if (statsEl && data.total !== undefined) {
-        statsEl.textContent = `Showing ${data.logs.length} of ${data.total} logs`;
+      if (statsEl) {
+        statsEl.textContent = `Showing ${data.logs.length} of ${totalLogs} logs`;
       }
+
+      if (logsPageIndicator) {
+        logsPageIndicator.textContent = `Page ${logsCurrentPage} of ${totalPages} (${totalLogs} total logs)`;
+      }
+      if (btnLogsPrevPage) btnLogsPrevPage.disabled = logsCurrentPage <= 1;
+      if (btnLogsNextPage) btnLogsNextPage.disabled = logsCurrentPage >= totalPages;
+
     } catch (err) {
       logsTableBody.innerHTML = `<tr><td colspan="10" class="table-empty" style="color: var(--rose);">Error loading logs: ${escapeHtml(err.message)}</td></tr>`;
+    } finally {
+      isLogsFetching = false;
     }
+  }
+
+  // Logs Pagination Listeners
+  if (btnLogsPrevPage) {
+    btnLogsPrevPage.addEventListener('click', () => {
+      if (logsCurrentPage > 1) {
+        logsCurrentPage--;
+        loadDetailedLogs();
+      }
+    });
+  }
+
+  if (btnLogsNextPage) {
+    btnLogsNextPage.addEventListener('click', () => {
+      logsCurrentPage++;
+      loadDetailedLogs();
+    });
+  }
+
+  if (logsPageSizeSelect) {
+    logsPageSizeSelect.addEventListener('change', () => {
+      logsPageSize = parseInt(logsPageSizeSelect.value, 10) || 50;
+      logsCurrentPage = 1;
+      loadDetailedLogs();
+    });
   }
 
   async function viewLogDetails(logId) {
@@ -2261,8 +2320,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnClearLogsFilter = document.getElementById('btnClearLogsFilter');
   const logsSearchInput = document.getElementById('logsSearchInput');
 
-  if (btnRefreshLogs) btnRefreshLogs.addEventListener('click', loadDetailedLogs);
-  if (btnApplyLogsFilter) btnApplyLogsFilter.addEventListener('click', loadDetailedLogs);
+  if (btnRefreshLogs) btnRefreshLogs.addEventListener('click', () => { logsCurrentPage = 1; loadDetailedLogs(); });
+  if (btnApplyLogsFilter) btnApplyLogsFilter.addEventListener('click', () => { logsCurrentPage = 1; loadDetailedLogs(); });
   if (btnClearLogsFilter) {
     btnClearLogsFilter.addEventListener('click', () => {
       if (logsSearchInput) logsSearchInput.value = '';
@@ -2270,13 +2329,17 @@ document.addEventListener('DOMContentLoaded', () => {
       const campaignFilter = document.getElementById('logsCampaignFilter');
       if (statusFilter) statusFilter.value = '';
       if (campaignFilter) campaignFilter.value = '';
+      logsCurrentPage = 1;
       loadDetailedLogs();
     });
   }
 
   if (logsSearchInput) {
     logsSearchInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') loadDetailedLogs();
+      if (e.key === 'Enter') {
+        logsCurrentPage = 1;
+        loadDetailedLogs();
+      }
     });
   }
 
