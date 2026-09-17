@@ -38,6 +38,14 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_ADDF7064233A4843AD97AC6BDD366422 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_B86E2BDB93B14E92B6BD707FD34B6FE2 }}
 
+      # Disable Oryx build — we already ship node_modules in the zip.
+      # Without this, Oryx compresses node_modules into tar.zst + broken symlink → 503
+      - name: Disable Azure Oryx Build
+        run: |
+          az webapp config appsettings set --name paripex-mailer-app \
+            --resource-group rg-mailer-autoamtion \
+            --settings SCM_DO_BUILD_DURING_DEPLOYMENT=false
+
       # Fast Zip Deploy and reload process
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
