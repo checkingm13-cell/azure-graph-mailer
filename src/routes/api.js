@@ -25,16 +25,31 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit to prevent memory exhaustion
 });
 
-// Helper function to extract rows from Excel or CSV using ExcelJS
+const csvParser = require('csv-parser');
+
+// Helper function to extract rows from Excel or CSV using fast streaming for CSV
 async function parseSpreadsheetRows(filePath, originalName = '') {
-  const workbook = new ExcelJS.Workbook();
   const ext = path.extname(originalName || filePath).toLowerCase();
 
   if (ext === '.csv') {
-    await workbook.csv.readFile(filePath);
-  } else {
-    await workbook.xlsx.readFile(filePath);
+    return new Promise((resolve, reject) => {
+      const rows = [];
+      fs.createReadStream(filePath)
+        .pipe(csvParser({
+          mapHeaders: ({ header }) => header.trim().replace(/^["']|["']$/g, '')
+        }))
+        .on('data', (data) => {
+          if (data && Object.keys(data).length > 0) {
+            rows.push(data);
+          }
+        })
+        .on('end', () => resolve(rows))
+        .on('error', (err) => reject(err));
+    });
   }
+
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(filePath);
 
   const worksheet = workbook.worksheets[0];
   if (!worksheet) {

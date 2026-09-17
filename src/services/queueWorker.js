@@ -70,6 +70,18 @@ class QueueWorker {
   }
 
   async loop() {
+    // Dynamic concurrency limit (default: 5 concurrent dispatch slots)
+    const getConcurrencyLimit = () => {
+      try {
+        const row = db.prepare("SELECT value FROM settings WHERE key = 'worker_concurrency'").get();
+        if (row && row.value) {
+          const parsed = parseInt(row.value, 10);
+          if (!isNaN(parsed) && parsed > 0) return Math.min(parsed, 20);
+        }
+      } catch (e) {}
+      return 5;
+    };
+
     while (this.isRunning) {
       if (this.isPaused) {
         await sleep(2000);
@@ -77,8 +89,36 @@ class QueueWorker {
       }
 
       try {
-        // 1. Fetch next queued item that is scheduled for now or in the past
-        const item = db.prepare(`
+        const concurrency = getConcurrencyLimit();
+        AccountPool.refreshRollingQuotas();
+
+        // 1. Fetch available accounts (not throttled, not cooled down, quota remaining)
+        const availableAccounts = db.prepare(`
+          SELECT * FROM accounts
+          WHERE is_active = 1
+            AND sent_today < daily_limit
+            AND (cooldown_until IS NULL OR strftime('%s', 'now') >= strftime('%s', cooldown_until))
+            AND (
+              cooldown_seconds = 0
+              OR last_sent_at IS NULL
+              OR (strftime('%s', 'now') - strftime('%s', last_sent_at)) >= cooldown_seconds
+            )
+          ORDER BY 
+            CASE WHEN last_sent_at IS NULL THEN 0 ELSE 1 END ASC,
+            last_sent_at ASC,
+            sent_today ASC,
+            id ASC
+          LIMIT ?
+        `).all(concurrency);
+
+        if (!availableAccounts || availableAccounts.length === 0) {
+          // All accounts are either throttled or reached daily limits
+          await sleep(3000);
+          continue;
+        }
+
+        // 2. Fetch eligible queue items up to available account count
+        const queueItems = db.prepare(`
           SELECT q.*, c.name AS campaign_name, c.status AS campaign_status,
                  c.mode AS campaign_mode,
                  COALESCE(c.pinned_account_id, c.sender_account_id) AS campaign_pinned_account_id,
@@ -90,257 +130,258 @@ class QueueWorker {
             AND (q.scheduled_at IS NULL OR q.scheduled_at <= datetime('now'))
             AND c.status IN ('SCHEDULED', 'QUEUED', 'RUNNING')
           ORDER BY q.scheduled_at ASC, q.id ASC
-          LIMIT 1
-        `).get();
+          LIMIT ?
+        `).all(availableAccounts.length);
 
-        if (!item) {
-          // No active work to do, sleep 3s
-          await sleep(3000);
+        if (!queueItems || queueItems.length === 0) {
+          // No items ready to send; check if any campaigns should be marked completed
+          await sleep(2000);
           continue;
         }
 
-        // 2. Mark campaign as RUNNING if it was QUEUED or SCHEDULED
-        if (item.campaign_status !== 'RUNNING') {
+        // 3. Mark campaign as RUNNING for any active batch
+        const campaignIds = [...new Set(queueItems.map(it => it.campaign_id))];
+        for (const campId of campaignIds) {
           db.prepare(`
             UPDATE campaigns
             SET status = 'RUNNING',
                 started_at = COALESCE(started_at, datetime('now'))
-            WHERE id = ?
-          `).run(item.campaign_id);
+            WHERE id = ? AND status IN ('SCHEDULED', 'QUEUED')
+          `).run(campId);
         }
 
-        // 3. Request an available account respecting policy (Controlled vs Smart)
-        let account = null;
-        if (item.campaign_mode === 'CONTROLLED' && item.campaign_pinned_account_id) {
-          account = AccountPool.getAvailableAccount(item.campaign_pinned_account_id);
-          // If pinned account unavailable and fallback is permitted, lease from healthy pool
-          if (!account && item.campaign_fallback_allowed === 1) {
-            account = AccountPool.getAvailableAccount(null);
-          }
-        } else {
-          // Smart Send mode or unpinned
-          account = AccountPool.getAvailableAccount(item.campaign_pinned_account_id || null);
-        }
+        // 4. Parallel Dispatch across leased accounts
+        const assignedAccountIds = new Set();
 
-        if (!account) {
-          // All accounts are either in cooldown or hit daily limits
-          // Sleep 5s and wait for cooldown window
-          await sleep(5000);
-          continue;
-        }
+        const dispatchPromises = queueItems.map(async (item, idx) => {
+          // Match account respecting campaign policy
+          let account = null;
 
-        // 4. Mark as sending atomically and advance account dispatch timestamp immediately
-        db.prepare(`
-          UPDATE queue 
-          SET status = 'sending',
-              account_id = ?,
-              attempts = attempts + 1
-          WHERE id = ?
-        `).run(account.id, item.id);
-
-        // Advance last_sent_at immediately so the very next email in queue leases a different account
-        db.prepare(`
-          UPDATE accounts
-          SET last_sent_at = datetime('now')
-          WHERE id = ?
-        `).run(account.id);
-
-        this.currentTask = {
-          queueId: item.id,
-          campaignId: item.campaign_id,
-          campaignName: item.campaign_name,
-          to: item.email,
-          account: account.email,
-          startedAt: Date.now()
-        };
-
-        // 5. Dispatch through appropriate provider
-        try {
-          console.log(`[QueueWorker] ✉️ Sending to "${item.email}" via [${account.provider}] ${account.email}...`);
-
-          const dynamicSubject = renderTemplate(item.subject, {
-            sender_email: account.email,
-            email: item.email,
-            name: item.name
-          });
-          const dynamicHtml = renderTemplate(item.rendered_html, {
-            sender_email: account.email,
-            email: item.email,
-            name: item.name
-          });
-
-          if (account.provider === 'AZURE_ACS') {
-            await sendViaACS({
-              fromEmail: account.email,
-              toEmail: item.email,
-              subject: dynamicSubject,
-              htmlBody: dynamicHtml
-            });
-          } else if (account.provider === 'OCI') {
-            await sendViaOCI({
-              fromEmail: account.email,
-              toEmail: item.email,
-              subject: dynamicSubject,
-              htmlBody: dynamicHtml
-            });
+          if (item.campaign_mode === 'CONTROLLED' && item.campaign_pinned_account_id) {
+            account = availableAccounts.find(a => a.id === item.campaign_pinned_account_id && !assignedAccountIds.has(a.id));
+            if (!account && item.campaign_fallback_allowed === 1) {
+              account = availableAccounts.find(a => !assignedAccountIds.has(a.id));
+            }
           } else {
-            // Default to Graph API
-            await sendViaGraph({
-              fromEmail: account.email,
-              toEmail: item.email,
-              subject: dynamicSubject,
-              htmlBody: dynamicHtml
+            account = availableAccounts.find(a => !assignedAccountIds.has(a.id)) || availableAccounts[idx % availableAccounts.length];
+          }
+
+          if (!account) return;
+          assignedAccountIds.add(account.id);
+
+          // Atomically lock record into 'sending'
+          db.prepare(`
+            UPDATE queue 
+            SET status = 'sending',
+                account_id = ?,
+                attempts = attempts + 1
+            WHERE id = ?
+          `).run(account.id, item.id);
+
+          // Advance last_sent_at immediately so round-robin cycles cleanly
+          db.prepare(`
+            UPDATE accounts
+            SET last_sent_at = datetime('now')
+            WHERE id = ?
+          `).run(account.id);
+
+          this.currentTask = {
+            queueId: item.id,
+            campaignId: item.campaign_id,
+            campaignName: item.campaign_name,
+            to: item.email,
+            account: account.email,
+            startedAt: Date.now()
+          };
+
+          try {
+            console.log(`[QueueWorker] ✉️ [Parallel] Sending to "${item.email}" via [${account.provider}] ${account.email}...`);
+
+            const dynamicSubject = renderTemplate(item.subject, {
+              sender_email: account.email,
+              email: item.email,
+              name: item.name
             });
-          }
+            const dynamicHtml = renderTemplate(item.rendered_html, {
+              sender_email: account.email,
+              email: item.email,
+              name: item.name
+            });
 
-          // 6. Record Success & Acceptance
-          db.prepare(`
-            UPDATE queue
-            SET status = 'sent',
-                sent_at = datetime('now'),
-                accepted_at = datetime('now'),
-                provider_message_id = COALESCE(provider_message_id, 'msg_' || hex(randomblob(8))),
-                last_error = ''
-            WHERE id = ?
-          `).run(item.id);
+            if (account.provider === 'AZURE_ACS') {
+              await sendViaACS({
+                fromEmail: account.email,
+                toEmail: item.email,
+                subject: dynamicSubject,
+                htmlBody: dynamicHtml
+              });
+            } else if (account.provider === 'OCI') {
+              await sendViaOCI({
+                fromEmail: account.email,
+                toEmail: item.email,
+                subject: dynamicSubject,
+                htmlBody: dynamicHtml
+              });
+            } else {
+              await sendViaGraph({
+                fromEmail: account.email,
+                toEmail: item.email,
+                subject: dynamicSubject,
+                htmlBody: dynamicHtml
+              });
+            }
 
-          AccountPool.recordSendSuccess(account.id);
-
-          // Update campaign counts
-          db.prepare(`
-            UPDATE campaigns
-            SET sent_count = sent_count + 1
-            WHERE id = ?
-          `).run(item.campaign_id);
-
-          // Check if campaign is now completed
-          const remainingInCamp = db.prepare(`
-            SELECT COUNT(*) AS count 
-            FROM queue 
-            WHERE campaign_id = ? AND status IN ('queued', 'sending')
-          `).get(item.campaign_id).count;
-
-          if (remainingInCamp === 0) {
-            db.prepare(`
-              UPDATE campaigns
-              SET status = 'COMPLETED',
-                  completed_at = datetime('now')
-              WHERE id = ?
-            `).run(item.campaign_id);
-            console.log(`[QueueWorker] 🏁 Campaign "${item.campaign_name}" (ID: ${item.campaign_id}) has COMPLETED!`);
-          }
-
-          // Log event
-          db.prepare(`
-            INSERT INTO logs (campaign_id, account_id, level, message)
-            VALUES (?, ?, 'INFO', ?)
-          `).run(item.campaign_id, account.id, `Successfully sent to "${item.email}" via ${account.email}`);
-
-          console.log(`[QueueWorker] ✅ Delivered to "${item.email}" (Account: ${account.email}, Sent today: ${account.sent_today + 1}/${account.daily_limit})`);
-
-        } catch (dispatchErr) {
-          console.error(`[QueueWorker] ❌ Failed to dispatch to "${item.email}":`, dispatchErr.message);
-
-          const isOciThrottled = dispatchErr.message && (
-            dispatchErr.message.includes('455') || 
-            dispatchErr.message.toLowerCase().includes('per minute reached')
-          );
-
-          if (isOciThrottled) {
-            console.warn(`[QueueWorker] ⚠️ OCI 455 Rate Limit reached (10/min) on ${account.email}. Applying 60s cooldown and requeuing "${item.email}"...`);
-            AccountPool.putOnCooldown(account.id, 60);
-
+            // Record Success
             db.prepare(`
               UPDATE queue
-              SET status = 'queued',
-                  account_id = NULL,
-                  last_error = 'OCI 455 rate limit (10/min) - waiting 60s to resume'
+              SET status = 'sent',
+                  sent_at = datetime('now'),
+                  accepted_at = datetime('now'),
+                  provider_message_id = COALESCE(provider_message_id, 'msg_' || hex(randomblob(8))),
+                  last_error = ''
               WHERE id = ?
             `).run(item.id);
 
-            db.prepare(`
-              INSERT INTO logs (campaign_id, account_id, level, message)
-              VALUES (?, ?, 'WARN', ?)
-            `).run(item.campaign_id, account.id, `OCI 455 Throttle: Pausing ${account.email} for 60s. Message safely requeued.`);
+            AccountPool.recordSendSuccess(account.id);
 
-          } else if (dispatchErr.isThrottled || dispatchErr.statusCode === 429) {
-            // Microsoft Graph Rate Limit reached (30 msg/min cap)
-            const waitSeconds = dispatchErr.retryAfter || 120;
-            console.warn(`[QueueWorker] ⚠️ Account ${account.email} throttled by Microsoft Graph. Applying ${waitSeconds}s cooldown and rotating accounts.`);
-            AccountPool.putOnCooldown(account.id, waitSeconds);
-
-            // Requeue item immediately so another account in the pool can take it
             db.prepare(`
-              UPDATE queue
-              SET status = 'queued',
-                  account_id = NULL,
-                  last_error = ?
+              UPDATE campaigns
+              SET sent_count = sent_count + 1
               WHERE id = ?
-            `).run(dispatchErr.message, item.id);
+            `).run(item.campaign_id);
 
-            db.prepare(`
-              INSERT INTO logs (campaign_id, account_id, level, message)
-              VALUES (?, ?, 'WARN', ?)
-            `).run(item.campaign_id, account.id, `Account throttled (429). Cooldown ${waitSeconds}s applied. Requeued email.`);
+            // Check if campaign is now completed
+            const remaining = db.prepare(`
+              SELECT COUNT(*) AS count 
+              FROM queue 
+              WHERE campaign_id = ? AND status IN ('queued', 'sending')
+            `).get(item.campaign_id).count;
 
-          } else {
-            const maxAttempts = 3;
-            const isPermanent = item.attempts + 1 >= maxAttempts || dispatchErr.statusCode === 404;
-            
-            // Exponential backoff delay for transient network/server hiccups (15s, 60s, 300s)
-            const backoffSec = [15, 60, 300][Math.min(item.attempts || 0, 2)] || 60;
-            const nextScheduledAt = isPermanent ? null : new Date(Date.now() + backoffSec * 1000).toISOString().replace('T', ' ').slice(0, 19);
-
-            db.prepare(`
-              UPDATE queue
-              SET status = ?,
-                  scheduled_at = COALESCE(?, scheduled_at),
-                  account_id = NULL,
-                  last_error = ?
-              WHERE id = ?
-            `).run(isPermanent ? 'failed' : 'queued', nextScheduledAt, dispatchErr.message, item.id);
-
-            if (isPermanent) {
+            if (remaining === 0) {
               db.prepare(`
                 UPDATE campaigns
-                SET failed_count = failed_count + 1
+                SET status = 'COMPLETED',
+                    completed_at = datetime('now')
                 WHERE id = ?
               `).run(item.campaign_id);
-
-              // Check if campaign is now completed
-              const remainingInCamp = db.prepare(`
-                SELECT COUNT(*) AS count 
-                FROM queue 
-                WHERE campaign_id = ? AND status IN ('queued', 'sending')
-              `).get(item.campaign_id).count;
-
-              if (remainingInCamp === 0) {
-                db.prepare(`
-                  UPDATE campaigns
-                  SET status = 'COMPLETED',
-                      completed_at = datetime('now')
-                  WHERE id = ?
-                `).run(item.campaign_id);
-                console.log(`[QueueWorker] 🏁 Campaign "${item.campaign_name}" (ID: ${item.campaign_id}) has COMPLETED!`);
-              }
+              console.log(`[QueueWorker] 🏁 Campaign "${item.campaign_name}" (ID: ${item.campaign_id}) has COMPLETED!`);
             }
 
             db.prepare(`
               INSERT INTO logs (campaign_id, account_id, level, message)
-              VALUES (?, ?, 'ERROR', ?)
-            `).run(item.campaign_id, account.id, `Failed sending to "${item.email}": ${dispatchErr.message}`);
+              VALUES (?, ?, 'INFO', ?)
+            `).run(item.campaign_id, account.id, `Successfully sent to "${item.email}" via ${account.email}`);
+
+            console.log(`[QueueWorker] ✅ Delivered to "${item.email}" (Account: ${account.email}, Sent today: ${account.sent_today + 1}/${account.daily_limit})`);
+
+          } catch (dispatchErr) {
+            console.error(`[QueueWorker] ❌ Failed to dispatch to "${item.email}":`, dispatchErr.message);
+
+            const isOciThrottled = dispatchErr.message && (
+              dispatchErr.message.includes('455') || 
+              dispatchErr.message.toLowerCase().includes('per minute reached')
+            );
+
+            if (isOciThrottled) {
+              console.warn(`[QueueWorker] ⚠️ OCI 455 Rate Limit on ${account.email}. Applying 60s cooldown and requeuing "${item.email}" for immediate pool rotation...`);
+              AccountPool.putOnCooldown(account.id, 60);
+
+              // Requeue immediately with NO backoff so another healthy account picks it up right away
+              db.prepare(`
+                UPDATE queue
+                SET status = 'queued',
+                    account_id = NULL,
+                    last_error = 'OCI 455 rate limit - requeued for rotation'
+                WHERE id = ?
+              `).run(item.id);
+
+              db.prepare(`
+                INSERT INTO logs (campaign_id, account_id, level, message)
+                VALUES (?, ?, 'WARN', ?)
+              `).run(item.campaign_id, account.id, `OCI 455 Throttle: Account cooled down 60s. Item rotated.`);
+
+            } else if (dispatchErr.isThrottled || dispatchErr.statusCode === 429) {
+              const waitSeconds = dispatchErr.retryAfter || 120;
+              console.warn(`[QueueWorker] ⚠️ Account ${account.email} throttled (429). Applying ${waitSeconds}s cooldown and rotating accounts.`);
+              AccountPool.putOnCooldown(account.id, waitSeconds);
+
+              // Requeue immediately without delay so sibling account takes it
+              db.prepare(`
+                UPDATE queue
+                SET status = 'queued',
+                    account_id = NULL,
+                    last_error = ?
+                WHERE id = ?
+              `).run(dispatchErr.message, item.id);
+
+              db.prepare(`
+                INSERT INTO logs (campaign_id, account_id, level, message)
+                VALUES (?, ?, 'WARN', ?)
+              `).run(item.campaign_id, account.id, `Account throttled (429). Cooldown ${waitSeconds}s applied. Item rotated.`);
+
+            } else {
+              const maxAttempts = 3;
+              const isPermanent = item.attempts + 1 >= maxAttempts || dispatchErr.statusCode === 404;
+
+              // Tail-End 49/50 Fix: If other accounts exist, don't stall for 300s. Use minimal backoff (3s, 10s)
+              const backoffSec = [3, 10, 30][Math.min(item.attempts || 0, 2)];
+              const nextScheduledAt = isPermanent ? null : new Date(Date.now() + backoffSec * 1000).toISOString().replace('T', ' ').slice(0, 19);
+
+              db.prepare(`
+                UPDATE queue
+                SET status = ?,
+                    scheduled_at = COALESCE(?, scheduled_at),
+                    account_id = NULL,
+                    last_error = ?
+                WHERE id = ?
+              `).run(isPermanent ? 'failed' : 'queued', nextScheduledAt, dispatchErr.message, item.id);
+
+              if (isPermanent) {
+                db.prepare(`
+                  UPDATE campaigns
+                  SET failed_count = failed_count + 1
+                  WHERE id = ?
+                `).run(item.campaign_id);
+
+                // Check if campaign is now completed
+                const remaining = db.prepare(`
+                  SELECT COUNT(*) AS count 
+                  FROM queue 
+                  WHERE campaign_id = ? AND status IN ('queued', 'sending')
+                `).get(item.campaign_id).count;
+
+                if (remaining === 0) {
+                  db.prepare(`
+                    UPDATE campaigns
+                    SET status = 'COMPLETED',
+                        completed_at = datetime('now')
+                    WHERE id = ?
+                  `).run(item.campaign_id);
+                  console.log(`[QueueWorker] 🏁 Campaign "${item.campaign_name}" (ID: ${item.campaign_id}) has COMPLETED!`);
+                }
+              }
+
+              db.prepare(`
+                INSERT INTO logs (campaign_id, account_id, level, message)
+                VALUES (?, ?, 'ERROR', ?)
+              `).run(item.campaign_id, account.id, `Failed sending to "${item.email}": ${dispatchErr.message}`);
+            }
           }
-        }
+        });
+
+        // 5. Wait for all parallel dispatch tasks in this slot
+        await Promise.allSettled(dispatchPromises);
 
         this.currentTask = null;
         this.lastDispatchedAt = Date.now();
 
-        // 6. Global Pacing sleep
-        await sleep(getSendIntervalMs());
+        // 6. Balanced batch pacing delay (default ~1000-2000ms between parallel batches)
+        const pacingMs = Math.max(500, Math.min(getSendIntervalMs(), 2000));
+        await sleep(pacingMs);
 
       } catch (loopErr) {
         console.error('[QueueWorker] Unexpected error in worker tick:', loopErr);
-        await sleep(4000);
+        await sleep(3000);
       }
     }
   }
