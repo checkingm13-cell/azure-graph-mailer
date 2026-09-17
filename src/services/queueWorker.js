@@ -166,14 +166,27 @@ class QueueWorker {
 
           if (item.campaign_mode === 'CONTROLLED' && item.campaign_pinned_account_id) {
             account = availableAccounts.find(a => a.id === item.campaign_pinned_account_id && !assignedAccountIds.has(a.id));
-            if (!account && item.campaign_fallback_allowed === 1) {
+            // Auto-Fallback: If pinned account is exhausted (e.g. 500/500 daily limit) or cooled down, fall back to healthy pool accounts so the queue never stalls
+            if (!account) {
               account = availableAccounts.find(a => !assignedAccountIds.has(a.id));
+              if (account) {
+                console.log(`[QueueWorker] 🔄 Pinned sender (${item.campaign_pinned_account_id}) busy/quota reached. Auto-falling back to pool account: ${account.email}`);
+              }
             }
           } else {
             account = availableAccounts.find(a => !assignedAccountIds.has(a.id)) || availableAccounts[idx % availableAccounts.length];
           }
 
-          if (!account) return;
+          if (!account) {
+            // Anti-Deadlock Guard: Postpone this item by 60s so it doesn't starve the head of the queue on every tick
+            db.prepare(`
+              UPDATE queue
+              SET scheduled_at = datetime('now', '+60 seconds'),
+                  last_error = 'All eligible senders busy or reached daily limits. Postponed 60s.'
+              WHERE id = ?
+            `).run(item.id);
+            return;
+          }
           assignedAccountIds.add(account.id);
 
           // Atomically lock record into 'sending'

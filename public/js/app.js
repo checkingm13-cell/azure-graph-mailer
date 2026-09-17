@@ -1744,6 +1744,19 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
+    // Include any active child batches whose parent is in a different status under the active filter
+    for (const ch of standalone) {
+      aggregatedGroups.push({
+        isMaster: false,
+        parent: ch,
+        children: [],
+        totalCount: ch.total_count || 0,
+        sentCount: ch.sent_count || 0,
+        failedCount: ch.failed_count || 0,
+        status: ch.status
+      });
+    }
+
     return aggregatedGroups;
   }
 
