@@ -11,7 +11,7 @@ const { sendViaACS } = require('./acsMailer');
 const { sendViaOCI } = require('./ociMailer');
 const { renderTemplate } = require('./templateEngine');
 const batchChainManager = require('./batchChainManager');
-const { toISTString, IST_SQL_NOW } = require('../utils/time');
+const { toISTString, IST_SQL_NOW, formatISTClock, formatDuration, parseIST } = require('../utils/time');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -619,7 +619,13 @@ class QueueWorker {
       const progressPct = activeCamp.total_count > 0 
         ? Math.min(100, Math.round((processed / activeCamp.total_count) * 100)) 
         : 0;
-      const etaSeconds = Math.round(remaining * (getSendIntervalMs() / 1000));
+      const sendIntervalSec = getSendIntervalMs() / 1000;
+      const etaSeconds = Math.round(remaining * sendIntervalSec);
+
+      const targetCompletionDate = new Date(Date.now() + (etaSeconds * 1000));
+      const estimatedCompletionIST = remaining > 0 ? formatISTClock(targetCompletionDate) : 'Now';
+      const completionDurationText = formatDuration(etaSeconds);
+      const dispatchedAt = activeCamp.started_at || (this.lastDispatchedAt ? toISTString(this.lastDispatchedAt) : null);
 
       activeCampaign = {
         id: activeCamp.id,
@@ -632,6 +638,9 @@ class QueueWorker {
         remaining,
         progressPct,
         etaSeconds,
+        dispatchedAt,
+        estimatedCompletionIST,
+        completionDurationText,
         scheduledAt: activeCamp.scheduled_at,
         startedAt: activeCamp.started_at,
         activeSender: this.currentTask ? this.currentTask.account : null,
@@ -648,14 +657,22 @@ class QueueWorker {
       WHERE c.status IN ('SCHEDULED', 'QUEUED') AND c.id != ?
       ORDER BY c.scheduled_at ASC, c.id ASC
       LIMIT 10
-    `).all(activeId).map(c => ({
-      id: c.id,
-      name: c.name,
-      templateName: c.template_name || 'Standard Template',
-      status: c.status,
-      totalCount: c.total_count,
-      scheduledAt: c.scheduled_at
-    }));
+    `).all(activeId).map(c => {
+      let scheduledAtFormatted = '--';
+      if (c.scheduled_at) {
+        const parsed = parseIST(c.scheduled_at);
+        scheduledAtFormatted = parsed ? formatISTClock(parsed) : c.scheduled_at;
+      }
+      return {
+        id: c.id,
+        name: c.name,
+        templateName: c.template_name || 'Standard Template',
+        status: c.status,
+        totalCount: c.total_count,
+        scheduledAt: c.scheduled_at,
+        scheduledAtFormatted
+      };
+    });
 
     return {
       isRunning: this.isRunning,

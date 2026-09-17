@@ -166,7 +166,7 @@ process.on('SIGTERM', () => {
   console.log('SIGTERM received. Shutting down gracefully...');
   queueWorker.isRunning = false;
   server.close(() => {
-    db.close();
+    if (db._syncAndClose) db._syncAndClose(); else db.close();
     process.exit(0);
   });
 });
@@ -175,7 +175,7 @@ process.on('SIGINT', () => {
   console.log('SIGINT received. Shutting down gracefully...');
   queueWorker.isRunning = false;
   server.close(() => {
-    db.close();
+    if (db._syncAndClose) db._syncAndClose(); else db.close();
     process.exit(0);
   });
 });

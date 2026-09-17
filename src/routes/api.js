@@ -13,7 +13,7 @@ const db = require('../db');
 const AccountPool = require('../services/accountPool');
 const queueWorker = require('../services/queueWorker');
 const { renderTemplate } = require('../services/templateEngine');
-const { toISTString, parseIST, IST_SQL_NOW, nowIST } = require('../utils/time');
+const { toISTString, parseIST, IST_SQL_NOW, nowIST, formatISTClock, formatDuration } = require('../utils/time');
 
 function formatSqliteDateTime(d) {
   if (!d) return nowIST();
@@ -668,7 +668,59 @@ router.get('/campaigns', (req, res) => {
     LEFT JOIN accounts a ON c.sender_account_id = a.id
     ORDER BY c.id DESC
   `).all();
-  res.json({ ok: true, campaigns });
+
+  // Get active pacing interval
+  let pacingMs = config.globalSendIntervalMs || 2500;
+  try {
+    const row = db.prepare("SELECT value FROM settings WHERE key = 'send_interval_ms'").get();
+    if (row && row.value) {
+      const parsed = parseInt(row.value, 10);
+      if (!isNaN(parsed) && parsed > 0) pacingMs = parsed;
+    }
+  } catch (e) {}
+  const sendIntervalSec = pacingMs / 1000;
+
+  const enriched = campaigns.map((c) => {
+    const processed = (c.sent_count || 0) + (c.failed_count || 0);
+    const remaining = Math.max(0, (c.total_count || 0) - processed);
+    const progressPct = c.total_count > 0 ? Math.min(100, Math.round((processed / c.total_count) * 100)) : 0;
+    const dispatchedAt = c.started_at || null;
+
+    let etaSeconds = 0;
+    let estimatedCompletionIST = null;
+    let completionDurationText = null;
+
+    if (c.status === 'RUNNING' || c.status === 'SCHEDULED' || c.status === 'QUEUED') {
+      etaSeconds = Math.round(remaining * sendIntervalSec);
+      if (c.status === 'RUNNING') {
+        const targetDate = new Date(Date.now() + (etaSeconds * 1000));
+        estimatedCompletionIST = remaining > 0 ? formatISTClock(targetDate) : 'Now';
+        completionDurationText = formatDuration(etaSeconds);
+      } else if (c.scheduled_at) {
+        const parsedStart = parseIST(c.scheduled_at);
+        const startMs = parsedStart && !isNaN(parsedStart.getTime()) ? parsedStart.getTime() : Date.now();
+        const targetDate = new Date(startMs + (etaSeconds * 1000));
+        estimatedCompletionIST = formatISTClock(targetDate);
+        completionDurationText = formatDuration(etaSeconds);
+      } else {
+        const targetDate = new Date(Date.now() + (etaSeconds * 1000));
+        estimatedCompletionIST = formatISTClock(targetDate);
+        completionDurationText = formatDuration(etaSeconds);
+      }
+    }
+
+    return {
+      ...c,
+      remaining,
+      progressPct,
+      dispatchedAt,
+      etaSeconds,
+      estimatedCompletionIST,
+      completionDurationText
+    };
+  });
+
+  res.json({ ok: true, campaigns: enriched });
 });
 
 router.get('/campaigns/:id/preview', (req, res) => {

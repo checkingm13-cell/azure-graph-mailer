@@ -51,6 +51,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const monitorProgressBar = document.getElementById('monitorProgressBar');
   const monitorProgressText = document.getElementById('monitorProgressText');
   const monitorSenderEmail = document.getElementById('monitorSenderEmail');
+  const monitorDispatchedAt = document.getElementById('monitorDispatchedAt');
+  const monitorCompletionTarget = document.getElementById('monitorCompletionTarget');
   const monitorEtaText = document.getElementById('monitorEtaText');
   const monitorCurrentRecipient = document.getElementById('monitorCurrentRecipient');
   const monitorUpcomingContainer = document.getElementById('monitorUpcomingContainer');
@@ -371,6 +373,22 @@ document.addEventListener('DOMContentLoaded', () => {
           monitorProgressText.textContent = `${activeCamp.sentCount} / ${activeCamp.totalCount} (${activeCamp.progressPct}%)`;
           monitorSenderEmail.textContent = activeCamp.activeSender || 'dr.reetashah@theparipexjournal.com';
           monitorCurrentRecipient.textContent = activeCamp.currentRecipient || '--';
+          if (monitorDispatchedAt) {
+            const dispTime = activeCamp.dispatchedAt ? formatDateTime(activeCamp.dispatchedAt) : (activeCamp.startedAt ? formatDateTime(activeCamp.startedAt) : '--');
+            monitorDispatchedAt.textContent = dispTime;
+          }
+          if (monitorCompletionTarget) {
+            if (activeCamp.status === 'RUNNING') {
+              const estTime = activeCamp.estimatedCompletionIST || '--';
+              const durText = activeCamp.completionDurationText || (activeCamp.etaSeconds > 0 ? `~${Math.ceil(activeCamp.etaSeconds / 60)} min` : '--');
+              monitorCompletionTarget.textContent = `${estTime} (${durText})`;
+            } else if (activeCamp.status === 'PAUSED') {
+              monitorCompletionTarget.textContent = 'Paused';
+            } else {
+              monitorCompletionTarget.textContent = '--';
+            }
+          }
+
           if (activeCamp.status === 'RUNNING') {
             monitorStatusBadge.className = 'badge badge-sending';
             monitorStatusBadge.textContent = '⚡ NOW RUNNING';
@@ -430,6 +448,8 @@ document.addEventListener('DOMContentLoaded', () => {
           monitorProgressText.textContent = `0 / ${nextCamp.totalCount} (Waiting)`;
           monitorSenderEmail.textContent = 'dr.reetashah@theparipexjournal.com';
           monitorCurrentRecipient.textContent = 'Waiting for scheduled launch';
+          if (monitorDispatchedAt) monitorDispatchedAt.textContent = '--';
+          if (monitorCompletionTarget) monitorCompletionTarget.textContent = nextCamp.scheduledAtFormatted ? `Starts ${nextCamp.scheduledAtFormatted}` : '--';
           monitorStatusBadge.className = 'badge badge-scheduled';
           monitorStatusBadge.textContent = '📅 SCHEDULED';
           monitorEtaText.textContent = `Starts ${formatTimeUntil(nextCamp.scheduledAt)}`;
@@ -444,6 +464,8 @@ document.addEventListener('DOMContentLoaded', () => {
           monitorProgressText.textContent = '0 / 0 (Idle)';
           monitorSenderEmail.textContent = 'dr.reetashah@theparipexjournal.com';
           monitorCurrentRecipient.textContent = '--';
+          if (monitorDispatchedAt) monitorDispatchedAt.textContent = '--';
+          if (monitorCompletionTarget) monitorCompletionTarget.textContent = '--';
           monitorStatusBadge.className = 'badge badge-queued';
           monitorStatusBadge.textContent = 'IDLE';
           monitorEtaText.textContent = '--';
@@ -1895,6 +1917,13 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (ch.status === 'PAUSED') chStatusBadge = 'badge-paused';
             else if (ch.status === 'CANCELLED') chStatusBadge = 'badge-cancelled';
 
+            let chEstCompletionBadge = '';
+            if (ch.status === 'RUNNING' && ch.estimatedCompletionIST) {
+              chEstCompletionBadge = `<span class="badge badge-sending" style="font-size: 9.5px; font-weight: 600; padding: 1px 5px; margin-left: 6px;" title="Estimated Successful Completion">🏁 Est: ${ch.estimatedCompletionIST} (${ch.completionDurationText || formatTimeUntil(ch.estimatedCompletionIST)})</span>`;
+            } else if ((ch.status === 'SCHEDULED' || ch.status === 'QUEUED') && ch.estimatedCompletionIST) {
+              chEstCompletionBadge = `<span class="badge badge-scheduled" style="font-size: 9.5px; font-weight: 600; padding: 1px 5px; margin-left: 6px;" title="Target Completion Time">🏁 Est: ${ch.estimatedCompletionIST}</span>`;
+            }
+
             return `
               <div class="child-batch-row">
                 <div>
@@ -1906,7 +1935,10 @@ document.addEventListener('DOMContentLoaded', () => {
                   <div class="gauge-bar-bg" style="width: 50px; height: 5px; margin: 0;"><div class="gauge-bar-fill" style="width: ${chPct}%;"></div></div>
                   <span style="font-size: 11px;">${ch.sent_count}/${ch.total_count}</span>
                 </div>
-                <div class="mono" style="font-size: 11px; color: var(--text-muted);">${formatDateTime(ch.started_at || ch.scheduled_at)}</div>
+                <div class="mono" style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; flex-wrap: wrap;">
+                  <span>${formatDateTime(ch.started_at || ch.scheduled_at)}</span>
+                  ${chEstCompletionBadge}
+                </div>
                 <div>
                   <button type="button" class="btn btn-secondary btn-xs btn-inspect-batch" data-id="${ch.id}">🔍 Inspect</button>
                 </div>
@@ -2059,7 +2091,14 @@ document.addEventListener('DOMContentLoaded', () => {
             actionsHtml = `<button type="button" class="btn btn-secondary btn-xs btn-inspect-batch" data-id="${c.id}">🔍 Inspect</button>`;
           }
 
-          const timeDisplay = c.started_at ? `Started: ${formatDateTime(c.started_at)}` : (c.scheduled_at ? `Scheduled: ${formatDateTime(c.scheduled_at)}` : '--');
+          let timeDisplay = c.started_at ? `Started: ${formatDateTime(c.started_at)}` : (c.scheduled_at ? `Scheduled: ${formatDateTime(c.scheduled_at)}` : '--');
+          let estCompletionBadge = '';
+          if (c.status === 'RUNNING' && c.estimatedCompletionIST) {
+            estCompletionBadge = `<div style="margin-top: 3px;"><span class="badge badge-sending" style="font-size: 10px; font-weight: 600; padding: 2px 6px;" title="Estimated Successful Completion">🏁 Est. Finish: ${c.estimatedCompletionIST} (${c.completionDurationText || formatTimeUntil(c.estimatedCompletionIST)})</span></div>`;
+          } else if ((c.status === 'SCHEDULED' || c.status === 'QUEUED') && c.estimatedCompletionIST) {
+            estCompletionBadge = `<div style="margin-top: 3px;"><span class="badge badge-scheduled" style="font-size: 10px; font-weight: 600; padding: 2px 6px;" title="Target Completion Time">🏁 Est. Finish: ${c.estimatedCompletionIST}</span></div>`;
+          }
+
           const progressPct = c.total_count > 0 ? Math.round(((c.sent_count + c.failed_count) / c.total_count) * 100) : 0;
 
           return `
@@ -2068,7 +2107,10 @@ document.addEventListener('DOMContentLoaded', () => {
               <td><strong title="${escapeHtml(c.name)}" class="btn-inspect-batch" data-id="${c.id}" style="cursor: pointer; color: var(--sky);">${escapeHtml(c.name)}</strong></td>
               <td>${escapeHtml(c.template_name || '--')}</td>
               <td><span class="account-badge">${c.sender_email || 'Smart Pool'}</span></td>
-              <td><span style="font-size: 11px; color: var(--text-secondary);">${timeDisplay}</span></td>
+              <td>
+                <span style="font-size: 11px; color: var(--text-secondary);">${timeDisplay}</span>
+                ${estCompletionBadge}
+              </td>
               <td><span class="badge ${statusBadgeClass}">${c.status}</span></td>
               <td>
                 <div style="display: flex; align-items: center; gap: 8px;">

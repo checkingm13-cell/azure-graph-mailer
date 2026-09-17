@@ -4,14 +4,32 @@ const fs = require('fs');
 const config = require('../config/env');
 const { initSchema } = require('./schema');
 
-// Ensure parent directory for database exists
-const dbDir = path.dirname(config.dbPath);
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
+// On Azure App Service Linux, /home is a FUSE network mount (tuxfusedrive).
+// SQLite WAL mode requires POSIX shared-memory locks that FUSE doesn't support,
+// causing SQLITE_IOERR_SHMMAP → "database disk image is malformed".
+// Fix: work on /tmp (local ext4), sync back to /home for persistence.
+const isAzure = process.platform === 'linux' && config.dbPath.startsWith('/home');
+const persistPath = config.dbPath;
+const workPath = isAzure ? '/tmp/mailer.db' : config.dbPath;
+
+// Ensure parent dirs exist
+for (const p of [persistPath, workPath]) {
+  const dir = path.dirname(p);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
-console.log(`[DB] Initializing Node.js native SQLite database at: ${config.dbPath}`);
-const db = new DatabaseSync(config.dbPath);
+// Boot: copy persistent → working copy (if available and working copy missing/stale)
+if (isAzure && fs.existsSync(persistPath) && !fs.existsSync(workPath)) {
+  console.log(`[DB] Azure detected — copying ${persistPath} → ${workPath}`);
+  fs.copyFileSync(persistPath, workPath);
+  // Copy WAL/SHM artifacts if they exist (unlikely but safe)
+  for (const ext of ['-wal', '-shm']) {
+    if (fs.existsSync(persistPath + ext)) fs.copyFileSync(persistPath + ext, workPath + ext);
+  }
+}
+
+console.log(`[DB] Initializing Node.js native SQLite database at: ${workPath}`);
+const db = new DatabaseSync(workPath);
 
 // Enable WAL mode for high concurrency and crash resilience
 db.exec('PRAGMA journal_mode = WAL;');
@@ -38,5 +56,32 @@ db.transaction = function (fn) {
 initSchema(db);
 
 console.log('[DB] Database schema and indexes verified successfully.');
+
+// Periodic sync: checkpoint WAL then copy working → persistent
+// ponytail: 60s interval is good enough; on container restart data loss is ≤60s of queue state
+function syncToPersist() {
+  if (!isAzure) return;
+  try {
+    db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+    fs.copyFileSync(workPath, persistPath);
+    console.log(`[DB] Synced ${workPath} → ${persistPath}`);
+  } catch (err) {
+    console.error('[DB] Sync to persistent storage failed:', err.message);
+  }
+}
+
+let syncTimer = null;
+if (isAzure) {
+  syncTimer = setInterval(syncToPersist, 60_000);
+  syncTimer.unref(); // don't block process exit
+  console.log('[DB] Azure persistence sync enabled (every 60s)');
+}
+
+// Expose sync for graceful shutdown
+db._syncAndClose = function () {
+  if (syncTimer) clearInterval(syncTimer);
+  syncToPersist();
+  db.close();
+};
 
 module.exports = db;

@@ -67,10 +67,39 @@ function nowIST() {
   return toISTString(new Date());
 }
 
+/**
+ * Formats a Date or timestamp as e.g. "07:15 PM IST"
+ */
+function formatISTClock(d = new Date()) {
+  const dateObj = typeof d === 'number' || typeof d === 'string' ? new Date(d) : d;
+  if (!dateObj || isNaN(dateObj.getTime())) return '--';
+  return dateObj.toLocaleTimeString('en-US', {
+    timeZone: 'Asia/Kolkata',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  }) + ' IST';
+}
+
+/**
+ * Formats duration in seconds to human readable string (e.g. "14 mins 30 secs" or "45 secs")
+ */
+function formatDuration(seconds) {
+  const sec = Math.max(0, Math.round(Number(seconds) || 0));
+  if (sec === 0) return '0 secs';
+  const mins = Math.floor(sec / 60);
+  const remSec = sec % 60;
+  if (mins === 0) return `${remSec} secs`;
+  if (remSec === 0) return `${mins} min${mins > 1 ? 's' : ''}`;
+  return `${mins} min${mins > 1 ? 's' : ''} ${remSec} secs`;
+}
+
 module.exports = {
   IST_SQL_NOW,
   IST_OFFSET_MINUTES,
   toISTString,
   parseIST,
-  nowIST
+  nowIST,
+  formatISTClock,
+  formatDuration
 };
