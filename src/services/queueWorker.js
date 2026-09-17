@@ -59,10 +59,11 @@ class QueueWorker {
       this.isRunning = false;
     });
 
-    // Auto-Batch Chaining: Periodic check for completed batches
+    // Auto-Batch Chaining: Immediate check on boot + 15s interval for completed batches
+    batchChainManager.monitorBatchCompletion().catch(console.error);
     setInterval(() => {
       batchChainManager.monitorBatchCompletion().catch(console.error);
-    }, 30000);
+    }, 15000);
   }
 
   pause() {
@@ -365,6 +366,37 @@ class QueueWorker {
                 INSERT INTO logs (campaign_id, account_id, level, message)
                 VALUES (?, ?, 'WARN', ?)
               `).run(item.campaign_id, account.id, `Account throttled (429). Cooldown ${waitSeconds}s applied. Item rotated.`);
+
+            } else if (
+              dispatchErr.message && (
+                dispatchErr.message.includes('time difference between the originating client and the server') ||
+                dispatchErr.message.includes('AADSTS700024') ||
+                dispatchErr.message.includes('GRAPH_FORBIDDEN_403') ||
+                dispatchErr.message.includes('ClientSecretCredential') ||
+                dispatchErr.message.includes('Authentication') ||
+                dispatchErr.statusCode === 401 ||
+                dispatchErr.statusCode === 403
+              )
+            ) {
+              const cooldownSeconds = 600; // 10 minutes cooldown for broken auth/clock-skew accounts
+              console.warn(`[QueueWorker] ⚠️ Account ${account.email} failed with auth/clock-skew: "${dispatchErr.message}". Applying ${cooldownSeconds}s cooldown. Rotating "${item.email}" immediately to healthy accounts.`);
+              AccountPool.putOnCooldown(account.id, cooldownSeconds);
+
+              // Requeue immediately with NO backoff and restore attempt so healthy account gets clean shot
+              db.prepare(`
+                UPDATE queue
+                SET status = 'queued',
+                    scheduled_at = datetime('now'),
+                    account_id = NULL,
+                    attempts = MAX(0, attempts - 1),
+                    last_error = ?
+                WHERE id = ?
+              `).run(`Sender Auth/Clock Skew: ${dispatchErr.message}`, item.id);
+
+              db.prepare(`
+                INSERT INTO logs (campaign_id, account_id, level, message)
+                VALUES (?, ?, 'ERROR', ?)
+              `).run(item.campaign_id, account.id, `Sender account ${account.email} cooled down ${cooldownSeconds}s due to auth/clock-skew. Requeued for other pool senders.`);
 
             } else {
               const maxAttempts = 3;

@@ -210,8 +210,11 @@ class BatchChainManager {
       SELECT c.id, c.name, c.total_count, c.sent_count, c.failed_count
       FROM campaigns c
       WHERE c.status = 'RUNNING'
-      AND (c.sent_count + COALESCE(c.failed_count, 0)) >= c.total_count
       AND c.total_count > 0
+      AND (
+        (c.sent_count + COALESCE(c.failed_count, 0)) >= c.total_count
+        OR (SELECT COUNT(*) FROM queue q WHERE q.campaign_id = c.id AND q.status IN ('queued', 'sending')) = 0
+      )
     `).all();
     
     for (const batch of completedBatches) {
