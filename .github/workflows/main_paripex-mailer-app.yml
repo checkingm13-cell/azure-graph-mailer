@@ -21,15 +21,22 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+
+      # Cache node_modules directly — skip npm ci when package-lock unchanged
+      - name: Cache node_modules
+        id: cache-nm
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: nm-${{ hashFiles('package-lock.json') }}
 
       - name: Install Dependencies
+        if: steps.cache-nm.outputs.cache-hit != 'true'
         run: npm ci --omit=dev
 
-      # Package essential files with ultra-fast compression level 1
-      - name: Create Clean Lightweight Archive
-        run: |
-          zip -q -1 -r release.zip .deployment server.js package.json package-lock.json src public node_modules
+      # zip -1 = fastest compression, node_modules already cached
+      - name: Create Archive
+        run: zip -q -1 -r release.zip .deployment server.js package.json package-lock.json src public node_modules
 
       - name: Login to Azure
         uses: azure/login@v2
@@ -38,8 +45,6 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_ADDF7064233A4843AD97AC6BDD366422 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_B86E2BDB93B14E92B6BD707FD34B6FE2 }}
 
-      # Deploy — requires SCM_DO_BUILD_DURING_DEPLOYMENT=false in Azure App Settings
-      # (set once in Portal, not here — doing both causes SCM restart conflict)
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
@@ -48,4 +53,3 @@ jobs:
           package: release.zip
           clean: true
           restart: true
-
