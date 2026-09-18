@@ -22,10 +22,16 @@ for (const p of [persistPath, workPath]) {
 if (isAzure && fs.existsSync(persistPath) && !fs.existsSync(workPath)) {
   console.log(`[DB] Azure detected — copying ${persistPath} → ${workPath}`);
   fs.copyFileSync(persistPath, workPath);
+  fs.chmodSync(workPath, 0o666); // FUSE mount copies inherit readonly perms
   // Copy WAL/SHM artifacts if they exist (unlikely but safe)
   for (const ext of ['-wal', '-shm']) {
-    if (fs.existsSync(persistPath + ext)) fs.copyFileSync(persistPath + ext, workPath + ext);
+    if (fs.existsSync(persistPath + ext)) {
+      fs.copyFileSync(persistPath + ext, workPath + ext);
+      fs.chmodSync(workPath + ext, 0o666);
+    }
   }
+} else if (isAzure) {
+  console.log(`[DB] Azure detected — fresh DB at ${workPath}`);
 }
 
 console.log(`[DB] Initializing Node.js native SQLite database at: ${workPath}`);
