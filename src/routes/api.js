@@ -1155,6 +1155,8 @@ router.post('/campaigns/launch-batches', (req, res) => {
     `);
 
     for (let i = 0; i < totalBatches; i++) {
+      const start = i * numericBatchSize;
+      const end = start + numericBatchSize;
       const rawSlice = filteredContacts.slice(start, end);
       if (!rawSlice || rawSlice.length === 0) continue; // Prevent zero-contact batches (e.g. Batch_02 with 0 items)
       
