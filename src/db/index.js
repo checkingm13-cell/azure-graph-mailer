@@ -8,8 +8,16 @@ const { initSchema } = require('./schema');
 // SQLite WAL mode requires POSIX shared-memory locks that FUSE doesn't support,
 // causing SQLITE_IOERR_SHMMAP → "database disk image is malformed".
 // Fix: work on /tmp (local ext4), sync back to /home for persistence.
-const isAzure = process.platform === 'linux' && config.dbPath.startsWith('/home');
-const persistPath = config.dbPath;
+
+// ponytail: detect Azure by env var, not by dbPath prefix — bulletproof
+const isAzure = process.platform === 'linux' && !!process.env.WEBSITE_INSTANCE_ID;
+
+// Resolve dbPath to absolute (handles relative DB_PATH like 'data/mailer.db')
+const resolvedDbPath = path.isAbsolute(config.dbPath)
+  ? config.dbPath
+  : path.resolve('/home/site/wwwroot', config.dbPath);
+
+const persistPath = isAzure ? resolvedDbPath : config.dbPath;
 const workPath = isAzure ? '/tmp/mailer.db' : config.dbPath;
 
 // Ensure parent dirs exist
@@ -20,10 +28,9 @@ for (const p of [persistPath, workPath]) {
 
 // Boot: copy persistent → working copy (if available and working copy missing/stale)
 if (isAzure && fs.existsSync(persistPath) && !fs.existsSync(workPath)) {
-  console.log(`[DB] Azure detected — copying ${persistPath} → ${workPath}`);
+  console.log(`[DB] Azure — copying ${persistPath} → ${workPath}`);
   fs.copyFileSync(persistPath, workPath);
-  fs.chmodSync(workPath, 0o666); // FUSE mount copies inherit readonly perms
-  // Copy WAL/SHM artifacts if they exist (unlikely but safe)
+  fs.chmodSync(workPath, 0o666); // FUSE copies inherit readonly perms
   for (const ext of ['-wal', '-shm']) {
     if (fs.existsSync(persistPath + ext)) {
       fs.copyFileSync(persistPath + ext, workPath + ext);
@@ -31,10 +38,10 @@ if (isAzure && fs.existsSync(persistPath) && !fs.existsSync(workPath)) {
     }
   }
 } else if (isAzure) {
-  console.log(`[DB] Azure detected — fresh DB at ${workPath}`);
+  console.log(`[DB] Azure — fresh DB at ${workPath}`);
 }
 
-console.log(`[DB] Initializing Node.js native SQLite database at: ${workPath}`);
+console.log(`[DB] Initializing SQLite at: ${workPath} (azure=${isAzure})`);
 const db = new DatabaseSync(workPath);
 
 // Enable WAL mode for high concurrency and crash resilience
