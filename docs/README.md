@@ -27,6 +27,7 @@ Welcome to the **Azure Graph Mailer** Obsidian Vault. This vault documents the f
 ---
 
 ## 🏗️ Architecture & Specifications
+- **[[ALGORITHM_TIMING_SCHEDULING_AND_WORKERS_DSA]]**: Deep technical reference covering fair round-robin interleaving via SQL window functions, 100ms/2500ms pacing and interruptible sleep worker loops, IST timezone arithmetic, two-tier batching (`is_batch`), and test-recipient injection at batch heads.
 - **[[ARCHITECTURE_AND_SYSTEM_DESIGN]]**: High-performance multi-provider engine (Graph API, Azure ACS, Oracle OCI SMTP), fair rotation, dynamic link rewriting, strict Indian Standard Time (IST) normalization (`+330 minutes`), and automatic account fallback upon saturation or cooldown.
 - **[[SPEC_PRODUCTION_CAMPAIGN_SCHEDULER]]**: Production batch dispatch engine, rate limits, staggered queue scheduling, priority rank ordering (Send Now Tier 0), and series prefix isolation.
 - **[[MICROSOFT_GRAPH_API_SPEC_AND_PERMISSIONS]]**: Microsoft Entra ID App Registrations, application permissions (`Mail.Send`), and token caching.

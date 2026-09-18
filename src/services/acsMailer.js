@@ -41,12 +41,17 @@ async function sendViaACS({ fromEmail, toEmail, subject, htmlBody }) {
     }
   };
 
-  const poller = await client.beginSend(message);
+  // Strict 6s timeout on the initial beginSend HTTP handshake
+  const poller = await Promise.race([
+    client.beginSend(message),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('Azure ACS connection timed out after 6000ms')), 6000))
+  ]);
+
   let response = null;
   try {
     response = await Promise.race([
       poller.pollUntilDone(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('ACS_POLL_TIMEOUT')), 5000))
+      new Promise((_, reject) => setTimeout(() => reject(new Error('ACS_POLL_TIMEOUT')), 4000))
     ]);
   } catch (err) {
     if (err.message === 'ACS_POLL_TIMEOUT') {

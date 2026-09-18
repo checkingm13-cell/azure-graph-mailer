@@ -73,6 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let campPageSize = 50;
   let campCurrentPage = 1;
   let campaignViewMode = 'aggregated'; // 'aggregated' (Parent-Child) or 'table' (Raw)
+  const expandedMasterCardIds = new Set(); // Preserves open state across 3s telemetry re-renders
 
   // Smooth EMA Throughput Tracker
   let currentThroughput = 0;
@@ -1398,6 +1399,9 @@ document.addEventListener('DOMContentLoaded', () => {
     prevContactedCount.textContent = currentPreviewData.previouslyContactedCount;
     batchBaseCampaignName.value = currentPreviewData.baseCampaignName;
     batchSizeInput.value = currentPreviewData.batchSize || 50;
+    if (chkSkipPreviouslyContacted) {
+      chkSkipPreviouslyContacted.checked = false; // Always default to false/unmuted
+    }
     campaignPreFlightBox.style.display = 'block';
     renderBatchesBreakdown(); updateSampleEmailPreview();
   }
@@ -1405,9 +1409,44 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderBatchesBreakdown() {
     if (!currentPreviewData) return;
     const size = Math.max(1, parseInt(batchSizeInput.value || '50', 10));
-    const skip = chkSkipPreviouslyContacted.checked;
+    const skip = chkSkipPreviouslyContacted ? chkSkipPreviouslyContacted.checked : false;
+    const totalRaw = currentPreviewData.contacts.length;
+    const previouslyContactedTotal = currentPreviewData.previouslyContactedCount || 0;
+    
     let contacts = currentPreviewData.contacts;
-    if (skip) contacts = contacts.filter((c) => !c.previouslyContacted);
+    if (skip) {
+      contacts = contacts.filter((c) => !c.previouslyContacted);
+    }
+    
+    const banner = document.getElementById('skipContactedBreakdownBanner');
+    if (banner) {
+      if (skip) {
+        banner.style.background = 'rgba(245, 158, 11, 0.12)';
+        banner.style.border = '1px solid rgba(245, 158, 11, 0.35)';
+        banner.innerHTML = `
+          <div style="color: var(--amber); display: flex; align-items: center; gap: 8px;">
+            <span>⚠️</span>
+            <span><strong>Exclusion Active:</strong> Skipping <strong>${previouslyContactedTotal}</strong> previously emailed contact(s).</span>
+          </div>
+          <div style="color: var(--text-primary); font-weight: 600;">
+            ${contacts.length} of ${totalRaw} emails will be sent
+          </div>
+        `;
+      } else {
+        banner.style.background = 'rgba(16, 185, 129, 0.1)';
+        banner.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+        banner.innerHTML = `
+          <div style="color: var(--emerald); display: flex; align-items: center; gap: 8px;">
+            <span>✅</span>
+            <span><strong>All Contacts Included:</strong> All <strong>${totalRaw}</strong> valid contacts will receive this campaign.</span>
+          </div>
+          <div style="color: var(--text-muted); font-size: 11px;">
+            (${previouslyContactedTotal} contacts were emailed in earlier campaigns)
+          </div>
+        `;
+      }
+    }
+
     const totalBatches = Math.ceil(contacts.length / size) || 1;
     const baseName = batchBaseCampaignName.value.trim() || currentPreviewData.baseCampaignName;
     const mode = campaignScheduleMode ? campaignScheduleMode.value : 'immediate';
@@ -1422,6 +1461,7 @@ document.addEventListener('DOMContentLoaded', () => {
     for (let i = 0; i < totalBatches; i++) {
       const start = i * size;
       const count = Math.min(size, contacts.length - start);
+      if (count <= 0) continue; // Prevent rendering zero-contact batches
       const batchNumStr = String(i + 1).padStart(2, '0');
       const batchName = `${baseName}_Batch_${batchNumStr}`;
       let startMs = baseMs;
@@ -1651,7 +1691,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const senderAccountIdVal = document.getElementById('batchSenderAccountSelect')?.value;
       const selectedStrategy = document.querySelector('input[name="sendingStrategyRadio"]:checked')?.value || 'SMART';
       const fallbackAllowed = document.getElementById('chkFallbackAllowed') ? document.getElementById('chkFallbackAllowed').checked : true;
-      const selectedSpeedPreset = document.querySelector('input[name="sendingSpeedPreset"]:checked')?.value || 'BALANCED';
+      const selectedSpeedPreset = document.querySelector('input[name="sendingSpeedPreset"]:checked')?.value || 'FAST';
       const templateRotationStrategy = document.querySelector('input[name="templateRotationStrategy"]:checked')?.value || 'PER_EMAIL';
       
       let customMs = 2500;
@@ -1766,14 +1806,54 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (hasQueued) aggregateStatus = 'QUEUED';
         else if (allCancelled) aggregateStatus = 'CANCELLED';
 
+        // Calculate Group-wide remaining and realistic completion timestamp
+        const remainingCount = Math.max(0, totalCount - (sentCount + failedCount));
+        const totalEtaSec = children.reduce((sum, ch) => {
+          if (ch.status === 'RUNNING' || ch.status === 'SCHEDULED' || ch.status === 'QUEUED') {
+            return sum + (ch.etaSeconds || 0);
+          }
+          return sum;
+        }, 0);
+
+        let groupEstCompletionIST = null;
+        let groupDurationText = null;
+        let slippageInfo = null;
+
+        if (remainingCount > 0 && totalEtaSec > 0 && aggregateStatus === 'RUNNING') {
+          const targetDate = new Date(Date.now() + (totalEtaSec * 1000));
+          const formatter = new Intl.DateTimeFormat('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+          });
+          groupEstCompletionIST = formatter.format(targetDate);
+          const mins = Math.ceil(totalEtaSec / 60);
+          groupDurationText = mins < 60 ? `~${mins} min left` : `~${Math.floor(mins / 60)}h ${mins % 60}m left`;
+          
+          const sampleChild = children.find(c => c.slippagePct !== undefined);
+          if (sampleChild) {
+            slippageInfo = `+${sampleChild.slippagePct}% slippage buffer applied`;
+          }
+        }
+
         aggregatedGroups.push({
           isMaster: true,
           parent: parentCamp,
-          children: children.sort((a, b) => a.id - b.id),
+          children: children.sort((a, b) => {
+            const statusWeight = (s) => (s === 'RUNNING' ? 0 : (s === 'QUEUED' || s === 'SCHEDULED' ? 1 : (s === 'PAUSED' ? 2 : 3)));
+            const diff = statusWeight(a.status) - statusWeight(b.status);
+            if (diff !== 0) return diff;
+            return a.id - b.id;
+          }),
           totalCount,
           sentCount,
           failedCount,
-          status: aggregateStatus
+          remainingCount,
+          status: aggregateStatus,
+          groupEstCompletionIST,
+          groupDurationText,
+          slippageInfo
         });
       } else {
         // Master campaign itself with direct queue or legacy standalone batch
@@ -1801,6 +1881,26 @@ document.addEventListener('DOMContentLoaded', () => {
         status: ch.status
       });
     }
+
+    // Sort groups so that Actively In-Progress batches (1% to 99% progress) are at the ABSOLUTE TOP
+    aggregatedGroups.sort((a, b) => {
+      // Priority 0: Actively sending right now (progress between 1% and 99%)
+      const aIsActivelySending = a.status === 'RUNNING' && a.sentCount > 0 && a.sentCount < a.totalCount ? 1 : 0;
+      const bIsActivelySending = b.status === 'RUNNING' && b.sentCount > 0 && b.sentCount < b.totalCount ? 1 : 0;
+      if (aIsActivelySending !== bIsActivelySending) return bIsActivelySending - aIsActivelySending;
+
+      // Priority 1: Other RUNNING
+      if (a.status === 'RUNNING' && b.status !== 'RUNNING') return -1;
+      if (b.status === 'RUNNING' && a.status !== 'RUNNING') return 1;
+
+      // Priority 2: Queued/Scheduled
+      const groupWeight = (s) => (s === 'QUEUED' || s === 'SCHEDULED' ? 0 : (s === 'PAUSED' ? 1 : (s === 'COMPLETED' ? 2 : 3)));
+      const diff = groupWeight(a.status) - groupWeight(b.status);
+      if (diff !== 0) return diff;
+
+      // Priority 3: Ascending batch/sequence if same group, else newer groups first
+      return (a.parent.id || 0) - (b.parent.id || 0);
+    });
 
     return aggregatedGroups;
   }
@@ -1832,13 +1932,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 3. Sort
     filtered.sort((a, b) => {
-      if (campSortOrder === 'newest') return b.id - a.id;
-      if (campSortOrder === 'oldest') return a.id - b.id;
-      if (campSortOrder === 'running') {
+      // Top Priority: Actively in-progress sending batches (1% - 99%)
+      const aActive = a.status === 'RUNNING' && a.sent_count > 0 && a.sent_count < a.total_count ? 1 : 0;
+      const bActive = b.status === 'RUNNING' && b.sent_count > 0 && b.sent_count < b.total_count ? 1 : 0;
+      if (aActive !== bActive) return bActive - aActive;
+
+      if (campSortOrder === 'newest' || campSortOrder === 'running') {
         if (a.status === 'RUNNING' && b.status !== 'RUNNING') return -1;
         if (b.status === 'RUNNING' && a.status !== 'RUNNING') return 1;
-        return b.id - a.id;
+        return a.id - b.id; // Ascending batch order so Batch 01 is above Batch 40
       }
+      if (campSortOrder === 'oldest') return a.id - b.id;
       if (campSortOrder === 'scheduled') {
         const dateA = a.scheduled_at ? new Date(a.scheduled_at).getTime() : Infinity;
         const dateB = b.scheduled_at ? new Date(b.scheduled_at).getTime() : Infinity;
@@ -1946,8 +2050,10 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
           }).join('');
 
+          const isOpen = expandedMasterCardIds.has(p.id);
+
           return `
-            <div class="parent-campaign-card" id="parentCard_${p.id}">
+            <div class="parent-campaign-card ${isOpen ? 'open' : ''}" id="parentCard_${p.id}">
               <div class="parent-campaign-header" data-id="${p.id}">
                 <div class="parent-title-group">
                   <span class="parent-chevron">▶</span>
@@ -1958,6 +2064,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                   </div>
                   <span class="badge ${statusBadgeClass}" style="margin-left: 6px;">${g.status}</span>
+                  ${g.groupEstCompletionIST ? `<span class="badge badge-sending" style="font-size: 10px; font-weight: 600; padding: 2px 8px; margin-left: 6px; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: var(--sky);" title="${g.slippageInfo || 'Realistic ETA with slippage buffer'}">🏁 Est. Finish: ${g.groupEstCompletionIST} (${g.groupDurationText})</span>` : ''}
                 </div>
 
                 <div class="parent-metrics-group">
@@ -1971,7 +2078,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 <div class="parent-actions-group" onclick="event.stopPropagation();">
                   ${bulkActionsHtml}
-                  ${g.children.length > 0 ? `<button type="button" class="btn btn-secondary btn-xs btn-toggle-expand" data-id="${p.id}">Expand Batches (${g.children.length})</button>` : `<button type="button" class="btn btn-secondary btn-xs btn-inspect-batch" data-id="${p.id}">🔍 Inspect</button>`}
+                  ${g.children.length > 0 ? `<button type="button" class="btn btn-secondary btn-xs btn-toggle-expand" data-id="${p.id}">${isOpen ? 'Collapse' : `Expand Batches (${g.children.length})`}</button>` : `<button type="button" class="btn btn-secondary btn-xs btn-inspect-batch" data-id="${p.id}">🔍 Inspect</button>`}
                 </div>
               </div>
 
@@ -1980,11 +2087,17 @@ document.addEventListener('DOMContentLoaded', () => {
           `;
         }).join('');
 
-        // Wire parent card accordion toggles
+        // Wire parent card accordion toggles (persistent state)
         aggregatedContainer.querySelectorAll('.parent-campaign-header').forEach(header => {
           header.addEventListener('click', () => {
             const card = header.closest('.parent-campaign-card');
+            const cardId = parseInt(header.dataset.id, 10);
             card.classList.toggle('open');
+            if (card.classList.contains('open')) {
+              expandedMasterCardIds.add(cardId);
+            } else {
+              expandedMasterCardIds.delete(cardId);
+            }
             const expandBtn = card.querySelector('.btn-toggle-expand');
             if (expandBtn) {
               expandBtn.textContent = card.classList.contains('open') ? 'Collapse' : `Expand Batches (${card.querySelectorAll('.child-batch-row').length})`;
@@ -2174,10 +2287,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const drawerBackdrop = document.getElementById('drawerBackdrop');
   const btnCloseDrawer = document.getElementById('btnCloseDrawer');
   const btnDrawerCloseFooter = document.getElementById('btnDrawerCloseFooter');
+  let isInspectDrawerOpen = false; // When true, pauses DOM re-renders so user can scroll/copy in peace
 
   function closeCampaignDrawer() {
+    isInspectDrawerOpen = false;
     if (campaignDrawer) campaignDrawer.classList.remove('active');
     if (drawerBackdrop) drawerBackdrop.classList.remove('active');
+    loadCampaigns(); // Resumes and updates campaigns upon closing
   }
 
   if (btnCloseDrawer) btnCloseDrawer.addEventListener('click', closeCampaignDrawer);
@@ -2187,6 +2303,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function openCampaignInspectionDrawer(campaignId) {
     if (!campaignDrawer) return;
 
+    isInspectDrawerOpen = true; // Freeze background table re-renders!
     campaignDrawer.classList.add('active');
     drawerBackdrop.classList.add('active');
 
@@ -2219,22 +2336,38 @@ document.addEventListener('DOMContentLoaded', () => {
         drawerMetricFailed.textContent = data.summary.failed || 0;
       }
 
+      const drawerRecipientCount = document.getElementById('drawerRecipientCount');
+      if (drawerRecipientCount) {
+        drawerRecipientCount.textContent = `Showing ${(data.sampleItems || []).length} recipients`;
+      }
+
       if (!data.sampleItems || data.sampleItems.length === 0) {
         drawerTableBody.innerHTML = `<tr><td colspan="4" class="table-empty">No queue records found for this batch.</td></tr>`;
       } else {
         drawerTableBody.innerHTML = data.sampleItems.map(item => {
-          let stColor = 'var(--text-muted)';
-          if (item.status === 'sent') stColor = 'var(--emerald)';
-          else if (item.status === 'failed') stColor = 'var(--rose)';
-          else if (item.status === 'sending') stColor = 'var(--sky)';
+          let statusBadge = '<span class="badge badge-queued" style="font-size: 10px;">QUEUED</span>';
+          if (item.status === 'sent') {
+            statusBadge = '<span class="badge badge-completed" style="font-size: 10px;">✓ SENT</span>';
+          } else if (item.status === 'failed') {
+            statusBadge = '<span class="badge badge-failed" style="font-size: 10px; background: rgba(244, 63, 94, 0.2); border: 1px solid rgba(244, 63, 94, 0.5); color: var(--rose);">✗ FAILED</span>';
+          } else if (item.status === 'sending') {
+            statusBadge = '<span class="badge badge-sending" style="font-size: 10px;">⏳ SENDING</span>';
+          }
+
+          const isTimeout = item.last_error && item.last_error.includes('timed out');
+          const errorDisplay = item.last_error
+            ? `<span style="font-size: 11px; font-weight: 500; color: ${isTimeout ? 'var(--amber)' : 'var(--rose)'};" title="${escapeHtml(item.last_error)}">
+                ${isTimeout ? '⏱️ ' : '❌ '}${escapeHtml(item.last_error)}
+               </span>`
+            : '<span style="color: var(--text-muted); font-size: 11px;">-</span>';
 
           return `
             <tr>
-              <td style="font-family: var(--font-mono); font-size: 11px;">${escapeHtml(item.email)}</td>
-              <td><span style="color: ${stColor}; font-weight: 600; font-size: 11px;">${item.status}</span></td>
-              <td>${item.attempts || 0}</td>
-              <td style="font-size: 10.5px; color: ${item.last_error ? 'var(--rose)' : 'var(--text-muted)'}; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(item.last_error || '')}">
-                ${escapeHtml(item.last_error || '--')}
+              <td style="font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; color: var(--text-primary);">${escapeHtml(item.email)}</td>
+              <td>${statusBadge}</td>
+              <td style="font-family: var(--font-mono); font-size: 11px; text-align: center;">${item.attempts || 0}</td>
+              <td style="max-width: 260px; word-break: break-word; line-height: 1.4;">
+                ${errorDisplay}
               </td>
             </tr>
           `;
@@ -2575,26 +2708,67 @@ document.addEventListener('DOMContentLoaded', () => {
     const toEmail = quickTestToEmail.value.trim();
     const name = quickTestName.value.trim();
     const subject = quickTestSubject.value.trim();
-    btnSubmitQuickTest.disabled = true; btnSubmitQuickTest.textContent = '⏳ Dispatching...';
+
+    btnSubmitQuickTest.disabled = true;
+    let elapsedSec = 0;
+    btnSubmitQuickTest.textContent = '⏳ Dispatching... (0s)';
+    const timerInterval = setInterval(() => {
+      elapsedSec++;
+      btnSubmitQuickTest.textContent = `⏳ Dispatching... (${elapsedSec}s)`;
+    }, 1000);
+
     quickTestResult.style.display = 'none';
     const senderAccountIdVal = document.getElementById('quickTestSenderAccount')?.value;
+
     try {
-      const res = await fetch('/api/send-test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ toEmail, name, subject, senderAccountId: senderAccountIdVal ? parseInt(senderAccountIdVal, 10) : null }) });
+      const res = await fetch('/api/send-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          toEmail,
+          name,
+          subject,
+          senderAccountId: senderAccountIdVal ? parseInt(senderAccountIdVal, 10) : null
+        })
+      });
+
       const data = await res.json();
       quickTestResult.style.display = 'block';
+
       if (data.ok) {
-        quickTestResult.style.background = 'rgba(16, 185, 129, 0.15)'; quickTestResult.style.color = 'var(--emerald)'; quickTestResult.style.border = '1px solid rgba(16, 185, 129, 0.4)';
-        quickTestResult.innerHTML = `✅ <b>Dispatched!</b> ${escapeHtml(data.message)}<br/><span style="font-size: 11px;">Message handed to Microsoft Graph API. Check recipient inbox/spam.</span>`;
+        quickTestResult.style.background = 'rgba(16, 185, 129, 0.15)';
+        quickTestResult.style.color = 'var(--emerald)';
+        quickTestResult.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+        quickTestResult.innerHTML = `
+          <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px;">✅ Dispatched in ${elapsedSec}s!</div>
+          <div style="font-size: 12px;">${escapeHtml(data.message)}</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Check recipient inbox or spam folder. Success recorded in Audit Logs.</div>
+        `;
         refreshTelemetry();
       } else {
-        quickTestResult.style.background = 'rgba(244, 63, 94, 0.15)'; quickTestResult.style.color = 'var(--rose)'; quickTestResult.style.border = '1px solid rgba(244, 63, 94, 0.4)';
-        quickTestResult.innerHTML = `❌ <b>Error:</b> ${escapeHtml(data.error)}`;
+        quickTestResult.style.background = 'rgba(244, 63, 94, 0.15)';
+        quickTestResult.style.color = 'var(--rose)';
+        quickTestResult.style.border = '1px solid rgba(244, 63, 94, 0.4)';
+        quickTestResult.innerHTML = `
+          <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px;">❌ Delivery Failed (${elapsedSec}s)</div>
+          <div style="font-size: 12px; font-family: var(--font-mono); word-break: break-word;">${escapeHtml(data.error || 'Unknown error')}</div>
+          ${data.provider ? `<div style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">Provider: <b>${escapeHtml(data.provider)}</b> | Sender: <b>${escapeHtml(data.senderEmail || '')}</b></div>` : ''}
+          <div style="font-size: 10.5px; color: var(--amber); margin-top: 4px;">Detailed error was written to Audit Logs.</div>
+        `;
       }
     } catch (err) {
-      quickTestResult.style.display = 'block'; quickTestResult.style.background = 'rgba(244, 63, 94, 0.15)'; quickTestResult.style.color = 'var(--rose)'; quickTestResult.style.border = '1px solid rgba(244, 63, 94, 0.4)';
-      quickTestResult.innerHTML = `❌ <b>Network error:</b> ${escapeHtml(err.message)}`;
+      quickTestResult.style.display = 'block';
+      quickTestResult.style.background = 'rgba(244, 63, 94, 0.15)';
+      quickTestResult.style.color = 'var(--rose)';
+      quickTestResult.style.border = '1px solid rgba(244, 63, 94, 0.4)';
+      quickTestResult.innerHTML = `
+        <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px;">❌ Connection Timeout / Network Error</div>
+        <div style="font-size: 12px; font-family: var(--font-mono);">${escapeHtml(err.message)}</div>
+      `;
     } finally {
-      btnSubmitQuickTest.disabled = false; btnSubmitQuickTest.textContent = '🚀 Send Test Now';
+      clearInterval(timerInterval);
+      btnSubmitQuickTest.disabled = false;
+      btnSubmitQuickTest.textContent = '🚀 Send Test Now';
     }
   });
 
@@ -2891,20 +3065,26 @@ document.addEventListener('DOMContentLoaded', () => {
   cardActionSampleCsv?.addEventListener('click', downloadSampleCsv);
   btnDownloadSampleCsvInner?.addEventListener('click', downloadSampleCsv);
 
-  // Initial Boot (Async Lazy Loading: Only load active Overview tab immediately)
+  // Initial Boot (Async Lazy Loading: Load Overview components immediately)
   refreshTelemetry();
   loadAccounts();
   loadQueue();
+  loadCampaigns();
 
-  // 3s Telemetry Loop (Lightweight status check; only refreshes active view)
+  // Telemetry Loop (Lightweight status check; pauses DOM re-renders if inspect drawer is open)
   setInterval(() => {
     refreshTelemetry();
+    if (isInspectDrawerOpen) {
+      // FREEZE: User is actively inspecting/scrolling recipient records. Do not re-render DOM!
+      return;
+    }
     const activeTab = document.querySelector('.nav-tab.active')?.dataset.tab;
     if (activeTab === 'tab-overview') {
       loadAccounts();
+      loadCampaigns();
     }
     if (activeTab === 'tab-campaigns') {
       loadCampaigns();
     }
-  }, 3000);
+  }, 6000);
 });

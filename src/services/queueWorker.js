@@ -198,6 +198,16 @@ class QueueWorker {
         const concurrency = getConcurrencyLimit();
         AccountPool.refreshRollingQuotas();
 
+        // 0. Auto-promote any SCHEDULED or QUEUED batch whose scheduled_at time has arrived
+        db.prepare(`
+          UPDATE campaigns
+          SET status = 'RUNNING',
+              started_at = COALESCE(started_at, datetime('now', '+330 minutes'))
+          WHERE status IN ('SCHEDULED', 'QUEUED')
+            AND scheduled_at IS NOT NULL
+            AND scheduled_at <= datetime('now', '+330 minutes')
+        `).run();
+
         // 1. Fetch available accounts (not throttled, not cooled down, quota remaining)
         const availableAccounts = db.prepare(`
           SELECT * FROM accounts
@@ -222,34 +232,44 @@ class QueueWorker {
           continue;
         }
 
-        // 2. Fetch eligible queue items up to available account count with priority ordering
+        // 2. Fetch eligible queue items up to available account count with round-robin fair balance
         const priorityIds = Array.from(this.priorityCampaignIds || []);
         let priorityOrderClause = '';
         if (priorityIds.length > 0) {
           const idList = priorityIds.join(',');
-          priorityOrderClause = `CASE WHEN q.campaign_id IN (${idList}) THEN 0 WHEN c.status = 'RUNNING' THEN 1 ELSE 2 END ASC,`;
+          priorityOrderClause = `CASE WHEN campaign_id IN (${idList}) THEN 0 WHEN campaign_status = 'RUNNING' THEN 1 ELSE 2 END ASC,`;
         } else {
-          priorityOrderClause = `CASE WHEN c.status = 'RUNNING' THEN 0 ELSE 1 END ASC,`;
+          priorityOrderClause = `CASE WHEN campaign_status = 'RUNNING' THEN 0 ELSE 1 END ASC,`;
         }
 
         const maxDispatchCount = Math.min(availableAccounts.length, concurrency);
 
+        // Fair Round-Robin: Interleaves rows across active campaigns so no single campaign monopolizes dispatch slots
         const queueItems = db.prepare(`
-          SELECT q.*, c.name AS campaign_name, c.status AS campaign_status,
-                 c.mode AS campaign_mode,
-                 COALESCE(c.pinned_account_id, c.sender_account_id) AS campaign_pinned_account_id,
-                 c.fallback_allowed AS campaign_fallback_allowed,
-                 c.custom_interval_ms AS campaign_custom_interval_ms
-          FROM queue q
-          JOIN campaigns c ON q.campaign_id = c.id
-          WHERE q.status = 'queued'
-            AND (q.scheduled_at IS NULL OR q.scheduled_at <= datetime('now', '+330 minutes'))
-            AND c.status IN ('SCHEDULED', 'QUEUED', 'RUNNING')
+          WITH RankedQueue AS (
+            SELECT q.*, c.name AS campaign_name, c.status AS campaign_status,
+                   c.mode AS campaign_mode,
+                   COALESCE(c.pinned_account_id, c.sender_account_id) AS campaign_pinned_account_id,
+                   c.fallback_allowed AS campaign_fallback_allowed,
+                   c.custom_interval_ms AS campaign_custom_interval_ms,
+                   ROW_NUMBER() OVER (
+                     PARTITION BY q.campaign_id 
+                     ORDER BY 
+                       CASE WHEN q.scheduled_at IS NULL THEN 0 ELSE 1 END ASC,
+                       q.scheduled_at ASC,
+                       q.id ASC
+                   ) AS campaign_turn
+            FROM queue q
+            JOIN campaigns c ON q.campaign_id = c.id
+            WHERE q.status = 'queued'
+              AND (q.scheduled_at IS NULL OR q.scheduled_at <= datetime('now', '+330 minutes'))
+              AND c.status IN ('SCHEDULED', 'QUEUED', 'RUNNING')
+          )
+          SELECT * FROM RankedQueue
           ORDER BY 
             ${priorityOrderClause}
-            CASE WHEN q.scheduled_at IS NULL THEN 0 ELSE 1 END ASC,
-            q.scheduled_at ASC,
-            q.id ASC
+            campaign_turn ASC,
+            id ASC
           LIMIT ?
         `).all(maxDispatchCount);
 
@@ -376,12 +396,35 @@ class QueueWorker {
             });
 
             if (account.provider === 'AZURE_ACS') {
-              await withTimeout(sendViaACS({
-                fromEmail: account.email,
-                toEmail: item.email,
-                subject: dynamicSubject,
-                htmlBody: dynamicHtml
-              }), 15000, 'Azure ACS dispatch');
+              try {
+                await withTimeout(sendViaACS({
+                  fromEmail: account.email,
+                  toEmail: item.email,
+                  subject: dynamicSubject,
+                  htmlBody: dynamicHtml
+                }), 10000, 'Azure ACS dispatch');
+              } catch (acsErr) {
+                console.warn(`[QueueWorker] ⚠️ Azure ACS dispatch failed for "${item.email}": ${acsErr.message}. Automatically failing over to OCI SMTP...`);
+                // Find a healthy OCI account to seamlessly complete delivery
+                const ociAccount = db.prepare(`
+                  SELECT * FROM accounts
+                  WHERE provider = 'OCI' AND is_active = 1 AND sent_today < daily_limit
+                  ORDER BY sent_today ASC, id ASC
+                  LIMIT 1
+                `).get();
+
+                if (ociAccount) {
+                  await withTimeout(sendViaOCI({
+                    fromEmail: ociAccount.email,
+                    toEmail: item.email,
+                    subject: dynamicSubject,
+                    htmlBody: dynamicHtml
+                  }), 15000, 'OCI Failover dispatch');
+                  account = ociAccount; // Re-bind account so metrics attribute correctly
+                } else {
+                  throw acsErr; // Rethrow if no fallback available
+                }
+              }
             } else if (account.provider === 'OCI') {
               await withTimeout(sendViaOCI({
                 fromEmail: account.email,
@@ -516,32 +559,36 @@ class QueueWorker {
               `).run(item.campaign_id, account.id, `Sender account ${account.email} cooled down ${cooldownSeconds}s due to auth/clock-skew. Requeued for other pool senders.`);
 
             } else {
-              const maxAttempts = 3;
-              const isPermanent = item.attempts + 1 >= maxAttempts || dispatchErr.statusCode === 404;
+              // Single-try rule: No time wasting on repeated timeouts when alternative healthy senders exist!
+              const isAcsTimeout = dispatchErr.message && dispatchErr.message.includes('Azure ACS dispatch timed out');
+              if (isAcsTimeout) {
+                console.warn(`[QueueWorker] ⚠️ ACS Timeout on ${account.email}. Applying 600s cooldown so pool switches to healthy senders immediately.`);
+                AccountPool.putOnCooldown(account.id, 600);
+              }
 
-              // Tail-End 49/50 Fix: If other accounts exist, don't stall for 300s. Use minimal backoff (3s, 10s)
-              const backoffSec = [3, 10, 30][Math.min(item.attempts || 0, 2)];
-              const nextScheduledAt = isPermanent ? null : toISTString(new Date(Date.now() + backoffSec * 1000));
+              const maxAttempts = 1; // Strict 1 attempt to avoid stalling the pipeline
+              const isPermanent = (item.attempts + 1) >= maxAttempts || dispatchErr.statusCode === 404;
 
               db.prepare(`
                 UPDATE queue
                 SET status = ?,
-                    scheduled_at = COALESCE(?, scheduled_at),
+                    scheduled_at = NULL,
                     account_id = NULL,
+                    attempts = attempts + 1,
                     last_error = ?
                 WHERE id = ?
-              `).run(isPermanent ? 'failed' : 'queued', nextScheduledAt, dispatchErr.message, item.id);
+              `).run(isPermanent ? 'failed' : 'queued', dispatchErr.message, item.id);
 
-              // Detailed Delivery Audit Log: Record Failure/Requeue
+              // Detailed Delivery Audit Log: Record Failure
               try {
                 db.prepare(`
                   UPDATE delivery_logs 
                   SET status = ?, 
                       completed_at = datetime('now', '+330 minutes'),
                       error_message = ?,
-                      attempts = ?
+                      attempts = attempts + 1
                   WHERE queue_id = ?
-                `).run(isPermanent ? 'failed' : 'queued', dispatchErr.message || 'Unknown error', item.attempts + 1, item.id);
+                `).run(isPermanent ? 'failed' : 'queued', dispatchErr.message || 'Unknown error', item.id);
               } catch (_) {}
 
               if (isPermanent) {

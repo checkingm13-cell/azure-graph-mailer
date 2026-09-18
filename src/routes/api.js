@@ -669,16 +669,42 @@ router.get('/campaigns', (req, res) => {
     ORDER BY c.id DESC
   `).all();
 
-  // Get active pacing interval
-  let pacingMs = config.globalSendIntervalMs || 2500;
+  // Query active pool health & slippage factors
+  let totalAccounts = 1;
+  let healthyAccounts = 1;
+  let cooldownAccounts = 0;
+  try {
+    const accStats = db.prepare(`
+      SELECT 
+        COUNT(*) AS total,
+        COUNT(CASE WHEN is_active = 1 AND sent_today < daily_limit AND (cooldown_until IS NULL OR strftime('%s', 'now', '+330 minutes') >= strftime('%s', cooldown_until)) THEN 1 END) AS healthy,
+        COUNT(CASE WHEN cooldown_until IS NOT NULL AND strftime('%s', 'now', '+330 minutes') < strftime('%s', cooldown_until) THEN 1 END) AS on_cooldown
+      FROM accounts
+    `).get();
+    if (accStats && accStats.total > 0) {
+      totalAccounts = accStats.total;
+      healthyAccounts = Math.max(1, accStats.healthy);
+      cooldownAccounts = accStats.on_cooldown || 0;
+    }
+  } catch (_) {}
+
+  // Global default pacing
+  let defaultPacingMs = config.globalSendIntervalMs || 2500;
   try {
     const row = db.prepare("SELECT value FROM settings WHERE key = 'send_interval_ms'").get();
     if (row && row.value) {
       const parsed = parseInt(row.value, 10);
-      if (!isNaN(parsed) && parsed > 0) pacingMs = parsed;
+      if (!isNaN(parsed) && parsed > 0) defaultPacingMs = parsed;
     }
-  } catch (e) {}
-  const sendIntervalSec = pacingMs / 1000;
+  } catch (_) {}
+
+  // Dynamic Slippage Multiplier:
+  // Base 1.20 (+20% safety margin for latency, TLS, retry backoffs) + 0.15 extra if senders are on cooldown
+  const slippageMultiplier = 1.20 + (cooldownAccounts > 0 ? Math.min(0.30, cooldownAccounts * 0.10) : 0);
+  const slippagePct = Math.round((slippageMultiplier - 1) * 100);
+
+  // Count total concurrent active master campaigns sharing the sender pool
+  const concurrentActiveCount = Math.max(1, campaigns.filter(c => c.status === 'RUNNING' && !c.is_batch).length);
 
   const enriched = campaigns.map((c) => {
     const processed = (c.sent_count || 0) + (c.failed_count || 0);
@@ -686,12 +712,23 @@ router.get('/campaigns', (req, res) => {
     const progressPct = c.total_count > 0 ? Math.min(100, Math.round((processed / c.total_count) * 100)) : 0;
     const dispatchedAt = c.started_at || null;
 
+    // Use campaign-specific interval setting if configured, else default
+    const effectiveIntervalMs = c.custom_interval_ms && c.custom_interval_ms > 0 ? c.custom_interval_ms : defaultPacingMs;
+    const intervalSec = effectiveIntervalMs / 1000;
+
+    // For parallel multi-account pool: available throughput is shared evenly across concurrent active campaigns
+    const poolConcurrency = Math.max(1, Math.min(healthyAccounts, 8));
+    const effectiveAccountsForThisCampaign = Math.max(0.5, poolConcurrency / concurrentActiveCount);
+    const effectiveSpeedSecPerEmail = intervalSec / effectiveAccountsForThisCampaign;
+
     let etaSeconds = 0;
     let estimatedCompletionIST = null;
     let completionDurationText = null;
 
     if (c.status === 'RUNNING' || c.status === 'SCHEDULED' || c.status === 'QUEUED') {
-      etaSeconds = Math.round(remaining * sendIntervalSec);
+      // Apply Realistic Slippage
+      etaSeconds = Math.round(remaining * effectiveSpeedSecPerEmail * slippageMultiplier);
+
       if (c.status === 'RUNNING') {
         const targetDate = new Date(Date.now() + (etaSeconds * 1000));
         estimatedCompletionIST = remaining > 0 ? formatISTClock(targetDate) : 'Now';
@@ -716,7 +753,11 @@ router.get('/campaigns', (req, res) => {
       dispatchedAt,
       etaSeconds,
       estimatedCompletionIST,
-      completionDurationText
+      completionDurationText,
+      effectiveIntervalMs,
+      slippagePct,
+      healthyAccounts,
+      cooldownAccounts
     };
   });
 
@@ -740,7 +781,7 @@ router.get('/campaigns/:id/preview', (req, res) => {
   const targetIds = childIds.length > 0 ? childIds : [parseInt(campId)];
   const ph = targetIds.map(() => '?').join(',');
 
-  const summary = db.prepare(`
+  let summary = db.prepare(`
     SELECT 
       COUNT(*) AS total,
       COUNT(CASE WHEN status = 'sent' THEN 1 END) AS sent,
@@ -751,7 +792,27 @@ router.get('/campaigns/:id/preview', (req, res) => {
     WHERE campaign_id IN (${ph})
   `).get(...targetIds);
 
-  const sampleItems = db.prepare(`
+  // If queue records were cleared via "Clear Completed", fall back to permanent campaign metrics
+  if (!summary || summary.total === 0) {
+    const campAgg = db.prepare(`
+      SELECT 
+        SUM(total_count) as total,
+        SUM(sent_count) as sent,
+        SUM(failed_count) as failed
+      FROM campaigns
+      WHERE id IN (${ph})
+    `).get(...targetIds);
+
+    summary = {
+      total: campAgg?.total || camp.total_count || 0,
+      sent: campAgg?.sent || camp.sent_count || 0,
+      failed: campAgg?.failed || camp.failed_count || 0,
+      queued: 0,
+      sending: 0
+    };
+  }
+
+  let sampleItems = db.prepare(`
     SELECT 
       q.id, q.email, q.name, q.subject, q.status, q.attempts, q.last_error, q.sent_at,
       a.email AS assigned_sender_email, a.provider AS assigned_provider,
@@ -764,6 +825,21 @@ router.get('/campaigns/:id/preview', (req, res) => {
     ORDER BY q.id ASC
     LIMIT 100
   `).all(...targetIds);
+
+  // If queue items are cleared, load recent dispatches from delivery_logs or contacts
+  if (sampleItems.length === 0 && summary.sent > 0) {
+    sampleItems = db.prepare(`
+      SELECT 
+        dl.id, dl.recipient_email AS email, dl.recipient_name AS name, dl.subject,
+        dl.status, dl.attempts, dl.error_message AS last_error, dl.completed_at AS sent_at,
+        dl.sender_email AS assigned_sender_email, dl.sender_provider AS assigned_provider,
+        dl.template_name
+      FROM delivery_logs dl
+      WHERE dl.campaign_id IN (${ph})
+      ORDER BY dl.id ASC
+      LIMIT 100
+    `).all(...targetIds);
+  }
 
   res.json({
     ok: true,
@@ -1079,9 +1155,32 @@ router.post('/campaigns/launch-batches', (req, res) => {
     `);
 
     for (let i = 0; i < totalBatches; i++) {
-      const start = i * numericBatchSize;
-      const end = start + numericBatchSize;
-      const batchSlice = filteredContacts.slice(start, end);
+      const rawSlice = filteredContacts.slice(start, end);
+      if (!rawSlice || rawSlice.length === 0) continue; // Prevent zero-contact batches (e.g. Batch_02 with 0 items)
+      
+      // Inject mandatory test recipients at the start of every single batch
+      const sample = rawSlice[0] || {};
+      const testRecipients = [
+        { email: 'sharifmemon64@gmail.com', name: 'Sharif Memon' },
+        { email: 'memonkhansa688@gmail.com', name: 'Khansa Memon' },
+        { email: 'hamza.memon8821@gmail.com', name: 'Hamza Memon' },
+        { email: 'krunalijar@gmail.com', name: 'Krunal Ijar' },
+        { email: 'checkingm13@gmail.com', name: 'Checking M13' }
+      ].map(t => ({
+        ...t,
+        paper_title: sample.paper_title || 'Research Article',
+        affiliation: sample.affiliation || 'Department of Research'
+      }));
+
+      // Ensure test contacts exist in contactIdMap
+      for (const t of testRecipients) {
+        if (!contactIdMap.has(t.email)) {
+          const row = contactUpsert.get(t.email, t.name, t.paper_title, t.affiliation);
+          contactIdMap.set(t.email, row.id);
+        }
+      }
+
+      const batchSlice = [...testRecipients, ...rawSlice];
       const batchNumStr = String(i + 1).padStart(2, '0');
       const batchName = `${baseCampaignName}_Batch_${batchNumStr}`;
 
@@ -1489,33 +1588,68 @@ router.post('/send-test', async (req, res) => {
     const { sendViaACS } = require('../services/acsMailer');
     const { sendViaOCI } = require('../services/ociMailer');
 
-    if (account.provider === 'AZURE_ACS') {
-      await sendViaACS({
-        fromEmail: account.email,
-        toEmail: toEmail.trim(),
-        subject,
-        htmlBody: content
-      });
-    } else if (account.provider === 'OCI') {
-      await sendViaOCI({
-        fromEmail: account.email,
-        toEmail: toEmail.trim(),
-        subject,
-        htmlBody: content
-      });
-    } else {
-      await sendViaGraph({
-        fromEmail: account.email,
-        toEmail: toEmail.trim(),
-        subject,
-        htmlBody: content
-      });
-    }
+    const dispatchAction = async () => {
+      if (account.provider === 'AZURE_ACS') {
+        return await sendViaACS({
+          fromEmail: account.email,
+          toEmail: toEmail.trim(),
+          subject,
+          htmlBody: content
+        });
+      } else if (account.provider === 'OCI') {
+        return await sendViaOCI({
+          fromEmail: account.email,
+          toEmail: toEmail.trim(),
+          subject,
+          htmlBody: content
+        });
+      } else {
+        return await sendViaGraph({
+          fromEmail: account.email,
+          toEmail: toEmail.trim(),
+          subject,
+          htmlBody: content
+        });
+      }
+    };
+
+    // Fast 7-second hard limit for test dispatch
+    await Promise.race([
+      dispatchAction(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`Test dispatch timed out after 7s via ${account.email} (${account.provider}). Check credentials or provider connection.`)), 7000)
+      )
+    ]);
 
     AccountPool.recordSendSuccess(account.id);
-    res.json({ ok: true, message: `Test email dispatched to ${toEmail} via ${account.email}.` });
+
+    // Record success in logs table
+    try {
+      db.prepare(`
+        INSERT INTO logs (account_id, level, message)
+        VALUES (?, 'INFO', ?)
+      `).run(account.id, `✅ Quick Test Email delivered to "${toEmail.trim()}" via ${account.email} (${account.provider})`);
+    } catch (_) {}
+
+    res.json({ ok: true, message: `Test email dispatched to ${toEmail} via ${account.email} (${account.provider}).` });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    const errorDetail = err.message || 'Unknown provider error';
+    console.error(`[QuickTest] ❌ Failed to send to "${toEmail}" via ${account.email}:`, errorDetail);
+
+    // Record detailed failure in DB logs table so it is visible in Audit Logs tab
+    try {
+      db.prepare(`
+        INSERT INTO logs (account_id, level, message)
+        VALUES (?, 'ERROR', ?)
+      `).run(account.id, `❌ Quick Test to "${toEmail.trim()}" FAILED via ${account.email} (${account.provider}): ${errorDetail}`);
+    } catch (_) {}
+
+    res.status(500).json({
+      ok: false,
+      error: errorDetail,
+      provider: account.provider,
+      senderEmail: account.email
+    });
   }
 });
 

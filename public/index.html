@@ -213,6 +213,86 @@
       <div id="accountsPoolGrid" class="accounts-grid">
         <div class="loading-placeholder">Loading account pool status...</div>
       </div>
+
+      <!-- Campaign Execution History (Moved to Dashboard for Instant Access) -->
+      <div class="panel-card" style="margin-top: 24px;">
+        <div class="panel-header">
+          <h3>Campaign Execution History</h3>
+        </div>
+
+        <!-- Filter & Search Bar -->
+        <div class="filter-bar"
+          style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; align-items: center;">
+          <div class="filter-pills" style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <button class="filter-pill active" data-filter="ALL">All (<span id="countCampAll">0</span>)</button>
+            <button class="filter-pill" data-filter="RUNNING">⚡ Running (<span id="countCampRunning">0</span>)</button>
+            <button class="filter-pill" data-filter="QUEUED">📅 Queued/Scheduled (<span
+                id="countCampQueued">0</span>)</button>
+            <button class="filter-pill" data-filter="COMPLETED">✅ Completed (<span
+                id="countCampCompleted">0</span>)</button>
+            <button class="filter-pill" data-filter="FAILED">❌ Failed (<span id="countCampFailed">0</span>)</button>
+            <button class="filter-pill" data-filter="TODAY">📅 Today (<span id="countCampToday">0</span>)</button>
+          </div>
+          <div style="flex-grow: 1; min-width: 200px;">
+            <input type="text" id="campaignSearchInput" class="form-input"
+              placeholder="🔍 Search by name, template, or sender..." style="width: 100%;">
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button type="button" id="btnToggleCampaignViewMode" class="btn btn-secondary btn-sm" style="font-size: 11.5px; border-color: rgba(56, 189, 248, 0.35); color: var(--sky);">
+              🗂️ View: Grouped Master Sheets
+            </button>
+            <select id="campaignSortSelect" class="form-select" style="width: auto;">
+              <option value="newest">Newest First</option>
+              <option value="running">Running First</option>
+              <option value="scheduled">Scheduled Soonest</option>
+              <option value="oldest">Oldest First</option>
+              <option value="name">Name (A-Z)</option>
+            </select>
+            <select id="campaignPageSizeSelect" class="form-select" style="width: auto;">
+              <option value="50">50 per page</option>
+              <option value="100">100 per page</option>
+              <option value="250">250 per page</option>
+              <option value="all">All</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Master Parent-Child Aggregated Cards Container -->
+        <div id="aggregatedCampaignsContainer" style="display: block; margin-bottom: 20px;"></div>
+
+        <div id="rawCampaignsTableWrapper" class="table-responsive" style="display: none;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Campaign Batch Name</th>
+                <th>Template</th>
+                <th>Sender Account & Engine</th>
+                <th>Scheduled / Started</th>
+                <th>Status</th>
+                <th>Progress (Sent / Total)</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="campaignsTableBody">
+              <tr>
+                <td colspan="8" class="table-empty">No campaigns executed yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination Bar -->
+        <div class="pagination-bar"
+          style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-color);">
+          <div class="page-info" id="campaignPageInfo" style="font-size: 12px; color: var(--text-muted);">Showing 0 of 0 campaigns</div>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <button id="btnCampPrev" class="btn btn-secondary btn-sm page-btn" disabled>◀ Prev</button>
+            <span id="campPageNumbers" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">Page 1 / 1</span>
+            <button id="btnCampNext" class="btn btn-secondary btn-sm page-btn" disabled>Next ▶</button>
+          </div>
+        </div>
+      </div>
       <div class="panel-card" style="margin-top: 24px;">
         <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
           <div style="display: flex; align-items: center; gap: 10px;">
@@ -470,10 +550,18 @@
                 </div>
               </div>
             </div>
-            <div class="form-group" style="margin-top: 4px; margin-bottom: 18px;"><label class="checkbox-label"
-                style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox"
-                  id="chkSkipPreviouslyContacted"><span><b>Exclude contacts already emailed in past
-                    campaigns</b></span></label></div>
+            <div class="form-group" style="margin-top: 8px; margin-bottom: 18px; padding: 12px 14px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 8px;">
+              <label class="checkbox-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                <input type="checkbox" id="chkSkipPreviouslyContacted" style="width: 16px; height: 16px; cursor: pointer;">
+                <div>
+                  <div style="font-weight: 600; font-size: 13px; color: var(--text-primary);">🛡️ Exclude contacts already emailed in past campaigns</div>
+                  <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">When checked, contacts who received an email earlier will be skipped. When unchecked, all valid contacts in the file will be emailed.</div>
+                </div>
+              </label>
+              <div id="skipContactedBreakdownBanner" style="margin-top: 10px; padding: 8px 12px; border-radius: 6px; font-size: 12px; display: flex; align-items: center; justify-content: space-between;">
+                <!-- Dynamically populated by JS -->
+              </div>
+            </div>
 
             <!-- Step 3: WHO & HOW FAST (Sender Strategy & Sending Speed) -->
             <div style="font-size: 13px; font-weight: 700; color: var(--sky); margin: 20px 0 12px 0; text-transform: uppercase; letter-spacing: 0.5px;">
@@ -519,13 +607,13 @@
                   <div style="font-weight: 700; color: var(--amber); font-size: 13px;">🛡️ Safe</div>
                   <div style="font-size: 11px; color: var(--text-muted);">6.5s delay (~10/min)</div>
                 </label>
-                <label class="speed-preset-card" style="display: block; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 8px; padding: 10px; cursor: pointer; text-align: center;">
-                  <input type="radio" name="sendingSpeedPreset" value="BALANCED" checked style="margin-bottom: 4px;">
+                <label class="speed-preset-card" style="display: block; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; cursor: pointer; text-align: center;">
+                  <input type="radio" name="sendingSpeedPreset" value="BALANCED" style="margin-bottom: 4px;">
                   <div style="font-weight: 700; color: var(--sky); font-size: 13px;">⚖️ Balanced</div>
                   <div style="font-size: 11px; color: var(--text-muted);">2.5s delay (Standard)</div>
                 </label>
-                <label class="speed-preset-card" style="display: block; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; cursor: pointer; text-align: center;">
-                  <input type="radio" name="sendingSpeedPreset" value="FAST" style="margin-bottom: 4px;">
+                <label class="speed-preset-card" style="display: block; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 8px; padding: 10px; cursor: pointer; text-align: center;">
+                  <input type="radio" name="sendingSpeedPreset" value="FAST" checked style="margin-bottom: 4px;">
                   <div style="font-weight: 700; color: var(--emerald); font-size: 13px;">⚡ Fast</div>
                   <div style="font-size: 11px; color: var(--text-muted);">1.0s delay (High-rate)</div>
                 </label>
@@ -585,88 +673,6 @@
             <button type="submit" id="btnConfirmLaunchBatches" class="btn btn-primary btn-block"
               style="padding: 14px; font-size: 15px;">🚀 Confirm &amp; Schedule Batches Across Pool</button>
           </form>
-        </div>
-      </div>
-
-      <!-- ENHANCED Campaign History Table -->
-      <div class="panel-card">
-        <div class="panel-header">
-          <h3>Campaign Execution History</h3>
-        </div>
-
-        <!-- Filter & Search Bar -->
-        <div class="filter-bar"
-          style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; align-items: center;">
-          <div class="filter-pills" style="display: flex; gap: 6px; flex-wrap: wrap;">
-            <button class="filter-pill active" data-filter="ALL">All (<span id="countCampAll">0</span>)</button>
-            <button class="filter-pill" data-filter="RUNNING">⚡ Running (<span id="countCampRunning">0</span>)</button>
-            <button class="filter-pill" data-filter="QUEUED">📅 Queued/Scheduled (<span
-                id="countCampQueued">0</span>)</button>
-            <button class="filter-pill" data-filter="COMPLETED">✅ Completed (<span
-                id="countCampCompleted">0</span>)</button>
-            <button class="filter-pill" data-filter="FAILED">❌ Failed (<span id="countCampFailed">0</span>)</button>
-            <button class="filter-pill" data-filter="TODAY">📅 Today (<span id="countCampToday">0</span>)</button>
-          </div>
-          <div style="flex-grow: 1; min-width: 200px;">
-            <input type="text" id="campaignSearchInput" class="form-input"
-              placeholder="🔍 Search by name, template, or sender..." style="width: 100%;">
-          </div>
-          <div style="display: flex; gap: 8px; align-items: center;">
-            <button type="button" id="btnToggleCampaignViewMode" class="btn btn-secondary btn-sm" style="font-size: 11.5px; border-color: rgba(56, 189, 248, 0.35); color: var(--sky);">
-              🗂️ View: Grouped Master Sheets
-            </button>
-            <select id="campaignSortSelect" class="form-select" style="width: auto;">
-              <option value="newest">Newest First</option>
-              <option value="running">Running First</option>
-              <option value="scheduled">Scheduled Soonest</option>
-              <option value="oldest">Oldest First</option>
-              <option value="name">Name (A-Z)</option>
-            </select>
-            <select id="campaignPageSizeSelect" class="form-select" style="width: auto;">
-              <option value="50">50 per page</option>
-              <option value="100">100 per page</option>
-              <option value="250">250 per page</option>
-              <option value="all">All</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- NEW: Master Parent-Child Aggregated Cards Container -->
-        <div id="aggregatedCampaignsContainer" style="display: block; margin-bottom: 20px;"></div>
-
-        <div id="rawCampaignsTableWrapper" class="table-responsive" style="display: none;">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Campaign Batch Name</th>
-                <th>Template</th>
-                <th>Sender Account & Engine</th>
-                <th>Scheduled / Started</th>
-                <th>Status</th>
-                <th>Progress (Sent / Total)</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="campaignsTableBody">
-              <tr>
-                <td colspan="8" class="table-empty">No campaigns executed yet.</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- Pagination Bar -->
-        <div class="pagination-bar"
-          style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border-color);">
-          <div class="page-info" id="campaignPageInfo" style="font-size: 12px; color: var(--text-muted);">Showing 0 of 0
-            campaigns</div>
-          <div style="display: flex; gap: 6px; align-items: center;">
-            <button id="btnCampPrev" class="btn btn-secondary btn-sm page-btn" disabled>◀ Prev</button>
-            <span id="campPageNumbers" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">Page 1 /
-              1</span>
-            <button id="btnCampNext" class="btn btn-secondary btn-sm page-btn" disabled>Next ▶</button>
-          </div>
         </div>
       </div>
     </section>
@@ -1146,16 +1152,20 @@
         </div>
       </div>
 
-      <!-- Recipient Records Table -->
-      <h5 style="font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 8px;">📋 Recipient Pipeline Records</h5>
-      <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
-        <table class="data-table">
+      <!-- Recipient Records Table Header & Counter -->
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <h5 style="font-size: 12px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; margin: 0;">📋 Recipient Pipeline Records</h5>
+        <span id="drawerRecipientCount" style="font-size: 11px; color: var(--text-muted); font-weight: 600;">Showing 0 recipients</span>
+      </div>
+
+      <div class="drawer-table-scroll">
+        <table class="data-table" style="margin: 0;">
           <thead>
             <tr>
-              <th>Recipient Email</th>
-              <th>Status</th>
-              <th>Attempts</th>
-              <th>Last Error</th>
+              <th style="width: 40%;">Recipient Email</th>
+              <th style="width: 15%;">Status</th>
+              <th style="width: 10%; text-align: center;">Tries</th>
+              <th style="width: 35%;">Last Dispatch Detail / Error</th>
             </tr>
           </thead>
           <tbody id="drawerRecipientsTableBody">
