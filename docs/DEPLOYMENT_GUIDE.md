@@ -126,78 +126,97 @@ Set these under **Configuration $\to$ Application Settings** in Azure Portal:
 
 ---
 
-## 5. Plesk Obsidian & Debian 12 Linux Deployment (VPS / Dedicated)
+## 5. Plesk Obsidian & Debian 12 Linux Production Deployment
 
-For hosting on standard Linux servers managed with **Plesk Obsidian (Debian 12.15)** (as referenced in `read-from-this.txt`):
+Detailed infrastructure reference for hosting `azure-graph-mailer` on **Plesk Obsidian (v18.0.80) on Debian 12.15 (Linux)**.
 
-### 5.1 Server Access & Prerequisites
-1. **Enable SSH Access**:
-   * In Plesk, navigate to **Websites & Domains** > Target Domain (e.g., `mailer.yourdomain.com`).
-   * Click **Web Hosting Access** (or **FTP & SSH Access**).
-   * Switch **Access to the server over SSH** from *Forbidden* to `/bin/bash`.
-   * Set a password for the system user.
-2. **Verify Node.js Version**:
-   * Connect via SSH: `ssh your_user@your_server_ip -p 22`
-   * Check Node version: `node -v` (Must be **Node.js 20 LTS** or **22 LTS** for native `node:sqlite`).
-   * If Node.js is missing, install via NodeSource:
-     ```bash
-     curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-     apt-get install -y nodejs
-     ```
+---
 
-### 5.2 Automated GitHub CI/CD Deployment via Plesk Git Extension
+### 5.1 Server Specifications & SSH Access
+* **Domain / URL:** `https://mailapp.balajiimpex.store`
+* **Parent Subscription Domain:** `balajiimpex.store`
+* **Server IP Address:** `192.99.152.30` (Port `22`)
+* **System / SSH User:** `balajiimpex.store_bml3kawopzt`
+* **Shell Access Type:** `/bin/bash` (Configured in Plesk under *Hosting Settings* > *System user's credentials* > *SSH access*)
+* **Home Directory:** `/var/www/vhosts/balajiimpex.store`
+* **Web Root / App Directory:** `/var/www/vhosts/balajiimpex.store/mailapp.balajiimpex.store`
 
-Plesk includes a native **Git** extension that auto-pulls from GitHub on commit:
-
-1. In Plesk, navigate to **Websites & Domains** > `mailapp.balajiimpex.store` > **Git**.
-2. Configure repository settings:
-   * **Remote repository**: Selected
-   * **Repository URL**: `https://github.com/checkingm13-cell/azure-graph-mailer/`
-   * **Username**: `checkingm13-cell`
-   * **Password**: *GitHub Personal Access Token (Classic with `repo` scope)*
-   * **Repository name**: `mailapp.git`
-   * **Deployment mode**: **Automatic**
-   * **Server path**: `/mailapp.balajiimpex.store` (or `/httpdocs`)
-3. Check **Enable additional deployment actions** and paste:
-   ```bash
-   npm install --omit=dev
-   if ! command -v pm2 &> /dev/null; then
-       npm install -g pm2
-   fi
-   pm2 restart mailapp || pm2 start src/app.js --name "mailapp"
-   pm2 save
-   ```
-4. Click **OK**. Any `git push origin main` will now automatically pull, install packages, and restart PM2 without manual server access.
-
-### 5.3 Manual CLI Deployment & Background PM2 Setup
+#### Direct Terminal Connection:
 ```bash
-# Navigate to web root
-cd /var/www/vhosts/balajiimpex.store/mailapp.balajiimpex.store
-
-# Clone repository or pull latest
-git clone https://github.com/checkingm13-cell/azure-graph-mailer/ .
-
-# Install production dependencies
-npm install --omit=dev
-
-# Verify environment file (.env)
-cat << 'EOF' > .env
-PORT=5000
-NODE_ENV=production
-DB_PATH=data/mailer.db
-API_KEY=your_secure_api_key
-EOF
-
-# Install PM2 globally and launch
-npm install -g pm2
-pm2 start src/app.js --name "mailapp"
-pm2 save
-pm2 startup
+ssh balajiimpex.store_bml3kawopzt@192.99.152.30 -p 22
 ```
 
-### 5.4 Nginx Reverse Proxy Configuration in Plesk
-1. In Plesk, go to **Websites & Domains** > **Apache & nginx Settings**.
-2. Under **Additional nginx directives**, insert:
+---
+
+### 5.2 Server Runtimes: Node.js & PM2 Paths
+On Plesk Debian 12, Node.js binaries live under Plesk's versioned path:
+* **Node.js 22 LTS Binary:** `/opt/plesk/node/22/bin/node` (v22.23.2)
+* **npm Binary:** `/opt/plesk/node/22/bin/npm` (v10.9.8)
+* **Native SQLite Support:** Native `node:sqlite` verified and active.
+* **PM2 Process Manager:** Installed in user prefix:
+  * Binary: `/var/www/vhosts/balajiimpex.store/.npm-global/bin/pm2` (v7.0.4)
+  * Exported in `~/.bashrc`:
+    ```bash
+    export PATH=/opt/plesk/node/22/bin:/var/www/vhosts/balajiimpex.store/.npm-global/bin:$PATH
+    ```
+
+---
+
+### 5.3 Remote GitHub Repository Sync & CI/CD
+The server directory is initialized as a live tracking Git repository:
+* **Remote Origin:** `https://github.com/checkingm13-cell/azure-graph-mailer.git`
+* **Branch:** `main`
+
+#### Updating Server to Latest Commit:
+Whenever code is pushed to GitHub, run this single command to pull and restart:
+```bash
+cd /var/www/vhosts/balajiimpex.store/mailapp.balajiimpex.store
+git fetch origin main
+git reset --hard origin/main
+~/.npm-global/bin/pm2 restart azure-graph-mailer
+```
+
+---
+
+### 5.4 PM2 24/7 Process Management
+The application runs continuously as **`azure-graph-mailer`**:
+* **Process Name:** `azure-graph-mailer`
+* **Internal Port:** `5000` (`http://127.0.0.1:5000`)
+* **State File:** `/var/www/vhosts/balajiimpex.store/.pm2/dump.pm2`
+
+#### Essential Commands:
+```bash
+# Check status:
+~/.npm-global/bin/pm2 status
+
+# View live logs:
+~/.npm-global/bin/pm2 logs azure-graph-mailer
+
+# Restart process:
+~/.npm-global/bin/pm2 restart azure-graph-mailer
+
+# Save state for server reboots:
+~/.npm-global/bin/pm2 save
+```
+
+---
+
+### 5.5 Plesk Nginx Reverse Proxy Configuration
+To route incoming traffic from `https://mailapp.balajiimpex.store` to the Node.js process on port `5000`:
+
+1. Go to **Websites & Domains** > `mailapp.balajiimpex.store` > **Apache & nginx Settings**.
+2. **Proxy Mode Note:**
+   * If Proxy mode is **ON**, do **NOT** define a manual `location /` in *Additional nginx directives*, or Nginx will error with:
+     ```text
+     nginx: [emerg] duplicate location "/" in vhost_nginx.conf
+     ```
+   * **Fix:** Either turn **Proxy mode OFF** before adding the custom `location /` directive, OR use **Additional Apache directives**:
+     ```apache
+     ProxyPreserveHost On
+     ProxyPass / http://127.0.0.1:5000/
+     ProxyPassReverse / http://127.0.0.1:5000/
+     ```
+3. Direct Nginx configuration (with Proxy Mode OFF):
    ```nginx
    location / {
        proxy_pass http://127.0.0.1:5000;
@@ -214,23 +233,22 @@ pm2 startup
        client_max_body_size 50M;
    }
    ```
-### 5.5 Troubleshooting Live Logs & Common Plesk Issues
+
+---
+
+### 5.6 Troubleshooting Live Logs & Common Plesk Issues
 
 #### 1. Let's Encrypt ACME Challenge Succeeded (`/.well-known/acme-challenge/` -> 200 OK)
-* **Log Evidence:** Lines 64–73 in `read-from-this.txt` show Let's Encrypt servers connecting and receiving `200 OK` on `/.well-known/acme-challenge/`.
-* **Result:** Your SSL certificate has been successfully validated and issued! HTTPS is now working.
+* **Log Evidence:** Lines 64–73 in server logs showed Let's Encrypt servers connecting and receiving `200 OK` on `/.well-known/acme-challenge/`.
+* **Result:** SSL certificate successfully validated and issued. HTTPS is active on `mailapp.balajiimpex.store`.
 
 #### 2. Serving Plesk Default Page (`200 GET / HTTP/1.1`) vs Node App
-* **Log Evidence:** Lines 74–92 show incoming visitors getting `200 GET / HTTP/1.1` (size 4.93 KB, which is Plesk's default `index.html` placeholder).
-* **Fix:** To replace the default placeholder with your mailer dashboard:
-  1. Go to **Websites & Domains** > `mailapp.balajiimpex.store` > **Apache & nginx Settings**.
-  2. In **Additional nginx directives**, ensure the `proxy_pass http://127.0.0.1:5000;` block from Section 5.4 is present.
-  3. Ensure **Proxy mode** is checked or uncheck **Serve static files directly by nginx** so Nginx forwards `/` to Node.js port 5000.
-  4. In Plesk **Files**, delete or rename `index.html` in `/mailapp.balajiimpex.store` if Apache is serving it before the proxy.
+* **Cause:** Default `index.html` file in `/mailapp.balajiimpex.store` intercepted requests before proxying.
+* **Fix:** Deleted/renamed `index.html` to `index.html.bak`.
 
-#### 3. Resolving `500 GET /favicon.ico` Error
-* **Log Evidence:** Line 76 shows `500 GET /favicon.ico`.
-* **Fix:** Express requires `public/favicon.ico` or a favicon handler to prevent Apache fallback from generating 500 errors. The app serves static assets from `/public`. Ensure `express.static(path.join(__dirname, '../public'))` is enabled in `src/app.js`.
+#### 3. Resolving 500 Error on Campaign Launch (`start is not defined`)
+* **Cause:** In `src/routes/api.js`, the batch slice loop was missing `const start = i * numericBatchSize; const end = start + numericBatchSize;`.
+* **Fix:** Added `start` and `end` definitions in commit `1f17bb7`, synced to server, and restarted PM2.
 
 ---
 
