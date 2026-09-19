@@ -690,14 +690,24 @@
             <div class="form-group"><label class="form-label">Template Identifier</label><input type="text" id="tplName"
                 class="form-input" placeholder="e.g. Call for Papers - Medical Track" required></div>
             <div class="form-group">
-              <label class="form-label">Subject Line</label>
-              <div class="tag-pills"><span class="tag-pill" data-target="tplSubject" data-tag="{{Name}}">+
-                  {{Name}}</span><span class="tag-pill" data-target="tplSubject" data-tag="{{domain}}" title="Recipient email domain">+
-                  {{domain}}</span><span class="tag-pill" data-target="tplSubject" data-tag="{{senderDomain}}" title="Sender mailbox domain (e.g. theparipexjournal.com)">+
-                  {{senderDomain}}</span><span class="tag-pill" data-target="tplSubject" data-tag="{{Paper Title}}">+ {{Paper
-                  Title}}</span></div>
-              <input type="text" id="tplSubject" class="form-input"
-                placeholder="Invitation: {{Paper Title}} - Journal ParipEx" required>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <label class="form-label" style="margin-bottom: 0;">Subject Line(s)</label>
+                <span class="badge badge-completed" style="font-size: 10.5px; padding: 2px 8px;" title="Separate subjects with | or newlines for automated round-robin A/B rotation">
+                  🎲 Multi-Subject A/B Rotation (use | or newline)
+                </span>
+              </div>
+              <div class="tag-pills">
+                <span class="tag-pill" data-target="tplSubject" data-tag="{{Name}}">+ {{Name}}</span>
+                <span class="tag-pill" data-target="tplSubject" data-tag="{{domain}}" title="Recipient email domain">+ {{domain}}</span>
+                <span class="tag-pill" data-target="tplSubject" data-tag="{{senderDomain}}" title="Sender mailbox domain (e.g. theparipexjournal.com)">+ {{senderDomain}}</span>
+                <span class="tag-pill" data-target="tplSubject" data-tag="{{Paper Title}}">+ {{Paper Title}}</span>
+                <span class="tag-pill" data-target="tplSubject" data-tag=" | " style="background: rgba(168, 85, 247, 0.15); border-color: rgba(168, 85, 247, 0.4); color: var(--purple); font-weight: 700;" title="Add another subject line variation">+ ➕ Add Subject Variation ( | )</span>
+              </div>
+              <textarea id="tplSubject" class="form-textarea font-mono" rows="2"
+                placeholder="Call for Papers: {{Paper Title}} | Invitation to Publish: Dr. {{Name}} - {{senderDomain}}" required style="min-height: 52px; font-size: 12.5px;"></textarea>
+              <div style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">
+                💡 <em>Tip: Separate multiple subject lines using <code>|</code> or newlines. Each recipient in your campaign will receive a unique rotated variation!</em>
+              </div>
             </div>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                 <label class="form-label" style="margin-bottom: 0;">Email Body (HTML supported)</label>

@@ -160,7 +160,8 @@ class BatchChainManager {
       const campaignId = campRes.lastInsertRowid;
       
       // Insert queue items
-      for (const contact of batchContacts) {
+      for (let cIdx = 0; cIdx < batchContacts.length; cIdx++) {
+        const contact = batchContacts[cIdx];
         upsertContact.run(
           contact.email,
           contact.name || '',
@@ -170,8 +171,8 @@ class BatchChainManager {
         
         const contactRecord = db.prepare('SELECT id FROM contacts WHERE email = ?').get(contact.email);
         
-        const renderedSubject = renderTemplate(template.subject, contact);
-        const renderedBody = renderTemplate(template.body_html, contact);
+        const renderedSubject = renderTemplate(template.subject, { ...contact, _index: cIdx });
+        const renderedBody = renderTemplate(template.body_html, { ...contact, _index: cIdx });
         
         insertQueue.run(
           campaignId,

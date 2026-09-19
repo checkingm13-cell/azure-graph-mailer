@@ -34,6 +34,58 @@ function renderTemplate(templateStr, data = {}) {
 
   let result = templateStr;
 
+  // Smart Multi-Subject & Spintax Rotation Support:
+  // If templateStr contains multiple variations separated by pipe (|) or newline, pick dynamically
+  if (result.includes('|') || result.includes('\n')) {
+    const rawParts = result.includes('|')
+      ? result.split('|')
+      : result.split(/\r?\n/);
+    const variations = rawParts.map(p => p.trim()).filter(Boolean);
+
+    if (variations.length > 1) {
+      // Deterministic selection based on recipient index or email hash
+      let chosenIdx = 0;
+      if (typeof data._index === 'number' && data._index >= 0) {
+        chosenIdx = data._index % variations.length;
+      } else if (data.email) {
+        // Simple fast string hash for deterministic selection per contact
+        let hash = 0;
+        for (let i = 0; i < data.email.length; i++) {
+          hash = ((hash << 5) - hash) + data.email.charCodeAt(i);
+          hash |= 0;
+        }
+        chosenIdx = Math.abs(hash) % variations.length;
+      } else {
+        chosenIdx = Math.floor(Math.random() * variations.length);
+      }
+      result = variations[chosenIdx];
+    }
+  }
+
+  // Support inline spintax: {Option A|Option B|Option C}
+  if (result.includes('{') && result.includes('}')) {
+    result = result.replace(/\{([^{}]+)\}/g, (match, choices) => {
+      const parts = choices.split('|');
+      if (parts.length > 1) {
+        let pickIdx = 0;
+        if (typeof data._index === 'number') {
+          pickIdx = data._index % parts.length;
+        } else if (data.email) {
+          let hash = 0;
+          for (let i = 0; i < data.email.length; i++) {
+            hash = ((hash << 3) - hash) + data.email.charCodeAt(i);
+            hash |= 0;
+          }
+          pickIdx = Math.abs(hash) % parts.length;
+        } else {
+          pickIdx = Math.floor(Math.random() * parts.length);
+        }
+        return parts[pickIdx].trim();
+      }
+      return match;
+    });
+  }
+
   const recipientDomain = (data.email && data.email.includes('@'))
     ? data.email.split('@')[1].trim().toLowerCase()
     : '';
