@@ -31,7 +31,13 @@ const config = {
   ociSmtpPort: parseInt(process.env.OCI_SMTP_PORT || '587', 10),
   ociSmtpUser: process.env.OCI_SMTP_USER || '',
   ociSmtpPass: process.env.OCI_SMTP_PASS || '',
-  ociSenderEmail: process.env.OCI_SENDER_EMAIL || 'newsletter@education.yourpaperedition.com'
+  ociSenderEmail: process.env.OCI_SENDER_EMAIL || 'newsletter@education.yourpaperedition.com',
+
+  // Mailgun REST API Delivery
+  mailgunApiKey: process.env.MAILGUN_API_KEY || '',
+  mailgunDomain: process.env.MAILGUN_DOMAIN || '',
+  mailgunHost: process.env.MAILGUN_HOST || 'https://api.mailgun.net',
+  mailgunSenderEmail: process.env.MAILGUN_SENDER_EMAIL || ''
 };
 
 module.exports = Object.freeze(config);

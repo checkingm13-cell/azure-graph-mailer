@@ -1589,6 +1589,7 @@ router.post('/send-test', async (req, res) => {
     const { sendViaGraph } = require('../services/graphMailer');
     const { sendViaACS } = require('../services/acsMailer');
     const { sendViaOCI } = require('../services/ociMailer');
+    const { sendViaMailgun } = require('../services/mailgunMailer');
 
     const dispatchAction = async () => {
       if (account.provider === 'AZURE_ACS') {
@@ -1600,6 +1601,13 @@ router.post('/send-test', async (req, res) => {
         });
       } else if (account.provider === 'OCI') {
         return await sendViaOCI({
+          fromEmail: account.email,
+          toEmail: toEmail.trim(),
+          subject,
+          htmlBody: content
+        });
+      } else if (account.provider === 'MAILGUN') {
+        return await sendViaMailgun({
           fromEmail: account.email,
           toEmail: toEmail.trim(),
           subject,
