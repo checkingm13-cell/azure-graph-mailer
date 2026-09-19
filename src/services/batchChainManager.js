@@ -171,8 +171,8 @@ class BatchChainManager {
         
         const contactRecord = db.prepare('SELECT id FROM contacts WHERE email = ?').get(contact.email);
         
-        const renderedSubject = renderTemplate(template.subject, { ...contact, _index: cIdx });
-        const renderedBody = renderTemplate(template.body_html, { ...contact, _index: cIdx });
+        const renderedSubject = renderTemplate(template.subject, { ...contact, _index: cIdx }, true);
+        const renderedBody = renderTemplate(template.body_html, { ...contact, _index: cIdx }, false);
         
         insertQueue.run(
           campaignId,

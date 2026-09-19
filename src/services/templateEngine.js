@@ -27,16 +27,20 @@ function extractApexDomain(domainOrEmail) {
   return parts.slice(-2).join('.');
 }
 
-function renderTemplate(templateStr, data = {}) {
+function renderTemplate(templateStr, data = {}, isSubject = null) {
   if (!templateStr || typeof templateStr !== 'string') {
     return '';
   }
 
   let result = templateStr;
 
-  // Smart Multi-Subject & Spintax Rotation Support:
-  // If templateStr contains multiple variations separated by pipe (|) or newline, pick dynamically
-  if (result.includes('|') || result.includes('\n')) {
+  // Auto-detect if content is HTML (never treat HTML email body as multi-subject variations)
+  const isHtml = /<\/?[a-z][\s\S]*>/i.test(result);
+  const shouldRotateVariations = (isSubject === true) || (isSubject === null && !isHtml && (result.includes('|') || result.includes('\n')));
+
+  // Smart Multi-Subject Rotation Support:
+  // If templateStr is a subject and contains multiple variations separated by pipe (|) or newline, pick dynamically
+  if (shouldRotateVariations) {
     const rawParts = result.includes('|')
       ? result.split('|')
       : result.split(/\r?\n/);

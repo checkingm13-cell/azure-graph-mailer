@@ -389,12 +389,12 @@ class QueueWorker {
               sender_email: account.email,
               email: item.email,
               name: item.name
-            });
+            }, true);
             const dynamicHtml = renderTemplate(item.rendered_html, {
               sender_email: account.email,
               email: item.email,
               name: item.name
-            });
+            }, false);
 
             if (account.provider === 'AZURE_ACS') {
               try {

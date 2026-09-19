@@ -1230,8 +1230,8 @@ router.post('/campaigns/launch-batches', (req, res) => {
           ? activeTemplates[(i * numericBatchSize + cIdx) % activeTemplates.length]
           : batchPrimaryTemplate;
 
-        const renderedSubject = renderTemplate(assignedTemplate.subject, { ...c, _index: cIdx });
-        const renderedBody = renderTemplate(assignedTemplate.body_html, { ...c, _index: cIdx });
+        const renderedSubject = renderTemplate(assignedTemplate.subject, { ...c, _index: cIdx }, true);
+        const renderedBody = renderTemplate(assignedTemplate.body_html, { ...c, _index: cIdx }, false);
         queueInsert.run(campaignId, contactId, c.email, c.name || '', renderedSubject, renderedBody, batchScheduledAt, assignedTemplate.id);
       }
 
@@ -1531,8 +1531,8 @@ router.post('/campaigns/:id/clone', (req, res) => {
       };
 
       const assignedTemplate = activeTemplates[cIdx % activeTemplates.length];
-      const renderedSubject = renderTemplate(assignedTemplate.subject, { ...cObj, email: it.email, _index: cIdx });
-      const renderedBody = renderTemplate(assignedTemplate.body_html, { ...cObj, email: it.email, _index: cIdx });
+      const renderedSubject = renderTemplate(assignedTemplate.subject, { ...cObj, email: it.email, _index: cIdx }, true);
+      const renderedBody = renderTemplate(assignedTemplate.body_html, { ...cObj, email: it.email, _index: cIdx }, false);
       queueInsert.run(newCampId, contact?.id || null, it.email, it.name || '', renderedSubject, renderedBody, nowSql, assignedTemplate.id);
     }
 
