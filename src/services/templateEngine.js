@@ -129,12 +129,19 @@ function renderTemplate(templateStr, data = {}) {
   }
 
   // Safe anchor-only link rewriting (e.g. <a href="/submit-paper"> -> <a href="https://${senderDomain}/submit-paper">)
-  // Ensures images (<img src="...">) and scripts (<script src="...">) are never modified
+  // Also fix any links where senderDomain was inserted without https:// protocol or ended up with https://https://
   if (senderDomain) {
     result = result.replace(/<a\b([^>]*?)\bhref=["'](\/(?!\/)[^"']*)["']([^>]*)>/gi, (match, prefix, path, suffix) => {
       return `<a${prefix}href="https://${senderDomain}${path}"${suffix}>`;
     });
+    // If a template has href="theparipexjournal.com/..." without http(s)://, auto-prepend https://
+    const escapedDomain = senderDomain.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const missingProtocolRegex = new RegExp(`(<a\\b[^>]*?\\bhref=["'])(?:https?:\\/\\/)?(${escapedDomain}[^"']*)(["'][^>]*>)`, 'gi');
+    result = result.replace(missingProtocolRegex, '$1https://$2$3');
   }
+
+  // Clean up any inadvertent double https://https://
+  result = result.replace(/https?:\/\/https?:\/\//gi, 'https://');
 
   return result;
 }
