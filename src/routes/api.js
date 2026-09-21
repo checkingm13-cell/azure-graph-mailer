@@ -88,6 +88,33 @@ async function parseSpreadsheetRows(filePath, originalName = '') {
   return rows;
 }
 
+// 0. AUTO-DEPLOYMENT WEBHOOK (Auto-pull from GitHub origin/main and restart PM2)
+router.all('/webhook/deploy', (req, res) => {
+  const secret = req.query.secret || req.headers['x-deploy-secret'] || (req.body && req.body.secret);
+  const expectedSecret = process.env.DEPLOY_SECRET || 'balaji_deploy_2026';
+
+  if (secret !== expectedSecret) {
+    return res.status(403).json({ ok: false, error: 'Unauthorized: Invalid deployment secret.' });
+  }
+
+  res.json({ ok: true, message: '🚀 Deployment initiated. Synchronizing with origin/main and reloading PM2...' });
+
+  const projectRoot = path.resolve(__dirname, '../../');
+  const pm2Bin = fs.existsSync('/var/www/vhosts/balajiimpex.store/.npm-global/bin/pm2')
+    ? '/var/www/vhosts/balajiimpex.store/.npm-global/bin/pm2'
+    : 'pm2';
+
+  const deployCmd = `git fetch origin main && git reset --hard origin/main && ${pm2Bin} restart all`;
+  const { exec } = require('child_process');
+  exec(deployCmd, { cwd: projectRoot }, (error, stdout, stderr) => {
+    if (error) {
+      console.error('[AutoDeploy Webhook] Deployment error:', error.message);
+    } else {
+      console.log('[AutoDeploy Webhook] Deployment successful:', stdout);
+    }
+  });
+});
+
 // 1. TELEMETRY & STATUS
 router.get('/status', (req, res) => {
   const workerStatus = queueWorker.getStatus();
