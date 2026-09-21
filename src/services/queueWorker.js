@@ -302,21 +302,33 @@ class QueueWorker {
 
         const dispatchPromises = queueItems.map(async (item, idx) => {
           // Match account respecting campaign policy:
-          // Pinned/assigned account has first preference, but AUTOMATICALLY falls back to any available
-          // healthy account in the pool if pinned is maxed out, cooled down, throttled, or already busy.
+          // Pinned account is STRICT: only that account sends, no leak to other pool accounts.
+          // Fallback to pool ONLY when campaign explicitly allows it (fallback_allowed = 1).
           let account = null;
 
           if (item.campaign_pinned_account_id) {
-            // First priority: lease pinned account if healthy and not already leased in this cycle
-            account = availableAccounts.find(a => a.id === item.campaign_pinned_account_id && !assignedAccountIds.has(a.id));
+            // Pinned/selected sender: Find it in available accounts.
+            // DELIBERATELY skip assignedAccountIds check — same pinned account can handle
+            // multiple emails in the same dispatch cycle. This prevents "leak" where
+            // selecting 1 sender still rotated through all pool accounts.
+            account = availableAccounts.find(a => a.id === item.campaign_pinned_account_id);
 
-            // Auto-Fallback: If pinned account is throttled, cooled down, or has reached daily limit (sent_today >= daily_limit),
-            // AUTOMATICALLY fall back to any available healthy account in the pool so no batch is EVER stuck!
-            if (!account) {
+            if (!account && item.campaign_fallback_allowed === 1) {
+              // Fallback ONLY if campaign explicitly allows it (user opted in)
               account = availableAccounts.find(a => !assignedAccountIds.has(a.id)) || availableAccounts[idx % availableAccounts.length];
               if (account) {
-                console.log(`[QueueWorker] 🔄 Pinned/assigned sender (ID: ${item.campaign_pinned_account_id}) busy, cooled down, or reached daily limit. Auto-falling back to pool account: ${account.email}`);
+                console.log(`[QueueWorker] 🔄 Pinned sender (ID: ${item.campaign_pinned_account_id}) unavailable. Fallback allowed — using pool account: ${account.email}`);
               }
+            } else if (!account) {
+              // Pinned account not available and fallback NOT allowed — postpone, don't leak!
+              console.log(`[QueueWorker] ⏳ Pinned sender (ID: ${item.campaign_pinned_account_id}) unavailable (cooldown/quota). Fallback disabled — postponing "${item.email}" 60s.`);
+              db.prepare(`
+                UPDATE queue
+                SET scheduled_at = datetime('now', '+330 minutes', '+60 seconds'),
+                    last_error = 'Pinned sender unavailable. Waiting for cooldown/quota refresh (no fallback).'
+                WHERE id = ?
+              `).run(item.id);
+              return;
             }
           } else {
             // General pool rotation: Fair round-robin across healthy accounts
