@@ -128,6 +128,8 @@ class AccountPool {
       ON CONFLICT(email) DO UPDATE SET
         display_name = excluded.display_name,
         provider = excluded.provider,
+        daily_limit = excluded.daily_limit,
+        cooldown_seconds = excluded.cooldown_seconds,
         oci_region = excluded.oci_region,
         is_active = 1
     `);

@@ -180,6 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const accDailyLimitInput = document.getElementById('accDailyLimit');
   const accCooldownInput = document.getElementById('accCooldown');
   const accEmailInput = document.getElementById('accEmail');
+  const accDisplayNameInput = document.getElementById('accDisplayName');
 
   function updateProviderHelp(provider) {
     if (ociRegionGroup) {
@@ -1097,59 +1098,72 @@ document.addEventListener('DOMContentLoaded', () => {
 
   formAddAccount.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const id = editAccountId ? editAccountId.value : '';
-    const dailyLimit = parseInt(accDailyLimitInput.value, 10);
-    const cooldownSeconds = parseInt(accCooldownInput.value, 10);
+    if (btnSubmitAccount) btnSubmitAccount.disabled = true;
 
-    if (isNaN(dailyLimit) || dailyLimit < 1) {
-      return alert('Please enter a valid daily limit (minimum 1)');
-    }
+    try {
+      const id = editAccountId ? editAccountId.value : '';
+      const email = accEmailInput ? accEmailInput.value.trim() : '';
+      const displayName = accDisplayNameInput ? accDisplayNameInput.value.trim() : '';
+      const dailyLimit = accDailyLimitInput ? parseInt(accDailyLimitInput.value, 10) : 500;
+      const cooldownSeconds = accCooldownInput ? parseInt(accCooldownInput.value, 10) : 0;
+      const provider = accProviderSelect ? accProviderSelect.value : 'GRAPH_API';
+      const oci_region = accOciRegion ? accOciRegion.value : 'ap-mumbai-1';
 
-    if (id) {
+      if (!email) {
+        alert('Please enter a valid sender email address.');
+        return;
+      }
+
+      if (isNaN(dailyLimit) || dailyLimit < 1) {
+        alert('Please enter a valid daily limit (minimum 1)');
+        return;
+      }
+
       const payload = {
-        email: accEmailInput.value.trim(),
-        displayName: accDisplayNameInput.value.trim(),
+        email,
+        displayName: displayName || email.split('@')[0],
         dailyLimit,
         cooldownSeconds: isNaN(cooldownSeconds) ? 0 : cooldownSeconds,
-        provider: accProviderSelect.value,
-        oci_region: accOciRegion ? accOciRegion.value : 'ap-mumbai-1'
+        provider,
+        oci_region
       };
-      const res = await fetch(`/api/accounts/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (data.ok) {
-        alert(`✅ Account "${payload.email || 'Sender'}" updated successfully!`);
-        resetAccountForm();
-        loadAccounts();
-        refreshTelemetry();
+
+      if (id) {
+        const res = await fetch(`/api/accounts/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.ok) {
+          alert(`✅ Account "${payload.email}" updated successfully!`);
+          resetAccountForm();
+          await loadAccounts();
+          if (typeof refreshTelemetry === 'function') refreshTelemetry();
+        } else {
+          alert('❌ ' + (data.error || 'Failed to update account'));
+        }
       } else {
-        alert(data.error || 'Failed to update account');
+        const res = await fetch('/api/accounts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.ok) {
+          alert(`✅ Sender account "${payload.email}" saved to pool successfully!`);
+          resetAccountForm();
+          await loadAccounts();
+          if (typeof refreshTelemetry === 'function') refreshTelemetry();
+        } else {
+          alert('❌ ' + (data.error || 'Failed to add account'));
+        }
       }
-    } else {
-      const payload = {
-        email: accEmailInput.value.trim(),
-        displayName: accDisplayNameInput.value.trim(),
-        dailyLimit,
-        cooldownSeconds: isNaN(cooldownSeconds) ? 0 : cooldownSeconds,
-        provider: accProviderSelect.value,
-        oci_region: accOciRegion ? accOciRegion.value : 'ap-mumbai-1'
-      };
-      const res = await fetch('/api/accounts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (data.ok) {
-        resetAccountForm();
-        loadAccounts();
-        refreshTelemetry();
-      } else {
-        alert(data.error || 'Failed to add account');
-      }
+    } catch (err) {
+      console.error('Account submission error:', err);
+      alert('❌ Error saving account: ' + err.message);
+    } finally {
+      if (btnSubmitAccount) btnSubmitAccount.disabled = false;
     }
   });
 
