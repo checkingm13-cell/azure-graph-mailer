@@ -769,7 +769,7 @@ router.get('/campaigns', (req, res) => {
 router.get('/campaigns/:id/preview', (req, res) => {
   const campId = req.params.id;
   const camp = db.prepare(`
-    SELECT c.*, t.name AS template_name, a.email AS sender_email, a.provider AS sender_provider
+    SELECT c.*, t.name AS template_name, a.email AS sender_email, a.provider AS sender_provider, a.oci_region AS sender_oci_region
     FROM campaigns c
     LEFT JOIN templates t ON c.template_id = t.id
     LEFT JOIN accounts a ON c.sender_account_id = a.id
@@ -817,7 +817,7 @@ router.get('/campaigns/:id/preview', (req, res) => {
   let sampleItems = db.prepare(`
     SELECT 
       q.id, q.email, q.name, q.subject, q.status, q.attempts, q.last_error, q.sent_at,
-      a.email AS assigned_sender_email, a.provider AS assigned_provider,
+      a.email AS assigned_sender_email, a.provider AS assigned_provider, a.oci_region AS assigned_oci_region,
       t.name AS template_name
     FROM queue q
     LEFT JOIN accounts a ON q.account_id = a.id
@@ -835,8 +835,10 @@ router.get('/campaigns/:id/preview', (req, res) => {
         dl.id, dl.recipient_email AS email, dl.recipient_name AS name, dl.subject,
         dl.status, dl.attempts, dl.error_message AS last_error, dl.completed_at AS sent_at,
         dl.sender_email AS assigned_sender_email, dl.sender_provider AS assigned_provider,
+        a.oci_region AS assigned_oci_region,
         dl.template_name
       FROM delivery_logs dl
+      LEFT JOIN accounts a ON dl.account_id = a.id
       WHERE dl.campaign_id IN (${ph})
       ORDER BY dl.id ASC
       LIMIT 100

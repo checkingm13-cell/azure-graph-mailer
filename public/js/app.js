@@ -2325,14 +2325,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const drawerTableBody = document.getElementById('drawerRecipientsTableBody');
 
     drawerBatchName.textContent = `Loading Campaign #${campaignId}...`;
-    drawerTableBody.innerHTML = `<tr><td colspan="4" class="table-empty">Loading live recipient records...</td></tr>`;
+    drawerTableBody.innerHTML = `<tr><td colspan="5" class="table-empty">Loading live recipient records...</td></tr>`;
 
     try {
       const res = await fetch(`/api/campaigns/${campaignId}/preview`);
       const data = await res.json();
       if (!data.ok || !data.campaign) {
         drawerBatchName.textContent = `Campaign #${campaignId}`;
-        drawerTableBody.innerHTML = `<tr><td colspan="4" class="table-empty">Campaign records not found.</td></tr>`;
+        drawerTableBody.innerHTML = `<tr><td colspan="5" class="table-empty">Campaign records not found.</td></tr>`;
         return;
       }
 
@@ -2352,7 +2352,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (!data.sampleItems || data.sampleItems.length === 0) {
-        drawerTableBody.innerHTML = `<tr><td colspan="4" class="table-empty">No queue records found for this batch.</td></tr>`;
+        drawerTableBody.innerHTML = `<tr><td colspan="5" class="table-empty">No queue records found for this batch.</td></tr>`;
       } else {
         drawerTableBody.innerHTML = data.sampleItems.map(item => {
           let statusBadge = '<span class="badge badge-queued" style="font-size: 10px;">QUEUED</span>';
@@ -2369,14 +2369,48 @@ document.addEventListener('DOMContentLoaded', () => {
             ? `<span style="font-size: 11px; font-weight: 500; color: ${isTimeout ? 'var(--amber)' : 'var(--rose)'};" title="${escapeHtml(item.last_error)}">
                 ${isTimeout ? '⏱️ ' : '❌ '}${escapeHtml(item.last_error)}
                </span>`
-            : '<span style="color: var(--text-muted); font-size: 11px;">-</span>';
+            : (item.sent_at ? `<span style="color: var(--text-muted); font-size: 11px;">Sent: ${item.sent_at}</span>` : '<span style="color: var(--text-muted); font-size: 11px;">-</span>');
+
+          // Render Sender Mailbox & Engine / Region
+          let senderDisplay = '';
+          if (item.assigned_sender_email) {
+            const providerTag = item.assigned_provider === 'OCI'
+              ? `🏛️ OCI (${item.assigned_oci_region || 'ap-mumbai-1'})`
+              : (item.assigned_provider === 'AZURE_ACS' ? '⚡ Azure ACS' : (item.assigned_provider === 'MAILGUN' ? '🚀 Mailgun' : '🔷 Graph API'));
+            senderDisplay = `
+              <div style="font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--sky); word-break: break-all;" title="Dispatched from this sender mailbox">
+                ${escapeHtml(item.assigned_sender_email)}
+              </div>
+              <div style="font-size: 9.5px; color: var(--text-muted); margin-top: 2px;">
+                ${providerTag}
+              </div>
+            `;
+          } else if (data.campaign && data.campaign.sender_email) {
+            const providerTag = data.campaign.sender_provider === 'OCI'
+              ? `🏛️ OCI (${data.campaign.sender_oci_region || 'ap-mumbai-1'})`
+              : (data.campaign.sender_provider || 'Pinned');
+            senderDisplay = `
+              <div style="font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--text-secondary); word-break: break-all;">
+                ${escapeHtml(data.campaign.sender_email)}
+              </div>
+              <div style="font-size: 9.5px; color: var(--text-muted); margin-top: 2px;">
+                📌 ${providerTag}
+              </div>
+            `;
+          } else {
+            senderDisplay = `<span style="color: var(--text-muted); font-size: 11px; font-style: italic;" title="Account will be selected fairly from active pool upon dispatch">⚡ Pool (Auto-Rotate)</span>`;
+          }
 
           return `
             <tr>
-              <td style="font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; color: var(--text-primary);">${escapeHtml(item.email)}</td>
+              <td style="font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; color: var(--text-primary); word-break: break-all;">
+                ${escapeHtml(item.email)}
+                ${item.name ? `<div style="font-size: 10px; color: var(--text-muted); font-weight: normal; font-family: var(--font-sans);">${escapeHtml(item.name)}</div>` : ''}
+              </td>
+              <td>${senderDisplay}</td>
               <td>${statusBadge}</td>
               <td style="font-family: var(--font-mono); font-size: 11px; text-align: center;">${item.attempts || 0}</td>
-              <td style="max-width: 260px; word-break: break-word; line-height: 1.4;">
+              <td style="max-width: 220px; word-break: break-word; line-height: 1.4;">
                 ${errorDisplay}
               </td>
             </tr>
@@ -2384,7 +2418,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }).join('');
       }
     } catch (err) {
-      drawerTableBody.innerHTML = `<tr><td colspan="4" class="table-empty" style="color: var(--rose);">Error: ${err.message}</td></tr>`;
+      drawerTableBody.innerHTML = `<tr><td colspan="5" class="table-empty" style="color: var(--rose);">Error: ${err.message}</td></tr>`;
     }
   }
 
