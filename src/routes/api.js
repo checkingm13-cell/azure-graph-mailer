@@ -1117,8 +1117,8 @@ router.post('/campaigns/launch-batches', (req, res) => {
     const totalBatches = Math.ceil(filteredContacts.length / numericBatchSize);
     const createdCampaigns = [];
 
-    const mode = (req.body.mode || 'SMART').toUpperCase();
-    const fallbackAllowed = req.body.fallbackAllowed !== undefined ? (req.body.fallbackAllowed ? 1 : 0) : 1;
+    const mode = parsedSenderAccountId ? 'CONTROLLED' : (req.body.mode || 'SMART').toUpperCase();
+    const fallbackAllowed = req.body.fallbackAllowed !== undefined ? (req.body.fallbackAllowed ? 1 : 0) : (parsedSenderAccountId ? 0 : 1);
     const sendingSpeed = (req.body.sendingSpeed || 'BALANCED').toUpperCase();
     const customIntervalMs = parseInt(req.body.customIntervalMs || '2500', 10);
 

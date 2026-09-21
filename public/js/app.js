@@ -1651,6 +1651,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  const batchSenderSelectEl = document.getElementById('batchSenderAccountSelect');
+  if (batchSenderSelectEl) {
+    batchSenderSelectEl.addEventListener('change', () => {
+      if (batchSenderSelectEl.value) {
+        const controlledRadio = document.querySelector('input[name="sendingStrategyRadio"][value="CONTROLLED"]');
+        if (controlledRadio) controlledRadio.checked = true;
+        if (controlledOptions) controlledOptions.style.display = 'block';
+      }
+    });
+  }
+
   speedPresetRadios.forEach(r => {
     r.addEventListener('change', () => {
       if (customIntervalBox) {
@@ -1699,8 +1710,15 @@ document.addEventListener('DOMContentLoaded', () => {
       btnConfirmLaunchBatches.textContent = '⏳ Creating Campaigns & Scheduling Queue...';
       
       const senderAccountIdVal = document.getElementById('batchSenderAccountSelect')?.value;
-      const selectedStrategy = document.querySelector('input[name="sendingStrategyRadio"]:checked')?.value || 'SMART';
-      const fallbackAllowed = document.getElementById('chkFallbackAllowed') ? document.getElementById('chkFallbackAllowed').checked : true;
+      const rawSenderId = senderAccountIdVal && senderAccountIdVal !== '' ? parseInt(senderAccountIdVal, 10) : null;
+      const hasExplicitSender = !isNaN(rawSenderId) && rawSenderId > 0;
+
+      const selectedStrategy = hasExplicitSender
+        ? 'CONTROLLED'
+        : (document.querySelector('input[name="sendingStrategyRadio"]:checked')?.value || 'SMART');
+
+      const parsedSenderId = hasExplicitSender ? rawSenderId : null;
+      const fallbackAllowed = document.getElementById('chkFallbackAllowed') ? document.getElementById('chkFallbackAllowed').checked : false;
       const selectedSpeedPreset = document.querySelector('input[name="sendingSpeedPreset"]:checked')?.value || 'FAST';
       const templateRotationStrategy = document.querySelector('input[name="templateRotationStrategy"]:checked')?.value || 'PER_EMAIL';
       
@@ -1711,9 +1729,6 @@ document.addEventListener('DOMContentLoaded', () => {
       else if (selectedSpeedPreset === 'CUSTOM' && inputCustomIntervalSec) {
         customMs = Math.round(parseFloat(inputCustomIntervalSec.value || '2.5') * 1000);
       }
-
-      // Resolve sender: only use explicit account ID when Controlled + a real account is picked
-      const parsedSenderId = (selectedStrategy === 'CONTROLLED' && senderAccountIdVal) ? parseInt(senderAccountIdVal, 10) : null;
 
       const payload = {
         baseCampaignName: batchBaseCampaignName.value.trim() || currentPreviewData.baseCampaignName,
@@ -1726,7 +1741,7 @@ document.addEventListener('DOMContentLoaded', () => {
         scheduledStartTime: (campaignScheduledStartTime && campaignScheduledStartTime.value) ? campaignScheduledStartTime.value : '',
         staggerMinutes: parseInt(campaignStaggerMinutes ? campaignStaggerMinutes.value || '60' : '60', 10),
         contacts: currentPreviewData.contacts,
-        senderAccountId: (!isNaN(parsedSenderId) && parsedSenderId) ? parsedSenderId : null,
+        senderAccountId: parsedSenderId,
         mode: selectedStrategy,
         fallbackAllowed: fallbackAllowed,
         sendingSpeed: selectedSpeedPreset,
@@ -3027,7 +3042,11 @@ document.addEventListener('DOMContentLoaded', () => {
       // Sender strategy
       const sendingStrategy = document.querySelector('input[name="rerunStrategyRadio"]:checked')?.value || 'SMART';
       const senderVal = rerunSenderAccountSelect ? rerunSenderAccountSelect.value : '';
-      const fallbackAllowed = chkRerunFallbackAllowed ? chkRerunFallbackAllowed.checked : true;
+      const rawRerunSenderId = senderVal && senderVal !== '' ? parseInt(senderVal, 10) : null;
+      const hasExplicitRerunSender = !isNaN(rawRerunSenderId) && rawRerunSenderId > 0;
+      const effectiveRerunStrategy = hasExplicitRerunSender ? 'CONTROLLED' : sendingStrategy;
+      const effectiveRerunSenderId = hasExplicitRerunSender ? rawRerunSenderId : null;
+      const fallbackAllowed = chkRerunFallbackAllowed ? chkRerunFallbackAllowed.checked : false;
 
       // Sending speed preset
       const sendingSpeed = document.querySelector('input[name="rerunSpeedPreset"]:checked')?.value || 'BALANCED';
@@ -3051,8 +3070,8 @@ document.addEventListener('DOMContentLoaded', () => {
           mode,
           templateId,
           templateIds,
-          sendingStrategy,
-          senderAccountId: (sendingStrategy === 'CONTROLLED' && senderVal) ? parseInt(senderVal, 10) : null,
+          sendingStrategy: effectiveRerunStrategy,
+          senderAccountId: effectiveRerunSenderId,
           fallbackAllowed,
           sendingSpeed,
           customIntervalMs
