@@ -431,7 +431,8 @@ class QueueWorker {
                     fromEmail: ociAccount.email,
                     toEmail: item.email,
                     subject: dynamicSubject,
-                    htmlBody: dynamicHtml
+                    htmlBody: dynamicHtml,
+                    region: ociAccount.oci_region || 'auto'
                   }), 15000, 'OCI Failover dispatch');
                   account = ociAccount; // Re-bind account so metrics attribute correctly
                 } else {
@@ -443,7 +444,8 @@ class QueueWorker {
                 fromEmail: account.email,
                 toEmail: item.email,
                 subject: dynamicSubject,
-                htmlBody: dynamicHtml
+                htmlBody: dynamicHtml,
+                region: account.oci_region || 'auto'
               }), 15000, 'OCI SMTP dispatch');
             } else if (account.provider === 'MAILGUN') {
               await withTimeout(sendViaMailgun({

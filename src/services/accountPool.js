@@ -121,16 +121,17 @@ class AccountPool {
    * Preserves user-configured daily_limit and cooldown_seconds on conflict!
    * @param {Object} account
    */
-  static upsertAccount({ email, displayName, provider = 'GRAPH_API', dailyLimit = 500, cooldownSeconds = 0 }) {
+  static upsertAccount({ email, displayName, provider = 'GRAPH_API', dailyLimit = 500, cooldownSeconds = 0, ociRegion = 'ap-mumbai-1' }) {
     const stmt = db.prepare(`
-      INSERT INTO accounts (email, display_name, provider, daily_limit, cooldown_seconds, is_active)
-      VALUES (?, ?, ?, ?, ?, 1)
+      INSERT INTO accounts (email, display_name, provider, daily_limit, cooldown_seconds, oci_region, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, 1)
       ON CONFLICT(email) DO UPDATE SET
         display_name = excluded.display_name,
         provider = excluded.provider,
+        oci_region = excluded.oci_region,
         is_active = 1
     `);
-    stmt.run(email.toLowerCase().trim(), displayName, provider, dailyLimit, cooldownSeconds);
+    stmt.run(email.toLowerCase().trim(), displayName, provider, dailyLimit, cooldownSeconds, ociRegion);
   }
 
   /**
@@ -164,7 +165,7 @@ class AccountPool {
    * @param {number|string} id
    * @param {Object} updates
    */
-  static updateAccountById(id, { email, displayName, provider, dailyLimit, cooldownSeconds, isActive } = {}) {
+  static updateAccountById(id, { email, displayName, provider, dailyLimit, cooldownSeconds, isActive, ociRegion } = {}) {
     const existing = db.prepare('SELECT * FROM accounts WHERE id = ?').get(id);
     if (!existing) return null;
 
@@ -174,6 +175,7 @@ class AccountPool {
     const nextDailyLimit = dailyLimit !== undefined ? parseInt(dailyLimit, 10) : existing.daily_limit;
     const nextCooldown = cooldownSeconds !== undefined ? parseInt(cooldownSeconds, 10) : existing.cooldown_seconds;
     const nextIsActive = isActive !== undefined ? (isActive ? 1 : 0) : existing.is_active;
+    const nextOciRegion = ociRegion !== undefined ? ociRegion : (existing.oci_region || 'ap-mumbai-1');
 
     db.prepare(`
       UPDATE accounts
@@ -182,9 +184,10 @@ class AccountPool {
           provider = ?,
           daily_limit = ?,
           cooldown_seconds = ?,
-          is_active = ?
+          is_active = ?,
+          oci_region = ?
       WHERE id = ?
-    `).run(nextEmail, nextDisplayName, nextProvider, nextDailyLimit, nextCooldown, nextIsActive, id);
+    `).run(nextEmail, nextDisplayName, nextProvider, nextDailyLimit, nextCooldown, nextIsActive, nextOciRegion, id);
 
     return db.prepare('SELECT * FROM accounts WHERE id = ?').get(id);
   }
@@ -196,7 +199,7 @@ class AccountPool {
     this.refreshRollingQuotas();
     const stmt = db.prepare(`
       SELECT 
-        id, email, display_name, provider, daily_limit, sent_today,
+        id, email, display_name, provider, oci_region, daily_limit, sent_today,
         last_sent_at, cooldown_seconds, cooldown_until, is_active,
         status, health_score, sending_speed, custom_interval_ms,
         failure_count, bounce_count, complaint_count,

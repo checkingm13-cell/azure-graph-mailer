@@ -390,6 +390,21 @@
                 Graph API: Mailbox REST API. Recommended 500/day limit, 60s cooldown to protect IP reputation.
               </span>
             </div>
+            <div class="form-group" id="ociRegionGroup" style="display: none;">
+              <label class="form-label">🏛️ OCI Server Region</label>
+              <select id="accOciRegion" class="form-select">
+                <option value="ap-mumbai-1">🇮🇳 India West (Mumbai) — ap-mumbai-1 [Default]</option>
+                <option value="us-ashburn-1">🇺🇸 US East (Ashburn) — us-ashburn-1</option>
+                <option value="us-phoenix-1">🇺🇸 US West (Phoenix) — us-phoenix-1</option>
+                <option value="eu-frankfurt-1">🇩🇪 Germany (Frankfurt) — eu-frankfurt-1</option>
+                <option value="uk-london-1">🇬🇧 UK South (London) — uk-london-1</option>
+                <option value="ap-sydney-1">🇦🇺 Australia East (Sydney) — ap-sydney-1</option>
+                <option value="ca-toronto-1">🇨🇦 Canada Southeast (Toronto) — ca-toronto-1</option>
+              </select>
+              <span class="form-help" style="display: block; margin-top: 4px; font-size: 11px; color: var(--text-muted);">
+                Select the Oracle Cloud data center where this sending domain is verified.
+              </span>
+            </div>
             <div style="display: flex; gap: 8px;">
               <button type="submit" id="btnSubmitAccount" class="btn btn-primary btn-block">➕ Add Account to Pool</button>
               <button type="button" id="btnCancelEditAccount" class="btn btn-secondary" style="display: none; white-space: nowrap;">✕ Cancel</button>

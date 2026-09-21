@@ -175,11 +175,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // Auto-presets & connection-specific hints on provider dropdown change
   const accProviderSelect = document.getElementById('accProvider');
   const accProviderHelp = document.getElementById('accProviderHelp');
+  const ociRegionGroup = document.getElementById('ociRegionGroup');
+  const accOciRegion = document.getElementById('accOciRegion');
   const accDailyLimitInput = document.getElementById('accDailyLimit');
   const accCooldownInput = document.getElementById('accCooldown');
   const accEmailInput = document.getElementById('accEmail');
 
   function updateProviderHelp(provider) {
+    if (ociRegionGroup) {
+      ociRegionGroup.style.display = (provider === 'OCI') ? 'block' : 'none';
+    }
     if (!accProviderHelp) return;
     if (provider === 'OCI') {
       accProviderHelp.innerHTML = '🏛️ <strong>Oracle Cloud Infrastructure (OCI)</strong>: Direct SMTP Relay (Port 587). Enterprise PAYG: 1,500+ msgs/sec. Safe limits: 2k to 50k+/day, 0s cooldown.';
@@ -768,6 +773,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnCancelEditAccount) btnCancelEditAccount.style.display = 'none';
     if (accDailyLimitInput) accDailyLimitInput.value = 500;
     if (accCooldownInput) accCooldownInput.value = 60;
+    if (accOciRegion) accOciRegion.value = 'ap-mumbai-1';
     updateProviderHelp(accProviderSelect ? accProviderSelect.value : 'GRAPH_API');
   }
 
@@ -786,6 +792,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (accDailyLimitInput) accDailyLimitInput.value = acc.daily_limit;
     if (accCooldownInput) accCooldownInput.value = acc.cooldown_seconds;
     if (accProviderSelect) accProviderSelect.value = acc.provider;
+    if (accOciRegion) accOciRegion.value = acc.oci_region || 'ap-mumbai-1';
     updateProviderHelp(acc.provider);
     if (accountFormTitle) accountFormTitle.textContent = `✏️ Edit Account: ${acc.email}`;
     if (btnSubmitAccount) btnSubmitAccount.innerHTML = '💾 Save Changes';
@@ -873,7 +880,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const quickTestSenderSelect = document.getElementById('quickTestSenderAccount');
       const rerunSenderSelect = document.getElementById('rerunSenderAccountSelect');
       const optionsHtml = allLoadedAccounts.map(a => {
-        const engineLabel = a.provider === 'AZURE_ACS' ? '⚡ Azure ACS' : (a.provider === 'OCI' ? '🏛️ Oracle OCI' : (a.provider === 'MAILGUN' ? '🚀 Mailgun API' : '🔷 Graph API'));
+        const engineLabel = a.provider === 'AZURE_ACS' ? '⚡ Azure ACS' : (a.provider === 'OCI' ? `🏛️ OCI (${a.oci_region || 'ap-mumbai-1'})` : (a.provider === 'MAILGUN' ? '🚀 Mailgun API' : '🔷 Graph API'));
         return `<option value="${a.id}">[${engineLabel}] ${escapeHtml(a.email)} (${escapeHtml(a.display_name)})</option>`;
       }).join('');
 
@@ -903,10 +910,11 @@ document.addEventListener('DOMContentLoaded', () => {
           if (a.is_active && isLimit) {
             statusBadge = '<span class="badge badge-failed">🛑 Limit Reached</span>';
           }
+          const providerBadge = a.provider === 'OCI' ? `🏛️ OCI (${a.oci_region || 'ap-mumbai-1'})` : a.provider;
           return `
           <tr>
             <td><strong>${escapeHtml(a.email)}</strong><div style="font-size: 11px; color: var(--text-muted);">${escapeHtml(a.display_name)}</div></td>
-            <td><span class="account-badge">${a.provider}</span></td>
+            <td><span class="account-badge">${providerBadge}</span></td>
             <td><span style="cursor: pointer;" title="Click to toggle status" class="btn-toggle-status" data-id="${a.id}">${statusBadge}</span></td>
             <td><strong style="color: ${isLimit ? 'var(--rose)' : 'inherit'};">${a.sent_today}</strong> / ${a.daily_limit}${isLimit ? ' <span class="badge badge-failed" style="font-size: 10px; margin-left: 4px;">Full</span>' : ''}</td>
             <td>${a.cooldown_seconds}s</td>
@@ -1103,7 +1111,8 @@ document.addEventListener('DOMContentLoaded', () => {
         displayName: accDisplayNameInput.value.trim(),
         dailyLimit,
         cooldownSeconds: isNaN(cooldownSeconds) ? 0 : cooldownSeconds,
-        provider: accProviderSelect.value
+        provider: accProviderSelect.value,
+        oci_region: accOciRegion ? accOciRegion.value : 'ap-mumbai-1'
       };
       const res = await fetch(`/api/accounts/${id}`, {
         method: 'PUT',
@@ -1125,7 +1134,8 @@ document.addEventListener('DOMContentLoaded', () => {
         displayName: accDisplayNameInput.value.trim(),
         dailyLimit,
         cooldownSeconds: isNaN(cooldownSeconds) ? 0 : cooldownSeconds,
-        provider: accProviderSelect.value
+        provider: accProviderSelect.value,
+        oci_region: accOciRegion ? accOciRegion.value : 'ap-mumbai-1'
       };
       const res = await fetch('/api/accounts', {
         method: 'POST',

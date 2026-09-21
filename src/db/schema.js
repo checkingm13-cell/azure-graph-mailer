@@ -8,7 +8,8 @@ CREATE TABLE IF NOT EXISTS accounts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     email TEXT UNIQUE NOT NULL,
     display_name TEXT NOT NULL,
-    provider TEXT NOT NULL DEFAULT 'GRAPH_API', -- 'GRAPH_API', 'AZURE_ACS', or 'OCI'
+    provider TEXT NOT NULL DEFAULT 'GRAPH_API', -- 'GRAPH_API', 'AZURE_ACS', 'OCI', or 'MAILGUN'
+    oci_region TEXT DEFAULT 'ap-mumbai-1',
     daily_limit INTEGER NOT NULL DEFAULT 500,
     sent_today INTEGER NOT NULL DEFAULT 0,
     last_sent_at TEXT,
@@ -150,6 +151,9 @@ function initSchema(db) {
     }
 
     const accountCols = db.prepare("PRAGMA table_info(accounts)").all().map(c => c.name);
+    if (!accountCols.includes('oci_region')) {
+      db.exec("ALTER TABLE accounts ADD COLUMN oci_region TEXT DEFAULT 'ap-mumbai-1'");
+    }
     if (!accountCols.includes('cooldown_until')) {
       db.exec("ALTER TABLE accounts ADD COLUMN cooldown_until TEXT");
     }

@@ -454,7 +454,7 @@ router.get('/accounts', (req, res) => {
 });
 
 router.post('/accounts', (req, res) => {
-  const { email, displayName, provider, dailyLimit, cooldownSeconds } = req.body;
+  const { email, displayName, provider, dailyLimit, cooldownSeconds, ociRegion, oci_region } = req.body;
   if (!email) {
     return res.status(400).json({ ok: false, error: 'Email address is required.' });
   }
@@ -464,21 +464,23 @@ router.post('/accounts', (req, res) => {
     displayName: displayName || email.split('@')[0],
     provider: provider || 'GRAPH_API',
     dailyLimit: parseInt(dailyLimit || '500', 10),
-    cooldownSeconds: parseInt(cooldownSeconds || '60', 10)
+    cooldownSeconds: parseInt(cooldownSeconds || '60', 10),
+    ociRegion: ociRegion || oci_region || 'ap-mumbai-1'
   });
 
   res.json({ ok: true, message: `Account "${email}" added to pool.` });
 });
 
 router.put('/accounts/:id', (req, res) => {
-  const { email, displayName, provider, dailyLimit, cooldownSeconds, isActive } = req.body;
+  const { email, displayName, provider, dailyLimit, cooldownSeconds, isActive, ociRegion, oci_region } = req.body;
   const updated = AccountPool.updateAccountById(req.params.id, {
     email,
     displayName,
     provider,
     dailyLimit: dailyLimit !== undefined ? parseInt(dailyLimit, 10) : undefined,
     cooldownSeconds: cooldownSeconds !== undefined ? parseInt(cooldownSeconds, 10) : undefined,
-    isActive
+    isActive,
+    ociRegion: ociRegion || oci_region
   });
 
   if (!updated) {
@@ -1604,7 +1606,8 @@ router.post('/send-test', async (req, res) => {
           fromEmail: account.email,
           toEmail: toEmail.trim(),
           subject,
-          htmlBody: content
+          htmlBody: content,
+          region: account.oci_region || 'auto'
         });
       } else if (account.provider === 'MAILGUN') {
         return await sendViaMailgun({
