@@ -3,6 +3,8 @@
  * Orchestrates multi-account leased dispatch, anti-spam pacing, and crash recovery
  */
 
+const fs = require('fs');
+const path = require('path');
 const db = require('../db');
 const config = require('../config/env');
 const AccountPool = require('./accountPool');
@@ -13,6 +15,29 @@ const { sendViaMailgun } = require('./mailgunMailer');
 const { renderTemplate } = require('./templateEngine');
 const batchChainManager = require('./batchChainManager');
 const { toISTString, IST_SQL_NOW, formatISTClock, formatDuration, parseIST } = require('../utils/time');
+
+const VISUAL_CID_ATTACHMENTS = {
+  'author_publishing_guide': {
+    filename: 'author-publishing-guide.jpg',
+    path: path.resolve(__dirname, '../../public/author-publishing-guide-4-steps.jpg'),
+    cid: 'author_publishing_guide'
+  },
+  'ijsr_email_banner': {
+    filename: 'IJSR-email.jpg',
+    path: path.resolve(__dirname, '../../public/IJSR-email.jpg'),
+    cid: 'ijsr_email_banner'
+  },
+  'paripex_email_banner': {
+    filename: 'paripex-email.jpg',
+    path: path.resolve(__dirname, '../../public/paripex-email.jpg'),
+    cid: 'paripex_email_banner'
+  },
+  'gjra_email_banner': {
+    filename: 'gjra-email.jpg',
+    path: path.resolve(__dirname, '../../public/gjra-email.jpg'),
+    cid: 'gjra_email_banner'
+  }
+};
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -408,6 +433,14 @@ class QueueWorker {
               name: item.name
             }, false);
 
+            // Auto-detect and bind inline CID image attachments for visual cards
+            const attachments = [];
+            for (const [cid, meta] of Object.entries(VISUAL_CID_ATTACHMENTS)) {
+              if (dynamicHtml.includes(`cid:${cid}`) && fs.existsSync(meta.path)) {
+                attachments.push(meta);
+              }
+            }
+
             if (account.provider === 'AZURE_ACS') {
               try {
                 await withTimeout(sendViaACS({
@@ -432,7 +465,8 @@ class QueueWorker {
                     toEmail: item.email,
                     subject: dynamicSubject,
                     htmlBody: dynamicHtml,
-                    region: ociAccount.oci_region || 'auto'
+                    region: ociAccount.oci_region || 'auto',
+                    attachments
                   }), 15000, 'OCI Failover dispatch');
                   account = ociAccount; // Re-bind account so metrics attribute correctly
                 } else {
@@ -445,7 +479,8 @@ class QueueWorker {
                 toEmail: item.email,
                 subject: dynamicSubject,
                 htmlBody: dynamicHtml,
-                region: account.oci_region || 'auto'
+                region: account.oci_region || 'auto',
+                attachments
               }), 15000, 'OCI SMTP dispatch');
             } else if (account.provider === 'MAILGUN') {
               await withTimeout(sendViaMailgun({

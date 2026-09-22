@@ -115,7 +115,7 @@ function getTransporter(region) {
 /**
  * Dispatches an email via regional OCI SMTP
  */
-async function sendViaOCI({ fromEmail, toEmail, subject, htmlBody, region }) {
+async function sendViaOCI({ fromEmail, toEmail, subject, htmlBody, region, attachments = [] }) {
   const sender = fromEmail || config.ociSenderEmail || 'newsletter@education.yourpaperedition.com';
   
   // Resolve region: explicitly specified -> auto-detect from sender domain -> fallback default
@@ -126,6 +126,9 @@ async function sendViaOCI({ fromEmail, toEmail, subject, htmlBody, region }) {
 
   const mailer = getTransporter(targetRegion);
 
+  const senderClean = sender.includes('<') ? sender.match(/<([^>]+)>/)?.[1] || sender : sender.trim();
+  const senderDomain = senderClean.includes('@') ? senderClean.split('@')[1].trim() : 'worldwidejournals.com';
+
   const mailOptions = {
     from: sender.includes('<') ? sender : `"Paper Edition" <${sender.trim()}>`,
     to: toEmail.trim(),
@@ -134,10 +137,14 @@ async function sendViaOCI({ fromEmail, toEmail, subject, htmlBody, region }) {
     headers: {
       'X-Mailer': 'Azure-Graph-Mailer-OCI-Engine',
       'X-OCI-Region': targetRegion,
-      'List-Unsubscribe': '<mailto:unsubscribe@education.yourpaperedition.com>, <https://education.yourpaperedition.com/unsubscribe>',
+      'List-Unsubscribe': `<mailto:unsubscribe@${senderDomain}>, <https://${senderDomain}/unsubscribe>`,
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
     }
   };
+
+  if (Array.isArray(attachments) && attachments.length > 0) {
+    mailOptions.attachments = attachments;
+  }
 
   const info = await mailer.sendMail(mailOptions);
 

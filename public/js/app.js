@@ -1595,15 +1595,24 @@ document.addEventListener('DOMContentLoaded', () => {
         senderDomain = parts.slice(-2).join('.');
       }
 
+      const cleanName = (c.name || '').replace(/^(dr\.?|prof\.?|mr\.?|ms\.?|mrs\.?)\s+/i, '').trim();
+      const firstName = cleanName.split(' ')[0] || c.name || 'Researcher';
       let out = (str || '')
+        .replace(/\[\s*FNAME\s*\]/gi, firstName)
+        .replace(/\{\{\s*FNAME\s*\}\}/gi, firstName)
         .replace(/\{\{\s*Name\s*\}\}/gi, c.name || 'Dr. Researcher')
+        .replace(/\[\s*Name\s*\]/gi, c.name || 'Dr. Researcher')
         .replace(/\{\{\s*Paper\s*Title\s*\}\}/gi, c.paper_title || 'Recent Scientific Advances')
         .replace(/\{\{\s*Affiliation\s*\}\}/gi, c.affiliation || 'University Department')
         .replace(/\{\{\s*senderDomain\s*\}\}/gi, senderDomain)
         .replace(/\{\{\s*sender_domain\s*\}\}/gi, senderDomain)
         .replace(/\{\{\s*senderEmail\s*\}\}/gi, activeSender)
         .replace(/\{\{\s*sender_email\s*\}\}/gi, activeSender)
-        .replace(/\{\{\s*Date\s*\}\}/gi, new Date().toLocaleDateString());
+        .replace(/\{\{\s*Date\s*\}\}/gi, new Date().toLocaleDateString())
+        .replace(/cid:author_publishing_guide/g, '/author-publishing-guide-4-steps.jpg')
+        .replace(/cid:ijsr_email_banner/g, '/IJSR-email.jpg')
+        .replace(/cid:paripex_email_banner/g, '/paripex-email.jpg')
+        .replace(/cid:gjra_email_banner/g, '/gjra-email.jpg');
 
       // Safe anchor-only link rewriting in preview
       out = out.replace(/<a\b([^>]*?)\bhref=["'](\/(?!\/)[^"']*)["']([^>]*)>/gi, (match, prefix, path, suffix) => {

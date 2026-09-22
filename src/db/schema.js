@@ -2,6 +2,9 @@
  * Database Schema Initializer & Migration Runner
  */
 
+const fs = require('fs');
+const path = require('path');
+
 const schemaSql = `
 -- 1. ACCOUNTS POOL: Manages multi-account senders (1 to 40+ accounts)
 CREATE TABLE IF NOT EXISTS accounts (
@@ -225,6 +228,7 @@ function initSchema(db) {
 
     // Seed/Upsert standard journal templates
     seedJournalTemplates(db);
+    seedVisualImageTemplates(db);
   } catch (err) {
     console.warn('[Schema] Migration notice:', err.message);
   }
@@ -552,6 +556,57 @@ To Opt Out
       db.prepare('INSERT INTO templates (name, subject, body_html) VALUES (?, ?, ?)').run(t.name, t.subject, t.body_html);
     } else {
       db.prepare('UPDATE templates SET subject = ?, body_html = ? WHERE id = ?').run(t.subject, t.body_html, existing.id);
+    }
+  }
+}
+
+function seedVisualImageTemplates(db) {
+  const visualTemplates = [
+    {
+      name: 'IJAR - 4-Step Author Publishing Guide [Visual Image Card]',
+      subject: 'Indian Journal of Applied Research (IJAR) - Call For Papers October Issue',
+      file: 'email-preview.html',
+      imgPlaceholder: 'author-publishing-guide-4-steps.jpg',
+      cid: 'author_publishing_guide'
+    },
+    {
+      name: 'IJSR - Swiss Typographic Poster [Visual Image Card]',
+      subject: 'International Journal of Scientific Research (IJSR) - Call For Papers October Issue',
+      file: 'email-preview-ijsr.html',
+      imgPlaceholder: 'IJSR-email.jpg',
+      cid: 'ijsr_email_banner'
+    },
+    {
+      name: 'PARIPEX - Swiss Typographic Poster [Visual Image Card]',
+      subject: 'Paripex - Indian Journal of Research - Call For Papers October Issue',
+      file: 'email-preview-paripex.html',
+      imgPlaceholder: 'paripex-email.jpg',
+      cid: 'paripex_email_banner'
+    },
+    {
+      name: 'GJRA - Swiss Typographic Poster [Visual Image Card]',
+      subject: 'Global Journal For Research Analysis (GJRA) - Call For Papers October Issue',
+      file: 'email-preview-gjra.html',
+      imgPlaceholder: 'gjra-email.jpg',
+      cid: 'gjra_email_banner'
+    }
+  ];
+
+  for (const vt of visualTemplates) {
+    try {
+      const filePath = path.resolve(__dirname, '../../public', vt.file);
+      if (!fs.existsSync(filePath)) continue;
+      let html = fs.readFileSync(filePath, 'utf-8');
+      html = html.replace(vt.imgPlaceholder, `cid:${vt.cid}`);
+
+      const existing = db.prepare('SELECT id FROM templates WHERE name = ?').get(vt.name);
+      if (!existing) {
+        db.prepare('INSERT INTO templates (name, subject, body_html) VALUES (?, ?, ?)').run(vt.name, vt.subject, html);
+      } else {
+        db.prepare('UPDATE templates SET subject = ?, body_html = ? WHERE id = ?').run(vt.subject, html, existing.id);
+      }
+    } catch (e) {
+      console.warn(`[Schema] Warning seeding visual template "${vt.name}":`, e.message);
     }
   }
 }

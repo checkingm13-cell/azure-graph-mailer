@@ -99,7 +99,8 @@ function renderTemplate(templateStr, data = {}, isSubject = null) {
     : (data.sender_domain || data.senderDomain || data.senderdomain || '');
   const senderDomain = extractApexDomain(rawSenderDomain);
 
-  const firstName = (data.name || '').split(' ')[0] || data.name || 'Researcher';
+  const cleanName = (data.name || '').replace(/^(dr\.?|prof\.?|mr\.?|ms\.?|mrs\.?)\s+/i, '').trim();
+  const firstName = cleanName.split(' ')[0] || data.name || 'Researcher';
   const fullName = data.name || 'Researcher';
 
   // Normalized key-value map for case-insensitive and flexible replacement
