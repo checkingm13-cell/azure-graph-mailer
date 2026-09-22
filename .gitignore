@@ -33,3 +33,6 @@ paripex-mailer-app.PublishSettings
 *.PublishSettings
 *.xml
 
+# Image backups
+public/originals/
+

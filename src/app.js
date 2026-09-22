@@ -40,8 +40,11 @@ const batchChainRoutes = require('./routes/batchChain');
 app.use('/api', apiRoutes);
 app.use('/api/batch-chain', batchChainRoutes);
 
-// Static frontend dashboard
-app.use(express.static(path.resolve(__dirname, '../public')));
+// Static frontend dashboard with 7-day edge/browser caching for assets
+app.use(express.static(path.resolve(__dirname, '../public'), {
+  maxAge: '7d',
+  immutable: true
+}));
 
 // Lightweight Health & Heartbeat Endpoint (For Uptime Monitors & Azure Health Checks)
 app.get(['/health', '/heartbeat', '/ping'], (req, res) => {
