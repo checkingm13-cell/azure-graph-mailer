@@ -1478,7 +1478,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const staggerMins = Math.max(1, parseInt(campaignStaggerMinutes ? campaignStaggerMinutes.value || '60' : '60', 10));
     let baseMs = Date.now();
     if (startTimeVal && (mode === 'scheduled' || mode === 'staggered')) {
-      const parsed = new Date(startTimeVal).getTime();
+      const cleanTimeStr = startTimeVal.includes('Z') || startTimeVal.includes('+')
+        ? startTimeVal
+        : (startTimeVal.length === 16 ? startTimeVal + ':00+05:30' : startTimeVal + '+05:30');
+      const parsed = new Date(cleanTimeStr).getTime();
       if (!isNaN(parsed) && parsed > Date.now()) baseMs = parsed;
     }
     batchesListContainer.innerHTML = '';
@@ -1494,7 +1497,7 @@ document.addEventListener('DOMContentLoaded', () => {
       else startMs = Date.now() + i * 2000;
       const durationSec = Math.round(count * 2.5);
       const durationStr = durationSec < 60 ? `${durationSec}s` : `${Math.ceil(durationSec / 60)} min`;
-      const timeStr = new Date(startMs).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const timeStr = new Date(startMs).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
       const timeBadge = mode === 'immediate' && i === 0 ? '⚡ Starts Now' : formatTimeUntil(new Date(startMs).toISOString());
       batchesListContainer.innerHTML += `
         <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; font-size: 12px;">
@@ -1631,10 +1634,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (mode === 'scheduled') {
         groupScheduledStartTime.style.display = 'block'; groupStaggerInterval.style.display = 'none';
         if (!campaignScheduledStartTime.value) { 
-          const tomorrow = new Date(); 
-          tomorrow.setDate(tomorrow.getDate() + 1); 
-          tomorrow.setHours(9, 0, 0, 0); 
-          campaignScheduledStartTime.value = toLocalDatetimeInputString(tomorrow); 
+          campaignScheduledStartTime.value = toLocalDatetimeInputString(new Date()); 
         }
       } else if (mode === 'staggered') {
         groupScheduledStartTime.style.display = 'block'; groupStaggerInterval.style.display = 'block';
@@ -1647,7 +1647,12 @@ document.addEventListener('DOMContentLoaded', () => {
       renderBatchesBreakdown();
     });
   }
-  if (campaignScheduledStartTime) campaignScheduledStartTime.addEventListener('input', renderBatchesBreakdown);
+  if (campaignScheduledStartTime) {
+    if (!campaignScheduledStartTime.value) {
+      campaignScheduledStartTime.value = toLocalDatetimeInputString(new Date());
+    }
+    campaignScheduledStartTime.addEventListener('input', renderBatchesBreakdown);
+  }
   if (campaignStaggerMinutes) campaignStaggerMinutes.addEventListener('input', renderBatchesBreakdown);
 
   // Strategy & Speed Presets UX bindings
@@ -2047,6 +2052,7 @@ document.addEventListener('DOMContentLoaded', () => {
           } else if (g.status === 'SCHEDULED' || g.status === 'QUEUED') {
             bulkActionsHtml = `
               <button type="button" class="btn btn-primary btn-xs btn-bulk-send-now" data-id="${p.id}" title="Trigger immediately">⚡ Send Now</button>
+              <button type="button" class="btn btn-warning btn-xs btn-reschedule-camp" data-id="${p.id}" data-name="${escapeHtml(p.name)}" data-scheduled="${p.scheduled_at || ''}" title="Reschedule master campaign and batches">⏰ Reschedule</button>
               <button type="button" class="btn btn-danger btn-xs btn-bulk-action" data-action="CANCELLED" data-ids="${childIdsAttr}">✕ Cancel</button>
             `;
           }
@@ -2084,6 +2090,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <div>
                   <button type="button" class="btn btn-secondary btn-xs btn-inspect-batch" data-id="${ch.id}">🔍 Inspect</button>
+                  ${(ch.status === 'SCHEDULED' || ch.status === 'QUEUED') ? `<button type="button" class="btn btn-warning btn-xs btn-reschedule-camp" data-id="${ch.id}" data-name="${escapeHtml(ch.name)}" data-scheduled="${ch.scheduled_at || ''}" title="Reschedule batch" style="margin-left: 4px;">⏰ Reschedule</button>` : ''}
                 </div>
               </div>
             `;
@@ -2198,6 +2205,14 @@ document.addEventListener('DOMContentLoaded', () => {
           });
         });
 
+        // Wire reschedule buttons
+        aggregatedContainer.querySelectorAll('.btn-reschedule-camp').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openRescheduleModal(btn.dataset.id, btn.dataset.name, btn.dataset.scheduled);
+          });
+        });
+
         // Wire inspection drawer trigger
         aggregatedContainer.querySelectorAll('.btn-inspect-batch').forEach(btn => {
           btn.addEventListener('click', (e) => {
@@ -2238,7 +2253,7 @@ document.addEventListener('DOMContentLoaded', () => {
           } else if (c.status === 'PAUSED') {
             actionsHtml = `<button type="button" class="btn btn-primary btn-xs btn-resume-camp" data-id="${c.id}">Resume</button><button type="button" class="btn btn-danger btn-xs btn-cancel-camp" data-id="${c.id}">Cancel</button>`;
           } else if (c.status === 'SCHEDULED' || c.status === 'QUEUED') {
-            actionsHtml = `<button type="button" class="btn btn-primary btn-xs btn-send-now" data-id="${c.id}">⚡ Send</button><button type="button" class="btn btn-danger btn-xs btn-cancel-camp" data-id="${c.id}">Cancel</button>`;
+            actionsHtml = `<button type="button" class="btn btn-primary btn-xs btn-send-now" data-id="${c.id}">⚡ Send</button><button type="button" class="btn btn-warning btn-xs btn-reschedule-camp" data-id="${c.id}" data-name="${escapeHtml(c.name)}" data-scheduled="${c.scheduled_at || ''}" style="margin-left: 4px;">⏰ Reschedule</button><button type="button" class="btn btn-danger btn-xs btn-cancel-camp" data-id="${c.id}">Cancel</button>`;
           } else {
             actionsHtml = `<button type="button" class="btn btn-secondary btn-xs btn-inspect-batch" data-id="${c.id}">🔍 Inspect</button>`;
           }
@@ -2300,6 +2315,10 @@ document.addEventListener('DOMContentLoaded', () => {
             btn.innerHTML = orig;
             btn.disabled = false;
           }
+        }));
+        campaignsTableBody.querySelectorAll('.btn-reschedule-camp').forEach(btn => btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openRescheduleModal(btn.dataset.id, btn.dataset.name, btn.dataset.scheduled);
         }));
         campaignsTableBody.querySelectorAll('.btn-inspect-batch').forEach(btn => btn.addEventListener('click', () => { openCampaignInspectionDrawer(btn.dataset.id); }));
       }
@@ -2945,6 +2964,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const senderText = c.sender_email ? `${c.sender_email} (${c.sender_provider})` : '⚡ All Active Pool (Auto-Rotate)';
       previewModalCampMeta.textContent = `Template: ${c.template_name || 'Standard'} | Sender: ${senderText} | Status: ${c.status}`;
+
+      const btnPreviewModalReschedule = document.getElementById('btnPreviewModalReschedule');
+      if (btnPreviewModalReschedule) {
+        if (c.status === 'SCHEDULED' || c.status === 'QUEUED') {
+          btnPreviewModalReschedule.style.display = 'inline-block';
+          btnPreviewModalReschedule.onclick = () => {
+            openRescheduleModal(c.id, c.name, c.scheduled_at);
+          };
+        } else {
+          btnPreviewModalReschedule.style.display = 'none';
+        }
+      }
       
       const totalCount = s.total || 0;
       const sentCount = s.sent || 0;
@@ -3031,6 +3062,90 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btnCloseCampaignPreview) btnCloseCampaignPreview.addEventListener('click', closeCampaignPreviewModal);
   if (btnCancelCampaignPreview) btnCancelCampaignPreview.addEventListener('click', closeCampaignPreviewModal);
   modalCampaignPreview?.addEventListener('click', (e) => { if (e.target === modalCampaignPreview) closeCampaignPreviewModal(); });
+
+  // 12. CAMPAIGN RESCHEDULE MODAL (Pre-dispatch Only: SCHEDULED / QUEUED)
+  let activeRescheduleCampaignId = null;
+  const modalReschedule = document.getElementById('modalRescheduleCampaign');
+  const rescheduleCampName = document.getElementById('rescheduleCampName');
+  const inputRescheduleTime = document.getElementById('inputRescheduleTime');
+  const rescheduleCurrentTimeBadge = document.getElementById('rescheduleCurrentTimeBadge');
+  const btnCloseRescheduleModal = document.getElementById('btnCloseRescheduleModal');
+  const btnCancelReschedule = document.getElementById('btnCancelReschedule');
+  const btnConfirmReschedule = document.getElementById('btnConfirmReschedule');
+
+  function openRescheduleModal(campId, campName, currentScheduledTime) {
+    if (!modalReschedule) return;
+    activeRescheduleCampaignId = campId;
+    if (rescheduleCampName) rescheduleCampName.textContent = campName || `#${campId}`;
+    
+    if (rescheduleCurrentTimeBadge) {
+      rescheduleCurrentTimeBadge.textContent = currentScheduledTime ? formatDateTime(currentScheduledTime) : 'Immediate / Not set';
+    }
+
+    const nowIST = toLocalDatetimeInputString(new Date());
+    if (inputRescheduleTime) {
+      inputRescheduleTime.min = nowIST;
+      let defaultVal = nowIST;
+      if (currentScheduledTime) {
+        const cleanStr = currentScheduledTime.includes('Z') || currentScheduledTime.includes('+') 
+          ? currentScheduledTime 
+          : (currentScheduledTime.length === 16 ? currentScheduledTime + ':00+05:30' : currentScheduledTime.replace(' ', 'T') + '+05:30');
+        const parsed = new Date(cleanStr);
+        if (parsed && !isNaN(parsed.getTime()) && parsed.getTime() > Date.now()) {
+          defaultVal = toLocalDatetimeInputString(parsed);
+        } else {
+          defaultVal = toLocalDatetimeInputString(new Date(Date.now() + 10 * 60 * 1000));
+        }
+      } else {
+        defaultVal = toLocalDatetimeInputString(new Date(Date.now() + 10 * 60 * 1000));
+      }
+      inputRescheduleTime.value = defaultVal;
+    }
+
+    modalReschedule.style.display = 'flex';
+  }
+
+  function closeRescheduleModal() {
+    if (modalReschedule) modalReschedule.style.display = 'none';
+    activeRescheduleCampaignId = null;
+  }
+
+  if (btnCloseRescheduleModal) btnCloseRescheduleModal.addEventListener('click', closeRescheduleModal);
+  if (btnCancelReschedule) btnCancelReschedule.addEventListener('click', closeRescheduleModal);
+  modalReschedule?.addEventListener('click', (e) => { if (e.target === modalReschedule) closeRescheduleModal(); });
+
+  if (btnConfirmReschedule) {
+    btnConfirmReschedule.addEventListener('click', async () => {
+      if (!activeRescheduleCampaignId || !inputRescheduleTime || !inputRescheduleTime.value) {
+        alert('Please choose a valid launch date and time.');
+        return;
+      }
+      const origText = btnConfirmReschedule.innerHTML;
+      btnConfirmReschedule.disabled = true;
+      btnConfirmReschedule.innerHTML = '⏳ Saving...';
+      try {
+        const res = await fetch(`/api/campaigns/${activeRescheduleCampaignId}/reschedule`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scheduledTime: inputRescheduleTime.value })
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || 'Failed to reschedule campaign.');
+        alert(data.message || 'Campaign rescheduled successfully!');
+        closeRescheduleModal();
+        loadCampaigns();
+        refreshTelemetry();
+        if (activePreviewCampaignId && activePreviewCampaignId == activeRescheduleCampaignId) {
+          openCampaignPreviewModal(activePreviewCampaignId);
+        }
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        btnConfirmReschedule.disabled = false;
+        btnConfirmReschedule.innerHTML = origText;
+      }
+    });
+  }
 
   if (btnTriggerRerun) {
     btnTriggerRerun.addEventListener('click', async () => {

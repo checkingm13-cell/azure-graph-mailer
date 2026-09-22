@@ -947,7 +947,10 @@
             <p id="previewModalCampMeta" style="margin: 2px 0 0; font-size: 11.5px; color: var(--text-muted);">Execution details & telemetry</p>
           </div>
         </div>
-        <button type="button" id="btnCloseCampaignPreview" class="btn btn-secondary btn-sm" style="padding: 4px 10px; border-radius: 6px;">✕</button>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button type="button" id="btnPreviewModalReschedule" class="btn btn-warning btn-sm" style="display: none; padding: 4px 10px; border-radius: 6px; font-size: 11px;">⏰ Reschedule</button>
+          <button type="button" id="btnCloseCampaignPreview" class="btn btn-secondary btn-sm" style="padding: 4px 10px; border-radius: 6px;">✕</button>
+        </div>
       </div>
 
       <!-- Quick Metrics Strip -->
@@ -1104,6 +1107,28 @@
       <!-- Modal Footer -->
       <div style="display: flex; justify-content: flex-end; flex-shrink: 0;">
         <button type="button" id="btnCancelCampaignPreview" class="btn btn-secondary btn-sm">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Reschedule Campaign (Pre-dispatch Only) -->
+  <div id="modalRescheduleCampaign" class="modal-overlay" style="display: none; z-index: 1050;">
+    <div class="modal-card" style="max-width: 440px; width: 92%;">
+      <div class="modal-header">
+        <h3 style="color: var(--sky); display: flex; align-items: center; gap: 8px; margin: 0; font-size: 16px;">⏰ Reschedule Campaign</h3>
+        <button type="button" id="btnCloseRescheduleModal" class="modal-close">&times;</button>
+      </div>
+      <p style="font-size: 12px; color: var(--text-secondary); margin: 8px 0 14px 0;">
+        Adjust the scheduled launch time for <strong id="rescheduleCampName" style="color: var(--sky);">--</strong>.
+      </p>
+      <div class="form-group" style="margin-bottom: 14px;">
+        <label class="form-label" style="font-size: 12px; margin-bottom: 6px;">Target Launch Date &amp; Time (Indian Standard Time)</label>
+        <input type="datetime-local" id="inputRescheduleTime" class="form-input">
+        <span class="form-help" style="margin-top: 6px; display: block; font-size: 11px;">Current Schedule: <strong id="rescheduleCurrentTimeBadge" style="color: var(--amber);">--</strong></span>
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
+        <button type="button" id="btnCancelReschedule" class="btn btn-secondary btn-sm">Cancel</button>
+        <button type="button" id="btnConfirmReschedule" class="btn btn-primary btn-sm">💾 Save Schedule</button>
       </div>
     </div>
   </div>

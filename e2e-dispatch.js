@@ -1,4 +1,4 @@
-﻿/**
+/**
  * End-to-End Campaign Dispatcher Script
  * Parses a CSV file and posts directly to the Mailer backend (local or production Azure)
  */
@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 async function main() {
-  const targetUrl = process.env.API_BASE_URL || process.argv[2] || 'https://paripex-mailer-app.azurewebsites.net';
+  const targetUrl = process.env.API_BASE_URL || process.argv[2] || 'https://mailapp.balajiimpex.store';
   const csvPath = process.env.CSV_PATH || process.argv[3] || 'test - new.csv';
   const senderType = (process.env.SENDER_TYPE || process.argv[4] || 'AZURE_ACS').toUpperCase(); // AZURE_ACS, GRAPH_API, or POOL
   const batchSize = parseInt(process.env.BATCH_SIZE || process.argv[5] || '50', 10);

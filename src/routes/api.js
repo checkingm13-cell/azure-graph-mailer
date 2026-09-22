@@ -1416,6 +1416,132 @@ router.post('/campaigns/:id/send-now', (req, res) => {
   }
 });
 
+// RESCHEDULE CAMPAIGN (Only allowed in pre-dispatch SCHEDULED or QUEUED phase)
+router.post('/campaigns/:id/reschedule', (req, res) => {
+  const campId = parseInt(req.params.id, 10);
+  const camp = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campId);
+  if (!camp) return res.status(404).json({ ok: false, error: 'Campaign not found' });
+
+  // Strictly allow rescheduling ONLY for 'SCHEDULED' and 'QUEUED' campaigns
+  if (!['SCHEDULED', 'QUEUED'].includes(camp.status)) {
+    return res.status(400).json({
+      ok: false,
+      error: `Cannot reschedule campaign with status '${camp.status}'. Only SCHEDULED or QUEUED campaigns can be rescheduled.`
+    });
+  }
+
+  const { scheduledTime } = req.body;
+  if (!scheduledTime) {
+    return res.status(400).json({ ok: false, error: 'Please provide a valid scheduledTime.' });
+  }
+
+  const parsedDate = parseIST(scheduledTime);
+  const newScheduledMs = parsedDate ? parsedDate.getTime() : NaN;
+  if (isNaN(newScheduledMs)) {
+    return res.status(400).json({ ok: false, error: 'Invalid scheduled date/time provided.' });
+  }
+
+  // Must be in the future (at least 5 seconds ahead)
+  if (newScheduledMs <= Date.now() + 5000) {
+    return res.status(400).json({ ok: false, error: 'Scheduled time must be in the future (Indian Standard Time).' });
+  }
+
+  const newSqliteTime = formatSqliteDateTime(new Date(newScheduledMs));
+
+  try {
+    const rescheduleTx = db.transaction(() => {
+      // 1. Check if this is a master campaign with child batches
+      const children = db.prepare(`
+        SELECT * FROM campaigns 
+        WHERE (parent_id = ? OR name LIKE ?) 
+          AND id != ? 
+          AND status IN ('SCHEDULED', 'QUEUED')
+        ORDER BY scheduled_at ASC, id ASC
+      `).all(camp.id, `${camp.name}_Batch_%`, camp.id);
+
+      if (children.length > 0) {
+        // Master Campaign: Shift all pending child batches proportionally from the new start time
+        const originalBaseDate = parseIST(camp.scheduled_at);
+        const originalBaseMs = originalBaseDate ? originalBaseDate.getTime() : Date.now();
+        const diffMs = newScheduledMs - originalBaseMs;
+
+        // Update master campaign
+        db.prepare(`
+          UPDATE campaigns
+          SET scheduled_at = ?,
+              status = 'SCHEDULED'
+          WHERE id = ?
+        `).run(newSqliteTime, camp.id);
+
+        // Shift each pending child batch
+        for (const child of children) {
+          let childNewMs = newScheduledMs;
+          if (child.scheduled_at) {
+            const childOldDate = parseIST(child.scheduled_at);
+            const childOldMs = childOldDate ? childOldDate.getTime() : originalBaseMs;
+            childNewMs = childOldMs + diffMs;
+          }
+          if (childNewMs < newScheduledMs) childNewMs = newScheduledMs;
+          const childSqlTime = formatSqliteDateTime(new Date(childNewMs));
+
+          db.prepare(`
+            UPDATE campaigns
+            SET scheduled_at = ?,
+                status = 'SCHEDULED'
+            WHERE id = ?
+          `).run(childSqlTime, child.id);
+
+          db.prepare(`
+            UPDATE queue
+            SET scheduled_at = ?
+            WHERE campaign_id = ? AND status = 'queued'
+          `).run(childSqlTime, child.id);
+        }
+
+        // Also update any direct queue items on the parent
+        db.prepare(`
+          UPDATE queue
+          SET scheduled_at = ?
+          WHERE campaign_id = ? AND status = 'queued'
+        `).run(newSqliteTime, camp.id);
+
+        db.prepare("INSERT INTO logs (campaign_id, level, message) VALUES (?, 'INFO', ?)")
+          .run(camp.id, `⏰ Rescheduled: Master campaign and ${children.length} batch(es) shifted to start at ${toISTString(new Date(newScheduledMs))} IST.`);
+
+      } else {
+        // Single campaign or individual batch
+        db.prepare(`
+          UPDATE campaigns
+          SET scheduled_at = ?,
+              status = 'SCHEDULED'
+          WHERE id = ?
+        `).run(newSqliteTime, camp.id);
+
+        db.prepare(`
+          UPDATE queue
+          SET scheduled_at = ?
+          WHERE campaign_id = ? AND status = 'queued'
+        `).run(newSqliteTime, camp.id);
+
+        db.prepare("INSERT INTO logs (campaign_id, level, message) VALUES (?, 'INFO', ?)")
+          .run(camp.id, `⏰ Rescheduled: Campaign "${camp.name}" rescheduled to ${toISTString(new Date(newScheduledMs))} IST.`);
+      }
+    });
+
+    rescheduleTx();
+
+    res.json({
+      ok: true,
+      message: `Campaign "${camp.name}" successfully rescheduled to ${toISTString(new Date(newScheduledMs))} IST!`,
+      scheduledAt: newSqliteTime,
+      scheduledAtIST: toISTString(new Date(newScheduledMs))
+    });
+  } catch (err) {
+    console.error('[Reschedule API] Error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // 4. CAMPAIGN CONTROLS: PAUSE, RESUME, CANCEL, CLONE
 router.post('/campaigns/:id/pause', (req, res) => {
   const campId = req.params.id;
