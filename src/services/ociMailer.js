@@ -138,9 +138,66 @@ function getTransporter(region) {
 }
 
 /**
- * Dispatches an email via regional OCI SMTP
+ * Lightweight HTML-to-Plain-Text converter for multipart/alternative fallback
  */
-async function sendViaOCI({ fromEmail, toEmail, subject, htmlBody, region, attachments = [] }) {
+function htmlToPlainText(html) {
+  if (!html) return '';
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<a[\s\S]*?href=["']([^"']*)["'][\s\S]*?>([\s\S]*?)<\/a>/gi, (match, url, text) => {
+      const cleanText = text.replace(/<[^>]+>/g, '').trim();
+      return cleanText ? `${cleanText} (${url})` : url;
+    })
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/tr>/gi, '\n')
+    .replace(/<\/td>/gi, ' ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&bull;/gi, '•')
+    .replace(/&amp;/gi, '&')
+    .replace(/&rarr;/gi, '->')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\n\s+\n/g, '\n\n')
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+}
+
+/**
+ * Formats RFC 2822 date strictly anchored to Indian Standard Time (IST, +0530)
+ */
+function formatRfc2822IST(d = new Date()) {
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
+  const ist = new Date(utc + (330 * 60000));
+  const dayName = days[ist.getDay()];
+  const day = String(ist.getDate()).padStart(2, '0');
+  const month = months[ist.getMonth()];
+  const year = ist.getFullYear();
+  const hours = String(ist.getHours()).padStart(2, '0');
+  const minutes = String(ist.getMinutes()).padStart(2, '0');
+  const seconds = String(ist.getSeconds()).padStart(2, '0');
+  return `${dayName}, ${day} ${month} ${year} ${hours}:${minutes}:${seconds} +0530`;
+}
+
+/**
+ * Resolves authoritative display name from sender domain if none supplied
+ */
+function resolveSenderDisplayName(senderEmail) {
+  const lower = (senderEmail || '').toLowerCase();
+  if (lower.includes('researchandrise')) return 'International Journal of Scientific Research (IJSR)';
+  if (lower.includes('yourpaperedition')) return 'Indian Journal of Applied Research (IJAR)';
+  if (lower.includes('onlypaperpublication')) return 'Paripex - Indian Journal of Research';
+  if (lower.includes('yourpaperpublication')) return 'Global Journal for Research Analysis (GJRA)';
+  return 'Worldwide Journals';
+}
+
+/**
+ * Dispatches an email via regional OCI SMTP matching MakeMyTrip enterprise deliverability standards
+ */
+async function sendViaOCI({ fromEmail, toEmail, subject, htmlBody, textBody, region, attachments = [] }) {
   const sender = fromEmail || config.ociSenderEmail || 'newsletter@education.yourpaperedition.com';
   
   // Resolve region: explicitly specified -> auto-detect from sender domain -> fallback default
@@ -153,16 +210,27 @@ async function sendViaOCI({ fromEmail, toEmail, subject, htmlBody, region, attac
 
   const senderClean = sender.includes('<') ? sender.match(/<([^>]+)>/)?.[1] || sender : sender.trim();
   const senderDomain = senderClean.includes('@') ? senderClean.split('@')[1].trim() : 'worldwidejournals.com';
+  const displayName = resolveSenderDisplayName(senderClean);
+
+  const plainText = textBody || htmlToPlainText(htmlBody);
+
+  // Enterprise MakeMyTrip-style Message-ID & headers
+  const uniqueId = `${Date.now()}${Math.floor(100000 + Math.random() * 900000)}`;
+  const customMessageId = `<${uniqueId}@${senderDomain}>`;
 
   const mailOptions = {
-    from: sender.includes('<') ? sender : `"Paper Edition" <${sender.trim()}>`,
+    from: sender.includes('<') ? sender : `"${displayName}" <${senderClean}>`,
+    replyTo: `"${displayName}" <${senderClean}>`,
     to: toEmail.trim(),
     subject: subject,
+    text: plainText,
     html: htmlBody,
+    messageId: customMessageId,
     headers: {
-      'X-Mailer': 'Azure-Graph-Mailer-OCI-Engine',
+      'Date': formatRfc2822IST(),
       'X-OCI-Region': targetRegion,
-      'List-Unsubscribe': `<mailto:unsubscribe@${senderDomain}>, <https://${senderDomain}/unsubscribe>`,
+      'Feedback-ID': `journal:${senderDomain.replace(/\./g, '_')}:oci`,
+      'List-Unsubscribe': `<https://${senderDomain}/unsubscribe>, <mailto:unsubscribe@${senderDomain}?subject=Unsubscribe>`,
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
     }
   };
@@ -178,7 +246,7 @@ async function sendViaOCI({ fromEmail, toEmail, subject, htmlBody, region, attac
     provider: 'OCI',
     region: targetRegion,
     host: resolveSmtpHost(targetRegion),
-    messageId: info.messageId,
+    messageId: info.messageId || customMessageId,
     response: info.response
   };
 }

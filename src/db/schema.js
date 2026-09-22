@@ -597,7 +597,7 @@ function seedVisualImageTemplates(db) {
       const filePath = path.resolve(__dirname, '../../public', vt.file);
       if (!fs.existsSync(filePath)) continue;
       let html = fs.readFileSync(filePath, 'utf-8');
-      html = html.replace(vt.imgPlaceholder, `cid:${vt.cid}`);
+      // Use direct HTTPS CDN URL (MakeMyTrip architecture) for instant zero-latency Google proxy pre-caching
 
       const existing = db.prepare('SELECT id FROM templates WHERE name = ?').get(vt.name);
       if (!existing) {
