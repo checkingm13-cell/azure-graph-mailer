@@ -393,13 +393,62 @@
             <div class="form-group" id="ociRegionGroup" style="display: none;">
               <label class="form-label">🏛️ OCI Server Region</label>
               <select id="accOciRegion" class="form-select">
-                <option value="ap-mumbai-1">🇮🇳 India West (Mumbai) — ap-mumbai-1 [Default]</option>
-                <option value="us-ashburn-1">🇺🇸 US East (Ashburn) — us-ashburn-1</option>
-                <option value="us-phoenix-1">🇺🇸 US West (Phoenix) — us-phoenix-1</option>
-                <option value="eu-frankfurt-1">🇩🇪 Germany (Frankfurt) — eu-frankfurt-1</option>
-                <option value="uk-london-1">🇬🇧 UK South (London) — uk-london-1</option>
-                <option value="ap-sydney-1">🇦🇺 Australia East (Sydney) — ap-sydney-1</option>
-                <option value="ca-toronto-1">🇨🇦 Canada Southeast (Toronto) — ca-toronto-1</option>
+                <optgroup label="⭐ Subscribed In Your Tenancy">
+                  <option value="ap-mumbai-1" selected>🇮🇳 India West (Mumbai) — ap-mumbai-1 [Home Region]</option>
+                  <option value="me-abudhabi-1">🇦🇪 UAE Central (Abu Dhabi) — me-abudhabi-1</option>
+                  <option value="us-ashburn-1">🇺🇸 US East (Ashburn) — us-ashburn-1</option>
+                </optgroup>
+                <optgroup label="🌏 Asia Pacific & India">
+                  <option value="ap-hyderabad-1">🇮🇳 India South (Hyderabad) — ap-hyderabad-1</option>
+                  <option value="ap-singapore-1">🇸🇬 Singapore (Singapore) — ap-singapore-1</option>
+                  <option value="ap-singapore-2">🇸🇬 Singapore West (Singapore) — ap-singapore-2</option>
+                  <option value="ap-tokyo-1">🇯🇵 Japan East (Tokyo) — ap-tokyo-1</option>
+                  <option value="ap-osaka-1">🇯🇵 Japan Central (Osaka) — ap-osaka-1</option>
+                  <option value="ap-seoul-1">🇰🇷 South Korea Central (Seoul) — ap-seoul-1</option>
+                  <option value="ap-chuncheon-1">🇰🇷 South Korea North (Chuncheon) — ap-chuncheon-1</option>
+                  <option value="ap-sydney-1">🇦🇺 Australia East (Sydney) — ap-sydney-1</option>
+                  <option value="ap-melbourne-1">🇦🇺 Australia Southeast (Melbourne) — ap-melbourne-1</option>
+                  <option value="ap-batam-1">🇮🇩 Indonesia North (Batam) — ap-batam-1</option>
+                  <option value="ap-kulai-2">🇲🇾 Malaysia West 2 (Kulai) — ap-kulai-2</option>
+                </optgroup>
+                <optgroup label="🌍 Middle East & Africa">
+                  <option value="me-dubai-1">🇦🇪 UAE East (Dubai) — me-dubai-1</option>
+                  <option value="me-riyadh-1">🇸🇦 Saudi Arabia Central (Riyadh) — me-riyadh-1</option>
+                  <option value="me-jeddah-1">🇸🇦 Saudi Arabia West (Jeddah) — me-jeddah-1</option>
+                  <option value="il-jerusalem-1">🇮🇱 Israel Central (Jerusalem) — il-jerusalem-1</option>
+                  <option value="af-johannesburg-1">🇿🇦 South Africa Central (Johannesburg) — af-johannesburg-1</option>
+                  <option value="af-casablanca-1">🇲🇦 Morocco West (Casablanca) — af-casablanca-1</option>
+                </optgroup>
+                <optgroup label="🏰 Europe & United Kingdom">
+                  <option value="eu-frankfurt-1">🇩🇪 Germany Central (Frankfurt) — eu-frankfurt-1</option>
+                  <option value="uk-london-1">🇬🇧 UK South (London) — uk-london-1</option>
+                  <option value="uk-cardiff-1">🇬🇧 UK West (Newport / Cardiff) — uk-cardiff-1</option>
+                  <option value="eu-paris-1">🇫🇷 France Central (Paris) — eu-paris-1</option>
+                  <option value="eu-marseille-1">🇫🇷 France South (Marseille) — eu-marseille-1</option>
+                  <option value="eu-amsterdam-1">🇳🇱 Netherlands Northwest (Amsterdam) — eu-amsterdam-1</option>
+                  <option value="eu-zurich-1">🇨🇭 Switzerland North (Zurich) — eu-zurich-1</option>
+                  <option value="eu-stockholm-1">🇸🇪 Sweden Central (Stockholm) — eu-stockholm-1</option>
+                  <option value="eu-madrid-1">🇪🇸 Spain Central (Madrid) — eu-madrid-1</option>
+                  <option value="eu-madrid-3">🇪🇸 Spain Central (Madrid 3) — eu-madrid-3</option>
+                  <option value="eu-milan-1">🇮🇹 Italy Northwest (Milan) — eu-milan-1</option>
+                  <option value="eu-turin-1">🇮🇹 Italy North (Turin) — eu-turin-1</option>
+                </optgroup>
+                <optgroup label="🌎 North America">
+                  <option value="us-chicago-1">🇺🇸 US Midwest (Chicago) — us-chicago-1</option>
+                  <option value="us-phoenix-1">🇺🇸 US West (Phoenix) — us-phoenix-1</option>
+                  <option value="us-sanjose-1">🇺🇸 US West (San Jose) — us-sanjose-1</option>
+                  <option value="ca-toronto-1">🇨🇦 Canada Southeast (Toronto) — ca-toronto-1</option>
+                  <option value="ca-montreal-1">🇨🇦 Canada Southeast (Montreal) — ca-montreal-1</option>
+                  <option value="mx-queretaro-1">🇲🇽 Mexico Central (Queretaro) — mx-queretaro-1</option>
+                  <option value="mx-monterrey-1">🇲🇽 Mexico Northeast (Monterrey) — mx-monterrey-1</option>
+                </optgroup>
+                <optgroup label="🌎 South America">
+                  <option value="sa-saopaulo-1">🇧🇷 Brazil East (Sao Paulo) — sa-saopaulo-1</option>
+                  <option value="sa-vinhedo-1">🇧🇷 Brazil Southeast (Vinhedo) — sa-vinhedo-1</option>
+                  <option value="sa-santiago-1">🇨🇱 Chile Central (Santiago) — sa-santiago-1</option>
+                  <option value="sa-valparaiso-1">🇨🇱 Chile West (Valparaiso) — sa-valparaiso-1</option>
+                  <option value="sa-bogota-1">🇨🇴 Colombia Central (Bogota) — sa-bogota-1</option>
+                </optgroup>
               </select>
               <span class="form-help" style="display: block; margin-top: 4px; font-size: 11px; color: var(--text-muted);">
                 Select the Oracle Cloud data center where this sending domain is verified.

@@ -30,13 +30,38 @@ async function autoDetectOciRegion(emailOrDomain) {
       const cnames = await dns.resolveCname(`${sel}._domainkey.${domain}`);
       for (const target of cnames) {
         const lower = target.toLowerCase();
+        // 1. Direct OCI region key in CNAME target (e.g. ...me-abudhabi-1.oci...)
+        const regionMatch = lower.match(/([a-z]{2}-[a-z]+-\d+)\.oci/);
+        if (regionMatch) {
+          const matchedRegion = regionMatch[1];
+          domainRegionCache.set(domain, matchedRegion);
+          return matchedRegion;
+        }
+
+        // 2. Regional 3-letter airport code detection in CNAME
         if (lower.includes('bom1')) {
           domainRegionCache.set(domain, 'ap-mumbai-1');
           return 'ap-mumbai-1';
         }
+        if (lower.includes('auh1')) {
+          domainRegionCache.set(domain, 'me-abudhabi-1');
+          return 'me-abudhabi-1';
+        }
         if (lower.includes('iad1')) {
           domainRegionCache.set(domain, 'us-ashburn-1');
           return 'us-ashburn-1';
+        }
+        if (lower.includes('hyd1')) {
+          domainRegionCache.set(domain, 'ap-hyderabad-1');
+          return 'ap-hyderabad-1';
+        }
+        if (lower.includes('dxb1')) {
+          domainRegionCache.set(domain, 'me-dubai-1');
+          return 'me-dubai-1';
+        }
+        if (lower.includes('sin1')) {
+          domainRegionCache.set(domain, 'ap-singapore-1');
+          return 'ap-singapore-1';
         }
         if (lower.includes('phx1')) {
           domainRegionCache.set(domain, 'us-phoenix-1');
