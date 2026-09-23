@@ -186,7 +186,13 @@ function formatRfc2822IST(d = new Date()) {
 /**
  * Resolves authoritative display name from sender domain if none supplied
  */
-function resolveSenderDisplayName(senderEmail) {
+function resolveSenderDisplayName(senderEmail, subject = '') {
+  const subLower = (subject || '').toLowerCase();
+  if (subLower.includes('paripex') || subLower.includes('pijr')) return 'Paripex - Indian Journal of Research';
+  if (subLower.includes('scientific research') || subLower.includes('ijsr')) return 'International Journal of Scientific Research (IJSR)';
+  if (subLower.includes('applied research') || subLower.includes('ijar')) return 'Indian Journal of Applied Research (IJAR)';
+  if (subLower.includes('research analysis') || subLower.includes('gjra')) return 'Global Journal for Research Analysis (GJRA)';
+
   const lower = (senderEmail || '').toLowerCase();
   if (lower.includes('researchandrise')) return 'International Journal of Scientific Research (IJSR)';
   if (lower.includes('yourpaperedition')) return 'Indian Journal of Applied Research (IJAR)';
@@ -212,7 +218,7 @@ async function sendViaOCI({ fromEmail, toEmail, subject, htmlBody, textBody, reg
   const senderClean = sender.includes('<') ? sender.match(/<([^>]+)>/)?.[1] || sender : sender.trim();
   const rawSenderDomain = senderClean.includes('@') ? senderClean.split('@')[1].trim() : 'worldwidejournals.com';
   const apexDomain = extractApexDomain(rawSenderDomain) || rawSenderDomain;
-  const displayName = resolveSenderDisplayName(senderClean);
+  const displayName = resolveSenderDisplayName(senderClean, subject);
 
   const plainText = textBody || htmlToPlainText(htmlBody);
 
