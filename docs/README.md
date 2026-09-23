@@ -15,6 +15,8 @@ Welcome to the **Azure Graph Mailer** Obsidian Vault. This vault documents the f
 ---
 
 ## 🚨 Incident Reports & Production Audits
+- **[[INCIDENT_REPORT_INVALID_SENDER_DOMAIN_TRIPLE_SLASH_AND_VISUAL_OCI_LOCK]]**
+  *Complete post-mortem of the September 22, 2026 triple-slash (`https:///`) link breakdown: premature tag annihilation at queue time vs dispatch time, client-side Chromium URL parsing, two-phase template resolution, and live LiteSpeed port 443 SSL audit.*
 - **[[INCIDENT_REPORT_QUEUE_FREEZE_IST_TIMEZONE_AND_SEND_NOW_AUDIT]]**
   *Detailed post-mortem and architectural fixes for the September 17, 2026 queue freeze: unbounded Azure ACS poller hang, UTC vs IST (+05:30) timezone skew, priority Send-Now worker wake engine, 100ms ultra-fast pacing, and automatic account fallback.*
 - **[[INCIDENT_REPORT_49_50_STUCK_BATCHES_AND_DSA_AUDIT]]**
@@ -27,6 +29,7 @@ Welcome to the **Azure Graph Mailer** Obsidian Vault. This vault documents the f
 ---
 
 ## 🏗️ Architecture & Specifications
+- **[[VISUAL_CAMPAIGN_AND_OCI_ENGINE_SPECIFICATION]]**: Production specification for Visual Graphic Card campaigns, Worldwide Journals CDN hosting, automated `<img` tag categorization, Google Image Proxy edge pre-caching, strict Oracle OCI SMTP engine lock, and Step 2 radio card UI.
 - **[[ALGORITHM_TIMING_SCHEDULING_AND_WORKERS_DSA]]**: Deep technical reference covering fair round-robin interleaving via SQL window functions, 100ms/2500ms pacing and interruptible sleep worker loops, IST timezone arithmetic, two-tier batching (`is_batch`), and test-recipient injection at batch heads.
 - **[[ARCHITECTURE_AND_SYSTEM_DESIGN]]**: High-performance multi-provider engine (Graph API, Azure ACS, Oracle OCI SMTP), fair rotation, dynamic link rewriting, strict Indian Standard Time (IST) normalization (`+330 minutes`), and automatic account fallback upon saturation or cooldown.
 - **[[SPEC_PRODUCTION_CAMPAIGN_SCHEDULER]]**: Production batch dispatch engine, rate limits, staggered queue scheduling, priority rank ordering (Send Now Tier 0), and series prefix isolation.
@@ -36,11 +39,13 @@ Welcome to the **Azure Graph Mailer** Obsidian Vault. This vault documents the f
 ---
 
 ## 📑 Templates & Dynamic Routing
-- **[[JOURNAL_TEMPLATES_AND_DYNAMIC_LINKS]]**: Specifications for the 4 core academic journals (**IJSR**, **IJAR**, **GJRA**, **Paripex**), merge tags (`[FNAME]`), and automatic domain link routing.
+- **[[JOURNAL_TEMPLATES_AND_DYNAMIC_LINKS]]**: Specifications for the 4 core academic journals (**IJSR**, **IJAR**, **GJRA**, **Paripex**), official CDN assets, automated `<img` categorization, and apex domain link routing.
+- **[[ACADEMIC_OSINT_ART_TAXONOMY_AND_CREATIVE_PROMPTS]]**: Creative design blueprint and generative prompts for academic poster art taxonomy.
 
 ---
 
 ## ⚙️ Operations, Warmup & Scaling
+- **[[OCI_OBJECT_STORAGE_AND_CDN_IMAGE_HOSTING_SOP]]**: Standard Operating Procedure for provisioning public OCI Object Storage buckets, Pre-Authenticated Requests (PAR), setting image MIME types, and automated 1-click dashboard upload roadmap.
 - **[[DEPLOYMENT_GUIDE]]**: Sub-35-second CI/CD deployment guide with GitHub Actions and Azure App Service Linux.
 - **[[M365_SHARED_MAILBOX_SETUP_GUIDE]]**: Creating and routing mailboxes via Microsoft 365 Shared Mailboxes without extra licensing costs.
 - **[[MULTI_ACCOUNT_WARMUP_AND_ANTI_SPAM]]**: Deliverability, SPF/DKIM/DMARC setup, and account warm-up curves.

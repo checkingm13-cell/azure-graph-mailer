@@ -576,6 +576,37 @@
                   type="number" id="batchSizeInput" class="form-input" value="50" min="5" max="500" required><span
                   class="form-help">Default 50 emails per batch for safe multi-account dispatch.</span></div>
             </div>
+
+            <!-- Template Category Radio Segment Selector -->
+            <div style="margin-bottom: 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <label class="form-label" style="margin-bottom: 0; font-size: 12.5px;">Campaign Format &amp; Template Category</label>
+                <span id="ociLockBadge" class="badge" style="background: rgba(16, 185, 129, 0.15); color: var(--emerald); border: 1px solid rgba(16, 185, 129, 0.35); font-size: 11px; padding: 2px 8px;">
+                  🏛️ Oracle OCI Auto-Rotated
+                </span>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <label id="lblCategoryVisual" style="display: flex; align-items: flex-start; gap: 10px; background: rgba(56, 189, 248, 0.08); border: 2px solid var(--sky); border-radius: 8px; padding: 10px 12px; cursor: pointer; transition: all 0.2s ease;">
+                  <input type="radio" name="campaignCategoryRadio" value="VISUAL" checked style="margin-top: 3px; accent-color: var(--sky);">
+                  <div>
+                    <strong style="color: var(--sky); font-size: 13px; display: block;">🖼️ Visual Graphic Cards (Oracle OCI)</strong>
+                    <span style="font-size: 11px; color: var(--text-secondary); line-height: 1.35; display: block; margin-top: 2px;">
+                      High-converting 640px journal posters with CTA buttons. Dispatches strictly via Oracle OCI SMTP accounts.
+                    </span>
+                  </div>
+                </label>
+                <label id="lblCategoryText" style="display: flex; align-items: flex-start; gap: 10px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 12px; cursor: pointer; transition: all 0.2s ease;">
+                  <input type="radio" name="campaignCategoryRadio" value="TEXT" style="margin-top: 3px; accent-color: var(--sky);">
+                  <div>
+                    <strong style="color: var(--text-primary); font-size: 13px; display: block;">📄 Standard Text CFP (All Providers)</strong>
+                    <span style="font-size: 11px; color: var(--text-secondary); line-height: 1.35; display: block; margin-top: 2px;">
+                      Classic academic CFP invitation letters. Compatible with Microsoft Graph API, Azure ACS, and OCI.
+                    </span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
             <div class="form-row">
               <div class="form-group" style="flex-grow: 1;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">

@@ -578,24 +578,28 @@ router.get('/templates', (req, res) => {
 });
 
 router.post('/templates', (req, res) => {
-  const { id, name, subject, bodyHtml } = req.body;
+  const { id, name, subject, bodyHtml, category } = req.body;
   if (!name || !subject || !bodyHtml) {
     return res.status(400).json({ ok: false, error: 'Name, subject, and bodyHtml are required.' });
   }
 
+  const assignedCategory = category 
+    ? category.toUpperCase() 
+    : (/<img\b/i.test(bodyHtml) ? 'VISUAL' : 'TEXT');
+
   if (id) {
     db.prepare(`
       UPDATE templates 
-      SET name = ?, subject = ?, body_html = ?, updated_at = datetime('now')
+      SET name = ?, subject = ?, body_html = ?, category = ?, updated_at = datetime('now')
       WHERE id = ?
-    `).run(name, subject, bodyHtml, id);
+    `).run(name, subject, bodyHtml, assignedCategory, id);
     return res.json({ ok: true, message: 'Template updated.' });
   }
 
   const result = db.prepare(`
-    INSERT INTO templates (name, subject, body_html)
-    VALUES (?, ?, ?)
-  `).run(name, subject, bodyHtml);
+    INSERT INTO templates (name, subject, body_html, category)
+    VALUES (?, ?, ?, ?)
+  `).run(name, subject, bodyHtml, assignedCategory);
 
   res.json({ ok: true, templateId: result.lastInsertRowid });
 });
@@ -1148,14 +1152,18 @@ router.post('/campaigns/launch-batches', (req, res) => {
     const fallbackAllowed = req.body.fallbackAllowed !== undefined ? (req.body.fallbackAllowed ? 1 : 0) : (parsedSenderAccountId ? 0 : 1);
     const sendingSpeed = (req.body.sendingSpeed || 'BALANCED').toUpperCase();
     const customIntervalMs = parseInt(req.body.customIntervalMs || '2500', 10);
+    const campaignCategory = (req.body.category || '').toUpperCase() === 'VISUAL'
+      || activeTemplates.some(t => t.category === 'VISUAL' || (t.body_html && /<img\b/i.test(t.body_html)))
+      ? 'VISUAL'
+      : 'TEXT';
 
     const campInsert = db.prepare(`
       INSERT INTO campaigns (
         name, template_id, status, total_count, scheduled_at,
         sender_account_id, pinned_account_id, mode, fallback_allowed, sending_speed, custom_interval_ms,
-        parent_id, is_batch
+        parent_id, is_batch, category
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     // Insert Parent Master Campaign if multi-batch, or single master
@@ -1176,7 +1184,8 @@ router.post('/campaigns/launch-batches', (req, res) => {
       sendingSpeed,
       customIntervalMs,
       null,
-      0 // is_batch = 0 (Master Parent)
+      0, // is_batch = 0 (Master Parent)
+      campaignCategory
     );
     parentCampaignId = parentCampRes.lastInsertRowid;
 
@@ -1248,7 +1257,8 @@ router.post('/campaigns/launch-batches', (req, res) => {
         sendingSpeed,
         customIntervalMs,
         parentCampaignId,
-        1 // is_batch = 1 (Child Sub-Batch)
+        1, // is_batch = 1 (Child Sub-Batch)
+        campaignCategory
       );
       const campaignId = campRes.lastInsertRowid;
 
@@ -1736,11 +1746,23 @@ router.post('/send-test', async (req, res) => {
     return res.status(503).json({ ok: false, error: 'Selected sender account is unavailable.' });
   }
 
-  const content = bodyHtml || `<div style="font-family: sans-serif; padding: 20px;">
+  const rawContent = bodyHtml || `<div style="font-family: sans-serif; padding: 20px;">
     <h2>✅ Test Email Delivery</h2>
     <p>Hello <b>${name}</b>,</p>
     <p>Dispatched via <b>${account.email}</b> (${account.provider})</p>
   </div>`;
+
+  const content = renderTemplate(rawContent, {
+    sender_email: account.email,
+    email: toEmail.trim(),
+    name
+  }, false);
+
+  const finalSubject = renderTemplate(subject, {
+    sender_email: account.email,
+    email: toEmail.trim(),
+    name
+  }, true);
 
   try {
     const { sendViaGraph } = require('../services/graphMailer');
@@ -1753,14 +1775,14 @@ router.post('/send-test', async (req, res) => {
         return await sendViaACS({
           fromEmail: account.email,
           toEmail: toEmail.trim(),
-          subject,
+          subject: finalSubject,
           htmlBody: content
         });
       } else if (account.provider === 'OCI') {
         return await sendViaOCI({
           fromEmail: account.email,
           toEmail: toEmail.trim(),
-          subject,
+          subject: finalSubject,
           htmlBody: content,
           region: account.oci_region || 'auto'
         });
@@ -1768,14 +1790,14 @@ router.post('/send-test', async (req, res) => {
         return await sendViaMailgun({
           fromEmail: account.email,
           toEmail: toEmail.trim(),
-          subject,
+          subject: finalSubject,
           htmlBody: content
         });
       } else {
         return await sendViaGraph({
           fromEmail: account.email,
           toEmail: toEmail.trim(),
-          subject,
+          subject: finalSubject,
           htmlBody: content
         });
       }

@@ -886,9 +886,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }).join('');
 
       if (batchSenderSelect) {
-        const curVal = batchSenderSelect.value;
-        batchSenderSelect.innerHTML = `<option value="">⚡ All Active Accounts Pool (Auto-Rotate)</option>` + optionsHtml;
-        if (curVal) batchSenderSelect.value = curVal;
+        updateBatchSenderDropdown(typeof getActiveCategory === 'function' && getActiveCategory() === 'VISUAL');
       }
       if (quickTestSenderSelect) {
         const curVal = quickTestSenderSelect.value;
@@ -1168,46 +1166,157 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // 5. TEMPLATES
+  // 5. TEMPLATES & CATEGORY LOGIC
+  function getActiveCategory() {
+    return document.querySelector('input[name="campaignCategoryRadio"]:checked')?.value || 'VISUAL';
+  }
+
+  function updateBatchSenderDropdown(isVisual) {
+    const batchSenderSelect = document.getElementById('batchSenderAccountSelect');
+    if (!batchSenderSelect || !allLoadedAccounts) return;
+
+    const curVal = batchSenderSelect.value;
+    const eligibleAccounts = isVisual 
+      ? allLoadedAccounts.filter(a => a.provider === 'OCI')
+      : allLoadedAccounts;
+
+    const defaultOptionText = isVisual
+      ? '🏛️ All Active Oracle OCI Accounts (Auto-Rotate)'
+      : '⚡ All Active Accounts Pool (Auto-Rotate)';
+
+    const optionsHtml = eligibleAccounts.map(a => {
+      const engineLabel = a.provider === 'AZURE_ACS' ? '⚡ Azure ACS' : (a.provider === 'OCI' ? `🏛️ OCI (${a.oci_region || 'ap-mumbai-1'})` : (a.provider === 'MAILGUN' ? '🚀 Mailgun API' : '🔷 Graph API'));
+      return `<option value="${a.id}">[${engineLabel}] ${escapeHtml(a.email)} (${escapeHtml(a.display_name)})</option>`;
+    }).join('');
+
+    batchSenderSelect.innerHTML = `<option value="">${defaultOptionText}</option>` + optionsHtml;
+    if (curVal && eligibleAccounts.some(a => String(a.id) === String(curVal))) {
+      batchSenderSelect.value = curVal;
+    }
+  }
+
+  function renderFilteredCampaignTemplates() {
+    const category = getActiveCategory();
+    const isVisual = category === 'VISUAL';
+
+    // 1. Filter templates by <img tag or category property
+    const filtered = allLoadedTemplates.filter(t => {
+      const hasImg = t.category === 'VISUAL' || (t.body_html && /<img\b/i.test(t.body_html));
+      return isVisual ? hasImg : !hasImg;
+    });
+
+    // 2. Update status badge and radio card borders
+    const ociLockBadge = document.getElementById('ociLockBadge');
+    const lblVisual = document.getElementById('lblCategoryVisual');
+    const lblText = document.getElementById('lblCategoryText');
+
+    if (isVisual) {
+      if (lblVisual) {
+        lblVisual.style.borderColor = 'var(--sky)';
+        lblVisual.style.background = 'rgba(56, 189, 248, 0.08)';
+      }
+      if (lblText) {
+        lblText.style.borderColor = 'var(--border-color)';
+        lblText.style.background = 'rgba(255, 255, 255, 0.02)';
+      }
+      if (ociLockBadge) {
+        ociLockBadge.innerHTML = '🏛️ Oracle OCI Auto-Rotated';
+        ociLockBadge.style.color = 'var(--emerald)';
+        ociLockBadge.style.borderColor = 'rgba(16, 185, 129, 0.35)';
+        ociLockBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+      }
+    } else {
+      if (lblText) {
+        lblText.style.borderColor = 'var(--sky)';
+        lblText.style.background = 'rgba(56, 189, 248, 0.08)';
+      }
+      if (lblVisual) {
+        lblVisual.style.borderColor = 'var(--border-color)';
+        lblVisual.style.background = 'rgba(255, 255, 255, 0.02)';
+      }
+      if (ociLockBadge) {
+        ociLockBadge.innerHTML = '🌐 All Providers Active';
+        ociLockBadge.style.color = 'var(--sky)';
+        ociLockBadge.style.borderColor = 'rgba(56, 189, 248, 0.35)';
+        ociLockBadge.style.background = 'rgba(56, 189, 248, 0.15)';
+      }
+    }
+
+    // 3. Populate batchTemplateSelect
+    const batchTplSelect = document.getElementById('batchTemplateSelect');
+    if (batchTplSelect) {
+      const curVal = batchTplSelect.value;
+      const tplOptions = `<option value="">-- Choose Template --</option>` +
+        filtered.map(t => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');
+      batchTplSelect.innerHTML = tplOptions;
+      if (curVal && filtered.some(t => String(t.id) === String(curVal))) {
+        batchTplSelect.value = curVal;
+      } else if (filtered.length > 0) {
+        batchTplSelect.value = filtered[0].id;
+      }
+    }
+
+    // 4. Populate templateCheckboxesList
+    const templateCheckboxesList = document.getElementById('templateCheckboxesList');
+    if (templateCheckboxesList) {
+      templateCheckboxesList.innerHTML = filtered.map((t, idx) => `
+        <label style="display: flex; align-items: center; gap: 8px; background: var(--bg-surface); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); cursor: pointer; font-size: 12px;">
+          <input type="checkbox" class="chk-rotate-tpl" value="${t.id}" ${idx < 2 ? 'checked' : ''}>
+          <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500;">${escapeHtml(t.name)}</span>
+        </label>
+      `).join('');
+
+      document.querySelectorAll('.chk-rotate-tpl').forEach(cb => {
+        cb.addEventListener('change', updateSampleEmailPreview);
+      });
+    }
+
+    // 5. Update Controlled Send sender dropdown (filter to OCI accounts if Visual)
+    updateBatchSenderDropdown(isVisual);
+
+    // 6. Update Preview
+    updateSampleEmailPreview();
+  }
+
   async function loadTemplates() {
     try {
       const res = await fetch('/api/templates');
       const data = await res.json();
       if (!data.ok) return;
       allLoadedTemplates = data.templates || [];
-      const tplOptions = `<option value="">-- Choose Template --</option>` + allLoadedTemplates.map((t) => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('');
 
-      const batchTplSelect = document.getElementById('batchTemplateSelect');
-      if (batchTplSelect) batchTplSelect.innerHTML = tplOptions;
+      // Render filtered templates in Step 2 of modal
+      renderFilteredCampaignTemplates();
 
-      const templateCheckboxesList = document.getElementById('templateCheckboxesList');
-      if (templateCheckboxesList) {
-        templateCheckboxesList.innerHTML = allLoadedTemplates.map((t, idx) => `
-          <label style="display: flex; align-items: center; gap: 8px; background: var(--bg-surface); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); cursor: pointer; font-size: 12px;">
-            <input type="checkbox" class="chk-rotate-tpl" value="${t.id}" ${idx < 2 ? 'checked' : ''}>
-            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500;">${escapeHtml(t.name)}</span>
-          </label>
-        `).join('');
-
-        document.querySelectorAll('.chk-rotate-tpl').forEach(cb => {
-          cb.addEventListener('change', updateSampleEmailPreview);
-        });
-      }
+      // Setup category radio change listeners
+      document.querySelectorAll('input[name="campaignCategoryRadio"]').forEach(radio => {
+        radio.addEventListener('change', renderFilteredCampaignTemplates);
+      });
 
       if (allLoadedTemplates.length === 0) {
         templatesList.innerHTML = `<div class="loading-placeholder">No templates saved yet.</div>`;
       } else {
-        templatesList.innerHTML = allLoadedTemplates.map((t) => `
-          <div class="panel-card" style="margin-bottom: 12px; background: var(--bg-card);">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-              <strong>${escapeHtml(t.name)}</strong>
-              <div style="display: flex; gap: 6px;">
-                <button class="btn btn-secondary btn-sm btn-edit-tpl" data-tpl='${JSON.stringify(t)}'>Edit</button>
-                <button class="btn btn-secondary btn-sm btn-delete-tpl" data-id="${t.id}" style="color: var(--rose);">Delete</button>
+        templatesList.innerHTML = allLoadedTemplates.map((t) => {
+          const isVisual = t.category === 'VISUAL' || (t.body_html && /<img\b/i.test(t.body_html));
+          const catBadge = isVisual
+            ? `<span class="badge" style="background: rgba(168, 85, 247, 0.15); color: var(--purple); border: 1px solid rgba(168, 85, 247, 0.35); font-size: 10px; margin-left: 6px;">🖼️ VISUAL</span>`
+            : `<span class="badge" style="background: rgba(56, 189, 248, 0.12); color: var(--sky); border: 1px solid rgba(56, 189, 248, 0.25); font-size: 10px; margin-left: 6px;">📄 TEXT</span>`;
+          return `
+            <div class="panel-card" style="margin-bottom: 12px; background: var(--bg-card);">
+              <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                  <strong>${escapeHtml(t.name)}</strong>
+                  ${catBadge}
+                </div>
+                <div style="display: flex; gap: 6px;">
+                  <button class="btn btn-secondary btn-sm btn-edit-tpl" data-tpl='${JSON.stringify(t)}'>Edit</button>
+                  <button class="btn btn-secondary btn-sm btn-delete-tpl" data-id="${t.id}" style="color: var(--rose);">Delete</button>
+                </div>
               </div>
+              <div style="font-size: 12px; color: var(--sky); margin: 6px 0;">Subject: ${escapeHtml(t.subject)}</div>
             </div>
-            <div style="font-size: 12px; color: var(--sky); margin: 6px 0;">Subject: ${escapeHtml(t.subject)}</div>
-          </div>
-        `).join('');
+          `;
+        }).join('');
 
         document.querySelectorAll('.btn-edit-tpl').forEach((btn) => {
           btn.addEventListener('click', () => {
@@ -1581,8 +1690,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function merge(str, c) {
-      const activeSender = document.getElementById('batchSenderAccountSelect')?.selectedOptions[0]?.text || 'dr.reetashah@theparipexjournal.com';
-      let rawDomain = activeSender.includes('@') ? activeSender.split('@')[1].replace(/[^a-zA-Z0-9.-]/g, '') : 'theparipexjournal.com';
+      const activeSender = document.getElementById('batchSenderAccountSelect')?.selectedOptions[0]?.text || '';
+      const isVisual = typeof getActiveCategory === 'function' && getActiveCategory() === 'VISUAL';
+      const defaultDomain = isVisual ? 'yourpaperedition.com' : 'theparipexjournal.com';
+      let rawDomain = activeSender.includes('@') ? activeSender.split('@')[1].replace(/[^a-zA-Z0-9.-]/g, '') : defaultDomain;
       
       // Extract apex domain
       const parts = rawDomain.split('.');
@@ -1606,8 +1717,8 @@ document.addEventListener('DOMContentLoaded', () => {
         .replace(/\{\{\s*Affiliation\s*\}\}/gi, c.affiliation || 'University Department')
         .replace(/\{\{\s*senderDomain\s*\}\}/gi, senderDomain)
         .replace(/\{\{\s*sender_domain\s*\}\}/gi, senderDomain)
-        .replace(/\{\{\s*senderEmail\s*\}\}/gi, activeSender)
-        .replace(/\{\{\s*sender_email\s*\}\}/gi, activeSender)
+        .replace(/\{\{\s*senderEmail\s*\}\}/gi, activeSender || `editorial@${senderDomain}`)
+        .replace(/\{\{\s*sender_email\s*\}\}/gi, activeSender || `editorial@${senderDomain}`)
         .replace(/\{\{\s*Date\s*\}\}/gi, new Date().toLocaleDateString())
         .replace(/cid:author_publishing_guide/g, '/author-publishing-guide-4-steps.jpg')
         .replace(/cid:ijsr_email_banner/g, '/IJSR-email.jpg')
@@ -1618,6 +1729,8 @@ document.addEventListener('DOMContentLoaded', () => {
       out = out.replace(/<a\b([^>]*?)\bhref=["'](\/(?!\/)[^"']*)["']([^>]*)>/gi, (match, prefix, path, suffix) => {
         return `<a${prefix}href="https://${senderDomain}${path}"${suffix}>`;
       });
+      // Self-heal any accidental triple slash in preview
+      out = out.replace(/https?:\/\/\//gi, `https://${senderDomain}/`);
       return out;
     }
 
@@ -1760,6 +1873,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const payload = {
         baseCampaignName: batchBaseCampaignName.value.trim() || currentPreviewData.baseCampaignName,
+        category: typeof getActiveCategory === 'function' ? getActiveCategory() : 'VISUAL',
         templateId: templateId,
         templateIds: templateIds,
         templateRotationStrategy: templateRotationStrategy,

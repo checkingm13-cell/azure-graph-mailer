@@ -1,10 +1,11 @@
 ---
-title: "Standard Journal Templates & Dynamic Link Routing"
-date: 2026-09-16
+title: "Standard Journal Templates, Visual Cards & Dynamic Link Routing"
+date: 2026-09-22
 tags:
   - templates
   - dynamic-routing
   - call-for-papers
+  - visual-cards
   - ijsr
   - ijar
   - gjra
@@ -13,75 +14,76 @@ tags:
 aliases:
   - Journal Templates
   - Dynamic Links
+  - Visual Cards
 ---
 
-# 📑 Standard Journal Templates & Dynamic Link Routing
+# 📑 Standard Journal Templates, Visual Cards & Dynamic Link Routing
 
 > [!NOTE]
-> Operational documentation for the 4 core academic journals supported by `azure-graph-mailer`: **IJSR**, **IJAR**, **GJRA**, and **Paripex**.
+> Operational documentation for the 4 core academic journals supported by `azure-graph-mailer`: **IJSR**, **IJAR**, **GJRA**, and **Paripex**. Covers both **Standard Text CFP** and **Visual Graphic Card** templates.
 
 ---
 
-## 1. Supported Academic Journals
+## 1. Supported Academic Journals & Official CDN Assets
 
-1. **International Journal of Scientific Research (IJSR)**
-   - *ISSN:* `2277-8179`
-   - *Indexing:* UGC & NMC Accepted, PubMed Indexed
-   - *Upload Endpoint:* `/international-journal-of-scientific-research-(IJSR)/page/p/upload-your-article`
-   - *Opt-out Endpoint:* `/international-journal-of-scientific-research-(IJSR)/page/p/OptOut`
-
-2. **Indian Journal of Applied Research (IJAR)**
-   - *ISSN:* `2249-555X`
-   - *Indexing:* UGC & NMC Accepted, PubMed Indexed
-   - *Upload Endpoint:* `/indian-journal-of-applied-research-(IJAR)/page/u/upload-your-article`
-   - *Opt-out Endpoint:* `/indian-journal-of-applied-research-(IJAR)/page/u/OptOut`
-
-3. **Global Journal For Research Analysis (GJRA)**
-   - *ISSN:* `2277-8160`
-   - *Indexing:* UGC & NMC Accepted, PubMed Indexed
-   - *Upload Endpoint:* `/global-journal-for-research-analysis-GJRA/page/p/upload-your-article`
-   - *Opt-out Endpoint:* `/global-journal-for-research-analysis-GJRA/page/p/OptOut`
-
-4. **Paripex Indian Journal of Research (Paripex)**
-   - *ISSN:* `2250-1991`
-   - *Indexing:* UGC & NMC Accepted, PubMed Indexed
-   - *Upload Endpoint:* `/paripex/page/p/upload-your-article`
-   - *Opt-out Endpoint:* `/paripex/page/p/OptOut`
+| Journal | ISSN | Primary CTA Endpoint | Official CDN Visual Poster URL |
+| :--- | :--- | :--- | :--- |
+| **IJAR** | `2249-555X` | `/indian-journal-of-applied-research-(IJAR)/page/u/upload-your-article` | `https://www.worldwidejournals.com/global-journal-for-research-analysis-GJRA/M-Images/IJAR-email.jpg` |
+| **IJSR** | `2277-8179` | `/international-journal-of-scientific-research-(IJSR)/page/p/upload-your-article` | `https://www.worldwidejournals.com/global-journal-for-research-analysis-GJRA/M-Images/IJSR-email.jpg` |
+| **GJRA** | `2277-8160` | `/global-journal-for-research-analysis-GJRA/page/p/upload-your-article` | `https://www.worldwidejournals.com/global-journal-for-research-analysis-GJRA/M-Images/GJRA-email.jpg` |
+| **PARIPEX** | `2250-1991` | `/paripex/page/p/upload-your-article` | `https://www.worldwidejournals.com/global-journal-for-research-analysis-GJRA/M-Images/PARIPEX-email.jpg` |
 
 ---
 
-## 2. Dynamic Tag Resolution Mechanics
+## 2. Template Categorization Engine
 
-The template renderer in `src/services/templateEngine.js` resolves tags at runtime per recipient and per sending mailbox:
+Templates are automatically categorized using standard `<img` detection:
 
-| Tag | Example Input | Rendered Output | Notes |
-|---|---|---|---|
-| `[FNAME]` or `{{FNAME}}` | `Dr. Rajesh Patel` | `Dr.` or `Rajesh` | Extracts recipient's first name. |
-| `[NAME]` or `{{Name}}` | `Dr. Rajesh Patel` | `Dr. Rajesh Patel` | Full recipient name. |
-| `{{Paper Title}}` | `Recent Trends in AI` | `Recent Trends in AI` | Derived from CSV upload. |
-| `{{senderDomain}}` | Sender: `editor@theparipexjournal.com` | `theparipexjournal.com` | Resolves to active sender mailbox domain. |
+1. **🖼️ Visual Graphic Cards:** Templates containing an `<img ...>` tag. Automatically locked to the **Oracle OCI Regional SMTP Pool** for zero-leak delivery.
+2. **📄 Standard Text CFP:** Templates without image tags. Open to **all providers** (Microsoft Graph API, Azure ACS, and Oracle OCI).
 
 ---
 
-## 3. Dynamic Relative Link Prepending
+## 3. Dynamic Tag Resolution Mechanics
 
-To maximize inbox placement and maintain domain reputation across multi-account pools, links are saved as relative paths in HTML:
+The template renderer in `src/services/templateEngine.js` resolves tags across two distinct phases:
 
-```html
-<a href="/paripex/page/p/upload-your-article">Submit Your Manuscript</a>
-```
+| Tag | Example Input | Rendered Output | Resolution Phase |
+| :--- | :--- | :--- | :--- |
+| `[FNAME]` or `{{FNAME}}` | `Dr. Rajesh Patel` | `Dr.` or `Rajesh` | Phase 1 (Queue Creation) |
+| `[NAME]` or `{{Name}}` | `Dr. Rajesh Patel` | `Dr. Rajesh Patel` | Phase 1 (Queue Creation) |
+| `{{Paper Title}}` | `Recent Trends in AI` | `Recent Trends in AI` | Phase 1 (Queue Creation) |
+| `{{senderDomain}}` | Sender: `newsletter@education.yourpaperedition.com` | `yourpaperedition.com` | Phase 2 (Worker Dispatch) |
 
-When an email is dispatched:
-- If sent from `rishank@mail.theparipexjournal.com`:
-  $\to$ Link becomes `https://mail.theparipexjournal.com/paripex/page/p/upload-your-article`
-- If sent from `newsletter@education.yourpaperedition.com`:
-  $\to$ Link becomes `https://education.yourpaperedition.com/paripex/page/p/upload-your-article`
+---
 
-No manual link editing is needed when switching sender domains.
+## 4. Apex Domain Stripping & Dynamic Link Routing
+
+To ensure high inbox deliverability and match active LiteSpeed web server SSL certificates on port 443:
+
+1. **Subdomains are Automatically Stripped:**
+   - Email: `academic@education.yourseducationmatter.com` $\to$ Apex: `yourseducationmatter.com`
+   - Email: `sayogita@send.letpublishandpropel.com` $\to$ Apex: `letpublishandpropel.com`
+   - Email: `dr.reetashah@theparipexjournal.com` $\to$ Apex: `theparipexjournal.com`
+
+2. **Relative Path Rewriting:**
+   Any relative link in HTML:
+   ```html
+   <a href="/paripex/page/p/upload-your-article">Submit Paper</a>
+   ```
+   Is dynamically rewritten upon socket transmission to:
+   ```html
+   <a href="https://yourpaperedition.com/paripex/page/p/upload-your-article">Submit Paper</a>
+   ```
+
+3. **Protection Against `https:///`:**
+   At queue creation time, `{{senderDomain}}` is left unrendered. When the dispatch worker assigns an account, it binds the apex domain, eliminating empty hostnames.
 
 ---
 
 ## 🔗 Related Notes (Obsidian Links)
+* [[VISUAL_CAMPAIGN_AND_OCI_ENGINE_SPECIFICATION]]
+* [[INCIDENT_REPORT_INVALID_SENDER_DOMAIN_TRIPLE_SLASH_AND_VISUAL_OCI_LOCK]]
 * [[ARCHITECTURE_AND_SYSTEM_DESIGN]]
 * [[SPEC_PRODUCTION_CAMPAIGN_SCHEDULER]]
 * [[README]]

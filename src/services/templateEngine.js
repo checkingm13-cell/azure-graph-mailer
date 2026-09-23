@@ -114,17 +114,23 @@ function renderTemplate(templateStr, data = {}, isSubject = null) {
     domain: recipientDomain,
     recipient_domain: recipientDomain,
     recipientdomain: recipientDomain,
-    sender_domain: senderDomain,
-    senderdomain: senderDomain,
-    senderDomain: senderDomain,
-    sender_email: senderEmail,
-    senderemail: senderEmail,
-    senderEmail: senderEmail,
     'paper title': data.paper_title || data.paperTitle || '',
     papertitle: data.paper_title || data.paperTitle || '',
     affiliation: data.affiliation || '',
     date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
   };
+
+  // Only inject sender domain tags into replacement map if senderDomain is known!
+  // If senderDomain is not provided yet (e.g. at queue creation time before pool account is selected),
+  // DO NOT replace {{senderDomain}} with empty string! Preserve {{senderDomain}} for queueWorker dispatch.
+  if (senderDomain) {
+    map['sender_domain'] = senderDomain;
+    map['senderdomain'] = senderDomain;
+    map['senderDomain'] = senderDomain;
+    map['sender_email'] = senderEmail;
+    map['senderemail'] = senderEmail;
+    map['senderEmail'] = senderEmail;
+  }
 
   // Replace {{tag}}, {tag}, and [tag] variations (e.g. [FNAME], {{Name}}, {{senderDomain}})
   for (const [key, value] of Object.entries(map)) {
@@ -133,16 +139,26 @@ function renderTemplate(templateStr, data = {}, isSubject = null) {
     result = result.replace(regex, value);
   }
 
-  // Safe anchor-only link rewriting (e.g. <a href="/submit-paper"> -> <a href="https://${senderDomain}/submit-paper">)
-  // Also fix any links where senderDomain was inserted without https:// protocol or ended up with https://https://
+  // When sender domain is known:
   if (senderDomain) {
+    // 1. Safe anchor-only link rewriting for relative links (e.g. <a href="/submit-paper"> -> <a href="https://${senderDomain}/submit-paper">)
     result = result.replace(/<a\b([^>]*?)\bhref=["'](\/(?!\/)[^"']*)["']([^>]*)>/gi, (match, prefix, path, suffix) => {
       return `<a${prefix}href="https://${senderDomain}${path}"${suffix}>`;
     });
-    // If a template has href="theparipexjournal.com/..." without http(s)://, auto-prepend https://
+
+    // 2. Fix any corrupted triple slashes https:///path -> https://${senderDomain}/path
+    result = result.replace(/https?:\/\/\//gi, `https://${senderDomain}/`);
+
+    // 3. Clean up any unreplaced {{senderDomain}} tags
+    result = result.replace(/https?:\/\/(?:\{\{\s*senderDomain\s*\}\}|\{\s*senderDomain\s*\}|\{\{\s*sender_domain\s*\}\}|\{\s*sender_domain\s*\})/gi, `https://${senderDomain}`);
+
+    // 4. If a template has href="theparipexjournal.com/..." without http(s)://, auto-prepend https://
     const escapedDomain = senderDomain.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const missingProtocolRegex = new RegExp(`(<a\\b[^>]*?\\bhref=["'])(?:https?:\\/\\/)?(${escapedDomain}[^"']*)(["'][^>]*>)`, 'gi');
     result = result.replace(missingProtocolRegex, '$1https://$2$3');
+  } else {
+    // If senderDomain is not known yet, heal any corrupted https:/// back to https://{{senderDomain}}/
+    result = result.replace(/https?:\/\/\//gi, 'https://{{senderDomain}}/');
   }
 
   // Clean up any inadvertent double https://https://

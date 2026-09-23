@@ -217,6 +217,14 @@ function initSchema(db) {
     if (!campaignCols.includes('is_batch')) {
       db.exec("ALTER TABLE campaigns ADD COLUMN is_batch INTEGER DEFAULT 0");
     }
+    if (!campaignCols.includes('category')) {
+      db.exec("ALTER TABLE campaigns ADD COLUMN category TEXT DEFAULT 'TEXT'");
+    }
+
+    const templateCols = db.prepare("PRAGMA table_info(templates)").all().map(c => c.name);
+    if (!templateCols.includes('category')) {
+      db.exec("ALTER TABLE templates ADD COLUMN category TEXT DEFAULT 'TEXT'");
+    }
 
     db.exec("CREATE INDEX IF NOT EXISTS idx_campaigns_parent ON campaigns(parent_id);");
     db.exec("CREATE INDEX IF NOT EXISTS idx_queue_schedule ON queue(status, scheduled_at, id);");
@@ -553,9 +561,9 @@ To Opt Out
   for (const t of templates) {
     const existing = db.prepare('SELECT id FROM templates WHERE name = ?').get(t.name);
     if (!existing) {
-      db.prepare('INSERT INTO templates (name, subject, body_html) VALUES (?, ?, ?)').run(t.name, t.subject, t.body_html);
+      db.prepare('INSERT INTO templates (name, subject, body_html, category) VALUES (?, ?, ?, ?)').run(t.name, t.subject, t.body_html, 'TEXT');
     } else {
-      db.prepare('UPDATE templates SET subject = ?, body_html = ? WHERE id = ?').run(t.subject, t.body_html, existing.id);
+      db.prepare('UPDATE templates SET subject = ?, body_html = ?, category = ? WHERE id = ?').run(t.subject, t.body_html, 'TEXT', existing.id);
     }
   }
 }
@@ -601,9 +609,9 @@ function seedVisualImageTemplates(db) {
 
       const existing = db.prepare('SELECT id FROM templates WHERE name = ?').get(vt.name);
       if (!existing) {
-        db.prepare('INSERT INTO templates (name, subject, body_html) VALUES (?, ?, ?)').run(vt.name, vt.subject, html);
+        db.prepare('INSERT INTO templates (name, subject, body_html, category) VALUES (?, ?, ?, ?)').run(vt.name, vt.subject, html, 'VISUAL');
       } else {
-        db.prepare('UPDATE templates SET subject = ?, body_html = ? WHERE id = ?').run(vt.subject, html, existing.id);
+        db.prepare('UPDATE templates SET subject = ?, body_html = ?, category = ? WHERE id = ?').run(vt.subject, html, 'VISUAL', existing.id);
       }
     } catch (e) {
       console.warn(`[Schema] Warning seeding visual template "${vt.name}":`, e.message);

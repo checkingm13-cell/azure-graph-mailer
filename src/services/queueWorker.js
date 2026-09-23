@@ -278,6 +278,8 @@ class QueueWorker {
                    COALESCE(c.pinned_account_id, c.sender_account_id) AS campaign_pinned_account_id,
                    c.fallback_allowed AS campaign_fallback_allowed,
                    c.custom_interval_ms AS campaign_custom_interval_ms,
+                   c.category AS campaign_category,
+                   t.category AS template_category,
                    ROW_NUMBER() OVER (
                      PARTITION BY q.campaign_id 
                      ORDER BY 
@@ -287,6 +289,7 @@ class QueueWorker {
                    ) AS campaign_turn
             FROM queue q
             JOIN campaigns c ON q.campaign_id = c.id
+            LEFT JOIN templates t ON q.template_id = t.id
             WHERE q.status = 'queued'
               AND (q.scheduled_at IS NULL OR q.scheduled_at <= datetime('now', '+330 minutes'))
               AND c.status IN ('SCHEDULED', 'QUEUED', 'RUNNING')
@@ -326,48 +329,62 @@ class QueueWorker {
         const assignedAccountIds = new Set();
 
         const dispatchPromises = queueItems.map(async (item, idx) => {
+          // Strict Provider Lock for Visual Image Templates:
+          // Visual campaigns or templates with <img> tags MUST exclusively send via OCI.
+          // Graph API and Azure ACS accounts are strictly forbidden for visual image templates.
+          const isVisualItem = item.campaign_category === 'VISUAL' || 
+                               item.template_category === 'VISUAL' || 
+                               (item.rendered_html && item.rendered_html.includes('<img'));
+
+          const eligiblePool = isVisualItem 
+            ? availableAccounts.filter(a => a.provider === 'OCI')
+            : availableAccounts;
+
           // Match account respecting campaign policy:
           // Pinned account is STRICT: only that account sends, no leak to other pool accounts.
           // Fallback to pool ONLY when campaign explicitly allows it (fallback_allowed = 1).
           let account = null;
 
           if (item.campaign_pinned_account_id) {
-            // Pinned/selected sender: Find it in available accounts.
-            // DELIBERATELY skip assignedAccountIds check — same pinned account can handle
-            // multiple emails in the same dispatch cycle. This prevents "leak" where
-            // selecting 1 sender still rotated through all pool accounts.
-            account = availableAccounts.find(a => a.id === item.campaign_pinned_account_id);
+            // Pinned/selected sender: Find it in eligible accounts.
+            account = eligiblePool.find(a => a.id === item.campaign_pinned_account_id);
 
             if (!account && item.campaign_fallback_allowed === 1) {
               // Fallback ONLY if campaign explicitly allows it (user opted in)
-              account = availableAccounts.find(a => !assignedAccountIds.has(a.id)) || availableAccounts[idx % availableAccounts.length];
+              account = eligiblePool.find(a => !assignedAccountIds.has(a.id)) || eligiblePool[idx % eligiblePool.length];
               if (account) {
-                console.log(`[QueueWorker] 🔄 Pinned sender (ID: ${item.campaign_pinned_account_id}) unavailable. Fallback allowed — using pool account: ${account.email}`);
+                console.log(`[QueueWorker] 🔄 Pinned sender (ID: ${item.campaign_pinned_account_id}) unavailable. Fallback allowed — using ${isVisualItem ? 'OCI' : 'pool'} account: ${account.email}`);
               }
             } else if (!account) {
               // Pinned account not available and fallback NOT allowed — postpone, don't leak!
-              console.log(`[QueueWorker] ⏳ Pinned sender (ID: ${item.campaign_pinned_account_id}) unavailable (cooldown/quota). Fallback disabled — postponing "${item.email}" 60s.`);
+              const waitReason = isVisualItem
+                ? 'Pinned sender unavailable or not OCI. Waiting for OCI sender quota (no fallback).'
+                : 'Pinned sender unavailable. Waiting for cooldown/quota refresh (no fallback).';
+              console.log(`[QueueWorker] ⏳ Pinned sender (ID: ${item.campaign_pinned_account_id}) unavailable. Fallback disabled — postponing "${item.email}" 60s.`);
               db.prepare(`
                 UPDATE queue
                 SET scheduled_at = datetime('now', '+330 minutes', '+60 seconds'),
-                    last_error = 'Pinned sender unavailable. Waiting for cooldown/quota refresh (no fallback).'
+                    last_error = ?
                 WHERE id = ?
-              `).run(item.id);
+              `).run(waitReason, item.id);
               return;
             }
           } else {
-            // General pool rotation: Fair round-robin across healthy accounts
-            account = availableAccounts.find(a => !assignedAccountIds.has(a.id)) || availableAccounts[idx % availableAccounts.length];
+            // General pool rotation: Fair round-robin across eligible healthy accounts
+            account = eligiblePool.find(a => !assignedAccountIds.has(a.id)) || eligiblePool[idx % eligiblePool.length];
           }
 
           if (!account) {
             // Anti-Deadlock Guard: Postpone this item by 60s in IST so it doesn't starve the head of the queue on every tick
+            const postponeMsg = isVisualItem
+              ? 'Waiting for eligible Oracle (OCI) sender. All OCI accounts busy or reached daily limits.'
+              : 'All eligible senders busy or reached daily limits. Postponed 60s.';
             db.prepare(`
               UPDATE queue
               SET scheduled_at = datetime('now', '+330 minutes', '+60 seconds'),
-                  last_error = 'All eligible senders busy or reached daily limits. Postponed 60s.'
+                  last_error = ?
               WHERE id = ?
-            `).run(item.id);
+            `).run(postponeMsg, item.id);
             return;
           }
           assignedAccountIds.add(account.id);
