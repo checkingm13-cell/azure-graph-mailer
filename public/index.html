@@ -804,11 +804,29 @@
                 💡 <em>Tip: Separate multiple subject lines using <code>|</code> or newlines. Each recipient in your campaign will receive a unique rotated variation!</em>
               </div>
             </div>
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
                 <label class="form-label" style="margin-bottom: 0;">Email Body (HTML supported)</label>
-                <button type="button" id="btnOpenLinkBuilder" class="btn btn-secondary btn-xs" style="background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.4); color: var(--emerald); font-weight: 600; padding: 3px 8px; font-size: 11px;">
-                  🔗 Insert Dynamic Link Template
-                </button>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                  <button type="button" id="btnUploadPosterImage" class="btn btn-secondary btn-xs" style="background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.4); color: var(--amber); font-weight: 600; padding: 3px 8px; font-size: 11px;">
+                    🖼️ Upload Poster / Image (OCI)
+                  </button>
+                  <input type="file" id="inputPosterImageFile" accept="image/*" style="display: none;">
+                  <button type="button" id="btnOpenLinkBuilder" class="btn btn-secondary btn-xs" style="background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.4); color: var(--emerald); font-weight: 600; padding: 3px 8px; font-size: 11px;">
+                    🔗 Insert Dynamic Link Template
+                  </button>
+                </div>
+              </div>
+
+              <!-- Uploaded Poster Banner (Shows URL + 1-Click Copy / Insert) -->
+              <div id="posterUploadResultBar" style="display: none; margin-bottom: 8px; padding: 8px 12px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 6px; font-size: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+                  <span style="color: var(--amber); font-weight: 600;">✅ Image Hosted:</span>
+                  <input type="text" id="uploadedPosterUrlInput" readonly style="flex: 1; min-width: 200px; padding: 3px 6px; font-size: 11px; background: #0f172a; border: 1px solid #334155; color: #38bdf8; border-radius: 4px;">
+                  <div style="display: flex; gap: 4px;">
+                    <button type="button" id="btnCopyPosterUrl" class="btn btn-secondary btn-xs" style="padding: 2px 7px; font-size: 11px;">📋 Copy URL</button>
+                    <button type="button" id="btnInsertPosterImgTag" class="btn btn-primary btn-xs" style="padding: 2px 7px; font-size: 11px;">➕ Insert &lt;img&gt; in Body</button>
+                  </div>
+                </div>
               </div>
               <div class="tag-pills">
                 <span class="tag-pill" data-target="tplBody" data-tag="{{Name}}">+ {{Name}}</span>

@@ -23,6 +23,7 @@
   "author": "Antigravity Engineering",
   "license": "ISC",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1138.0",
     "@azure/communication-email": "^1.0.0",
     "@azure/identity": "^4.2.0",
     "@microsoft/microsoft-graph-client": "^3.0.7",

@@ -26,6 +26,12 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit to prevent memory exhaustion
 });
 
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit for poster images
+});
+
+const storageService = require('../services/storageService');
 const csvParser = require('csv-parser');
 
 // Helper function to extract rows from Excel or CSV using fast streaming for CSV
@@ -1839,6 +1845,42 @@ router.post('/send-test', async (req, res) => {
       error: errorDetail,
       provider: account.provider,
       senderEmail: account.email
+    });
+  }
+});
+
+// ==========================================
+// 🖼️ OCI Object Storage Image / Poster Upload
+// ==========================================
+router.post('/upload-image', imageUpload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ ok: false, error: 'No image file provided in "image" field.' });
+    }
+
+    const mime = (req.file.mimetype || '').toLowerCase();
+    if (!mime.startsWith('image/')) {
+      return res.status(400).json({ ok: false, error: `Invalid file type (${mime}). Only images are allowed.` });
+    }
+
+    const uploadResult = await storageService.uploadToOCI(
+      req.file.buffer,
+      req.file.originalname,
+      req.file.mimetype
+    );
+
+    res.json({
+      ok: true,
+      url: uploadResult.url,
+      key: uploadResult.key,
+      filename: req.file.originalname,
+      size: req.file.size
+    });
+  } catch (err) {
+    console.error('[UploadImage] Error uploading to OCI Object Storage:', err);
+    res.status(500).json({
+      ok: false,
+      error: err.message || 'Failed to upload image to OCI Object Storage'
     });
   }
 });

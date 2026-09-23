@@ -37,7 +37,14 @@ const config = {
   mailgunApiKey: process.env.MAILGUN_API_KEY || '',
   mailgunDomain: process.env.MAILGUN_DOMAIN || '',
   mailgunHost: process.env.MAILGUN_HOST || 'https://api.mailgun.net',
-  mailgunSenderEmail: process.env.MAILGUN_SENDER_EMAIL || ''
+  mailgunSenderEmail: process.env.MAILGUN_SENDER_EMAIL || '',
+
+  // Oracle Cloud Infrastructure (OCI) Object Storage (S3-Compatible)
+  ociS3AccessKey: process.env.OCI_S3_ACCESS_KEY || '',
+  ociS3SecretKey: process.env.OCI_S3_SECRET_KEY || '',
+  ociS3Namespace: process.env.OCI_S3_NAMESPACE || '',
+  ociS3Bucket: process.env.OCI_S3_BUCKET || '',
+  ociS3Region: process.env.OCI_S3_REGION || 'ap-mumbai-1'
 };
 
 module.exports = Object.freeze(config);
