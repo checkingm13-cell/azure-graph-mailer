@@ -1858,18 +1858,23 @@ document.addEventListener('DOMContentLoaded', () => {
       const durationStr = durationSec < 60 ? `${durationSec}s` : `${Math.ceil(durationSec / 60)} min`;
       const timeStr = new Date(startMs).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
       const timeBadge = mode === 'immediate' && i === 0 ? '⚡ Starts Now' : formatTimeUntil(new Date(startMs).toISOString());
+      const includeTest = chkIncludeTestRecipients ? chkIncludeTestRecipients.checked : true;
+      const testEmailBadge = includeTest ? '<span style="color: #38bdf8; font-size: 10.5px; font-weight: 600; margin-left: 4px;">(+5 Test Inboxes)</span>' : '';
+      const totalBatchCount = count + (includeTest ? 5 : 0);
       batchesListContainer.innerHTML += `
         <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; font-size: 12px;">
           <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;">
             <strong style="color: var(--sky);">${escapeHtml(batchName)}</strong>
             <span class="badge ${mode === 'immediate' && i === 0 ? 'badge-completed' : 'badge-scheduled'}">${timeBadge}</span>
           </div>
-          <div style="color: var(--text-muted); margin-bottom: 4px;">👥 <strong>${count}</strong> emails &bull; Est: ~${durationStr}</div>
+          <div style="color: var(--text-muted); margin-bottom: 4px;">👥 <strong>${totalBatchCount}</strong> emails ${testEmailBadge} &bull; Est: ~${durationStr}</div>
           <div style="font-size: 11px; color: var(--text-secondary);">📅 Scheduled: <strong>${timeStr}</strong></div>
         </div>
       `;
     }
-    btnConfirmLaunchBatches.textContent = `🚀 Confirm & Schedule All ${totalBatches} Batches (${contacts.length} Total Emails)`;
+    const includeTestOverall = chkIncludeTestRecipients ? chkIncludeTestRecipients.checked : true;
+    const finalTotalEmails = contacts.length + (includeTestOverall ? (totalBatches * 5) : 0);
+    btnConfirmLaunchBatches.textContent = `🚀 Confirm & Schedule All ${totalBatches} Batches (${finalTotalEmails} Total Emails${includeTestOverall ? ' incl. 5 Test/Batch' : ''})`;
   }
 
   const chkEnableTemplateRotation = document.getElementById('chkEnableTemplateRotation');
@@ -1995,9 +2000,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  const chkIncludeTestRecipients = document.getElementById('chkIncludeTestRecipients');
   if (batchSizeInput) batchSizeInput.addEventListener('input', renderBatchesBreakdown);
   if (batchBaseCampaignName) batchBaseCampaignName.addEventListener('input', renderBatchesBreakdown);
   if (chkSkipPreviouslyContacted) chkSkipPreviouslyContacted.addEventListener('change', renderBatchesBreakdown);
+  if (chkIncludeTestRecipients) chkIncludeTestRecipients.addEventListener('change', renderBatchesBreakdown);
   if (batchTemplateSelect) batchTemplateSelect.addEventListener('change', updateSampleEmailPreview);
 
   if (campaignScheduleMode) {
@@ -2129,6 +2136,7 @@ document.addEventListener('DOMContentLoaded', () => {
         templateRotationStrategy: templateRotationStrategy,
         batchSize: parseInt(batchSizeInput.value || '50', 10),
         skipPreviouslyContacted: chkSkipPreviouslyContacted.checked,
+        includeTestRecipients: chkIncludeTestRecipients ? chkIncludeTestRecipients.checked : true,
         scheduleMode: campaignScheduleMode ? campaignScheduleMode.value : 'immediate',
         scheduledStartTime: (campaignScheduledStartTime && campaignScheduledStartTime.value) ? campaignScheduledStartTime.value : '',
         staggerMinutes: parseInt(campaignStaggerMinutes ? campaignStaggerMinutes.value || '60' : '60', 10),

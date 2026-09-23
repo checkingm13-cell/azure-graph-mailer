@@ -1206,9 +1206,10 @@ router.post('/campaigns/launch-batches', (req, res) => {
       const rawSlice = filteredContacts.slice(start, end);
       if (!rawSlice || rawSlice.length === 0) continue; // Prevent zero-contact batches (e.g. Batch_02 with 0 items)
       
-      // Inject mandatory test recipients at the start of every single batch
+      // Inject test recipients at the start of every batch only if includeTestRecipients is true (default: true)
+      const shouldInjectTest = req.body.includeTestRecipients !== false;
       const sample = rawSlice[0] || {};
-      const testRecipients = [
+      const testRecipients = shouldInjectTest ? [
         { email: 'sharifmemon64@gmail.com', name: 'Sharif Memon' },
         { email: 'memonkhansa688@gmail.com', name: 'Khansa Memon' },
         { email: 'hamza.memon8821@gmail.com', name: 'Hamza Memon' },
@@ -1218,7 +1219,7 @@ router.post('/campaigns/launch-batches', (req, res) => {
         ...t,
         paper_title: sample.paper_title || 'Research Article',
         affiliation: sample.affiliation || 'Department of Research'
-      }));
+      })) : [];
 
       // Ensure test contacts exist in contactIdMap
       for (const t of testRecipients) {
