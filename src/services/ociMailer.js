@@ -251,6 +251,7 @@ async function sendViaOCI({ fromEmail, toEmail, subject, htmlBody, textBody, reg
       'Date': formatRfc2822IST(),
       'X-OCI-Region': targetRegion,
       'Feedback-ID': `journal:${apexDomain.replace(/\./g, '_')}:oci`,
+      'List-ID': `${displayName} <bulletin.${apexDomain}>`,
       'List-Unsubscribe': `<https://${apexDomain}/unsubscribe>, <mailto:unsubscribe@${apexDomain}?subject=Unsubscribe>`,
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
       'Return-Path': `<${verpReturnPath}>`
