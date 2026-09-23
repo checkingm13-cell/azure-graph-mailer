@@ -1309,7 +1309,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   ${catBadge}
                 </div>
                 <div style="display: flex; gap: 6px;">
-                  <button class="btn btn-secondary btn-sm btn-edit-tpl" data-tpl='${JSON.stringify(t)}'>Edit</button>
+                  <button class="btn btn-secondary btn-sm btn-edit-tpl" data-id="${t.id}">Edit</button>
                   <button class="btn btn-secondary btn-sm btn-delete-tpl" data-id="${t.id}" style="color: var(--rose);">Delete</button>
                 </div>
               </div>
@@ -1320,7 +1320,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         document.querySelectorAll('.btn-edit-tpl').forEach((btn) => {
           btn.addEventListener('click', () => {
-            const t = JSON.parse(btn.dataset.tpl);
+            const t = allLoadedTemplates.find(x => String(x.id) === String(btn.dataset.id));
+            if (!t) return;
             tplId.value = t.id; tplName.value = t.name; tplSubject.value = t.subject; tplBody.value = t.body_html;
             window.scrollTo({ top: 0, behavior: 'smooth' });
           });
@@ -1334,7 +1335,9 @@ document.addEventListener('DOMContentLoaded', () => {
           });
         });
       }
-    } catch (_) { }
+    } catch (err) {
+      console.error('[Templates] Error loading templates:', err);
+    }
   }
 
     formTemplate.addEventListener('submit', async (e) => {
@@ -3385,6 +3388,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadAccounts();
   loadQueue();
   loadCampaigns();
+  loadTemplates();
 
   // Telemetry Loop (Lightweight status check; pauses DOM re-renders if inspect drawer is open)
   setInterval(() => {

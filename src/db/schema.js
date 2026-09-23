@@ -225,6 +225,7 @@ function initSchema(db) {
     if (!templateCols.includes('category')) {
       db.exec("ALTER TABLE templates ADD COLUMN category TEXT DEFAULT 'TEXT'");
     }
+    db.exec("UPDATE templates SET category = 'VISUAL' WHERE (category IS NULL OR category = 'TEXT') AND (body_html LIKE '%<img%' OR body_html LIKE '%<IMG%');");
 
     db.exec("CREATE INDEX IF NOT EXISTS idx_campaigns_parent ON campaigns(parent_id);");
     db.exec("CREATE INDEX IF NOT EXISTS idx_queue_schedule ON queue(status, scheduled_at, id);");

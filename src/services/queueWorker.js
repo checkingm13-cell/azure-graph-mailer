@@ -289,7 +289,7 @@ class QueueWorker {
                    ) AS campaign_turn
             FROM queue q
             JOIN campaigns c ON q.campaign_id = c.id
-            LEFT JOIN templates t ON q.template_id = t.id
+            LEFT JOIN templates t ON COALESCE(q.template_id, c.template_id) = t.id
             WHERE q.status = 'queued'
               AND (q.scheduled_at IS NULL OR q.scheduled_at <= datetime('now', '+330 minutes'))
               AND c.status IN ('SCHEDULED', 'QUEUED', 'RUNNING')
@@ -334,7 +334,7 @@ class QueueWorker {
           // Graph API and Azure ACS accounts are strictly forbidden for visual image templates.
           const isVisualItem = item.campaign_category === 'VISUAL' || 
                                item.template_category === 'VISUAL' || 
-                               (item.rendered_html && item.rendered_html.includes('<img'));
+                               (item.rendered_html && /<img\b/i.test(item.rendered_html));
 
           const eligiblePool = isVisualItem 
             ? availableAccounts.filter(a => a.provider === 'OCI')
