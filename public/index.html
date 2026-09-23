@@ -29,6 +29,9 @@
       <div id="throughputTicker" class="throughput-badge" title="Live sending throughput across all accounts">
         ⚡ 0.0 emails/sec
       </div>
+      <button type="button" id="btnHeaderUploadPoster" class="btn btn-secondary btn-sm"
+        style="font-weight: 600; color: #fbbf24; border-color: rgba(245, 158, 11, 0.5); background: rgba(245, 158, 11, 0.1);">🖼️ Upload Image (OCI)</button>
+      <input type="file" id="inputHeaderPosterFile" accept="image/*" style="display: none;">
       <button type="button" id="btnOpenQuickTest" class="btn btn-primary btn-sm"
         style="font-weight: 600;">⚡ Quick Test</button>
       <div id="workerStateBadge" class="status-badge active">
@@ -646,6 +649,32 @@
                 </div>
               </div>
             </div>
+
+            <!-- Quick OCI Poster Upload in Launch Campaign Tab -->
+            <div style="margin-top: 4px; margin-bottom: 14px; padding: 10px 14px; background: rgba(245, 158, 11, 0.06); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="font-size: 16px;">🖼️</span>
+                  <div>
+                    <strong style="color: var(--amber); font-size: 12.5px;">Need to host a new poster/image on OCI CDN?</strong>
+                    <span style="display: block; font-size: 11px; color: var(--text-secondary); margin-top: 1px;">Upload high-converting creative directly to Oracle Cloud Object Storage</span>
+                  </div>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <button type="button" id="btnLaunchUploadPoster" class="btn btn-warning btn-sm" style="font-size: 11.5px; font-weight: 600; padding: 4px 10px;">
+                    📤 Upload Image to OCI
+                  </button>
+                  <input type="file" id="inputLaunchPosterFile" accept="image/*" style="display: none;">
+                </div>
+              </div>
+              <div id="launchPosterResultBar" style="display: none; margin-top: 8px; padding-top: 8px; border-top: 1px dashed rgba(245, 158, 11, 0.25);">
+                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                  <span style="font-size: 11px; color: var(--amber); font-weight: 700;">✅ Live CDN URL:</span>
+                  <input type="text" id="launchPosterUrlInput" readonly style="flex: 1; min-width: 200px; padding: 4px 8px; font-size: 11px; background: #0f172a; border: 1px solid #334155; color: #38bdf8; border-radius: 4px;">
+                  <button type="button" id="btnLaunchCopyPosterUrl" class="btn btn-secondary btn-xs" style="padding: 3px 8px; font-size: 11px;">📋 Copy URL</button>
+                </div>
+              </div>
+            </div>
             <div class="form-group" style="margin-top: 8px; margin-bottom: 18px; padding: 12px 14px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 8px;">
               <label class="checkbox-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
                 <input type="checkbox" id="chkSkipPreviouslyContacted" style="width: 16px; height: 16px; cursor: pointer;">
@@ -1028,6 +1057,49 @@
             style="background: linear-gradient(135deg, #0284c7, #0369a1); font-weight: 600;">🚀 Send Test Now</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <!-- Dedicated OCI Image Upload Modal (Universal Popup) -->
+  <div id="modalUploadImagePopup" class="modal-overlay" style="display: none;">
+    <div class="modal-card" style="max-width: 520px; width: 90%;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 24px;">🖼️</span>
+          <div>
+            <h3 style="margin: 0; font-size: 16px; color: var(--text-primary);">Upload Poster / Image to OCI CDN</h3>
+            <p style="margin: 0; font-size: 11.5px; color: var(--text-muted);">Host images permanently on Oracle Cloud Object Storage</p>
+          </div>
+        </div>
+        <button type="button" id="btnCloseUploadModal" class="btn btn-secondary btn-sm" style="padding: 4px 10px; border-radius: 6px;">✕</button>
+      </div>
+
+      <div id="modalDropZonePoster" class="file-drop-zone" style="cursor: pointer; padding: 26px 16px; margin-bottom: 14px; border: 2px dashed rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.04);">
+        <div style="font-size: 32px; margin-bottom: 6px;">📤</div>
+        <div style="font-weight: 600; font-size: 14px; color: var(--text-primary);">Click or Drag &amp; Drop Image Here</div>
+        <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px;">Supports PNG, JPEG, WebP, GIF (Max 10MB)</div>
+        <input type="file" id="modalInputPosterFile" accept="image/*" style="display: none;">
+      </div>
+
+      <div id="modalUploadLoading" style="display: none; text-align: center; padding: 14px; color: var(--amber); font-size: 13px; font-weight: 600;">
+        <span style="display: inline-block; animation: pulse 1.5s infinite;">⏳ Uploading directly to OCI S3 Bucket...</span>
+      </div>
+
+      <div id="modalUploadResultBox" style="display: none; margin-bottom: 14px; padding: 12px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+          <span style="color: var(--emerald); font-weight: 700; font-size: 12px;">✅ Upload Complete &amp; Publicly Cached!</span>
+          <span id="modalUploadedFileSize" style="font-size: 10.5px; color: var(--text-muted);"></span>
+        </div>
+        <input type="text" id="modalUploadedUrlInput" readonly style="width: 100%; box-sizing: border-box; padding: 6px 10px; font-size: 11.5px; background: #0f172a; border: 1px solid #334155; color: #38bdf8; border-radius: 6px; margin-bottom: 8px;">
+        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+          <button type="button" id="btnModalCopyUrl" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 4px 10px;">📋 Copy CDN URL</button>
+          <button type="button" id="btnModalInsertHtml" class="btn btn-primary btn-sm" style="font-size: 11px; padding: 4px 10px;">➕ Insert in Template</button>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end;">
+        <button type="button" id="btnCancelUploadModal" class="btn btn-secondary btn-sm">Done</button>
+      </div>
     </div>
   </div>
 

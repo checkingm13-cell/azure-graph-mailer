@@ -1362,7 +1362,180 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // OCI Poster / Image Upload Handler
+  // ==========================================
+  // 🖼️ OCI Poster / Image Upload Handler (Universal Engine)
+  // ==========================================
+  const modalUploadImagePopup = document.getElementById('modalUploadImagePopup');
+  const btnCloseUploadModal = document.getElementById('btnCloseUploadModal');
+  const btnCancelUploadModal = document.getElementById('btnCancelUploadModal');
+  const modalDropZonePoster = document.getElementById('modalDropZonePoster');
+  const modalInputPosterFile = document.getElementById('modalInputPosterFile');
+  const modalUploadLoading = document.getElementById('modalUploadLoading');
+  const modalUploadResultBox = document.getElementById('modalUploadResultBox');
+  const modalUploadedUrlInput = document.getElementById('modalUploadedUrlInput');
+  const modalUploadedFileSize = document.getElementById('modalUploadedFileSize');
+  const btnModalCopyUrl = document.getElementById('btnModalCopyUrl');
+  const btnModalInsertHtml = document.getElementById('btnModalInsertHtml');
+
+  function openUploadModal() {
+    if (modalUploadImagePopup) {
+      modalUploadImagePopup.style.display = 'flex';
+      if (modalUploadLoading) modalUploadLoading.style.display = 'none';
+      if (modalUploadResultBox) modalUploadResultBox.style.display = 'none';
+      if (modalUploadedUrlInput) modalUploadedUrlInput.value = '';
+    }
+  }
+
+  function closeUploadModal() {
+    if (modalUploadImagePopup) modalUploadImagePopup.style.display = 'none';
+  }
+
+  if (btnCloseUploadModal) btnCloseUploadModal.addEventListener('click', closeUploadModal);
+  if (btnCancelUploadModal) btnCancelUploadModal.addEventListener('click', closeUploadModal);
+
+  // Core Upload Routine
+  async function performOciUpload(file, onProgress, onSuccess, onError) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      alert('⚠️ Only image files (PNG, JPG, WebP, GIF) are allowed.');
+      return;
+    }
+
+    if (typeof onProgress === 'function') onProgress(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const res = await fetch('/api/upload-image', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+
+      if (!data.ok) throw new Error(data.error || 'Failed to upload image');
+
+      // Auto-copy to clipboard
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(data.url).catch(() => {});
+      }
+
+      if (typeof onSuccess === 'function') onSuccess(data);
+    } catch (err) {
+      if (typeof onError === 'function') onError(err);
+      else alert(`Upload error: ${err.message}`);
+    } finally {
+      if (typeof onProgress === 'function') onProgress(false);
+    }
+  }
+
+  // 1. Top Header Upload Button
+  const btnHeaderUploadPoster = document.getElementById('btnHeaderUploadPoster');
+  if (btnHeaderUploadPoster) {
+    btnHeaderUploadPoster.addEventListener('click', openUploadModal);
+  }
+
+  // 2. Modal Dropzone & File Input
+  if (modalDropZonePoster && modalInputPosterFile) {
+    modalDropZonePoster.addEventListener('click', () => modalInputPosterFile.click());
+    modalDropZonePoster.addEventListener('dragover', (e) => { e.preventDefault(); modalDropZonePoster.classList.add('dragover'); });
+    modalDropZonePoster.addEventListener('dragleave', () => modalDropZonePoster.classList.remove('dragover'));
+    modalDropZonePoster.addEventListener('drop', (e) => {
+      e.preventDefault();
+      modalDropZonePoster.classList.remove('dragover');
+      if (e.dataTransfer.files.length > 0) handleModalFileUpload(e.dataTransfer.files[0]);
+    });
+
+    modalInputPosterFile.addEventListener('change', () => {
+      if (modalInputPosterFile.files.length > 0) handleModalFileUpload(modalInputPosterFile.files[0]);
+    });
+  }
+
+  function handleModalFileUpload(file) {
+    performOciUpload(
+      file,
+      (loading) => {
+        if (modalUploadLoading) modalUploadLoading.style.display = loading ? 'block' : 'none';
+        if (modalDropZonePoster) modalDropZonePoster.style.display = loading ? 'none' : 'block';
+      },
+      (data) => {
+        if (modalUploadedUrlInput) modalUploadedUrlInput.value = data.url;
+        if (modalUploadedFileSize) modalUploadedFileSize.textContent = `${(data.size / 1024).toFixed(1)} KB`;
+        if (modalUploadResultBox) modalUploadResultBox.style.display = 'block';
+        if (modalDropZonePoster) modalDropZonePoster.style.display = 'block';
+      },
+      (err) => {
+        alert('Upload failed: ' + err.message);
+        if (modalDropZonePoster) modalDropZonePoster.style.display = 'block';
+      }
+    );
+  }
+
+  if (btnModalCopyUrl && modalUploadedUrlInput) {
+    btnModalCopyUrl.addEventListener('click', async () => {
+      if (!modalUploadedUrlInput.value) return;
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(modalUploadedUrlInput.value);
+        btnModalCopyUrl.textContent = '✅ Copied!';
+        setTimeout(() => { btnModalCopyUrl.textContent = '📋 Copy CDN URL'; }, 2000);
+      }
+    });
+  }
+
+  if (btnModalInsertHtml && modalUploadedUrlInput) {
+    btnModalInsertHtml.addEventListener('click', () => {
+      const url = modalUploadedUrlInput.value.trim();
+      if (!url) return;
+      const imgTag = `<div style="text-align: center; margin: 16px 0;"><img src="${url}" alt="Poster" style="max-width: 100%; height: auto; border-radius: 6px; display: inline-block;" /></div>\n`;
+      insertTextAtCursor(tplBody, imgTag);
+      closeUploadModal();
+      document.querySelector('.nav-tab[data-tab="tab-templates"]')?.click();
+      alert('Image HTML tag inserted into template body!');
+    });
+  }
+
+  // 3. Launch Campaign Tab Quick Upload
+  const btnLaunchUploadPoster = document.getElementById('btnLaunchUploadPoster');
+  const inputLaunchPosterFile = document.getElementById('inputLaunchPosterFile');
+  const launchPosterResultBar = document.getElementById('launchPosterResultBar');
+  const launchPosterUrlInput = document.getElementById('launchPosterUrlInput');
+  const btnLaunchCopyPosterUrl = document.getElementById('btnLaunchCopyPosterUrl');
+
+  if (btnLaunchUploadPoster && inputLaunchPosterFile) {
+    btnLaunchUploadPoster.addEventListener('click', () => inputLaunchPosterFile.click());
+    inputLaunchPosterFile.addEventListener('change', () => {
+      const file = inputLaunchPosterFile.files[0];
+      if (!file) return;
+
+      const origText = btnLaunchUploadPoster.textContent;
+      performOciUpload(
+        file,
+        (loading) => {
+          btnLaunchUploadPoster.disabled = loading;
+          btnLaunchUploadPoster.textContent = loading ? '⏳ Uploading...' : origText;
+        },
+        (data) => {
+          if (launchPosterUrlInput) launchPosterUrlInput.value = data.url;
+          if (launchPosterResultBar) launchPosterResultBar.style.display = 'block';
+          alert(`✅ Poster uploaded to OCI CDN!\nURL copied to clipboard.`);
+        },
+        (err) => alert('Upload failed: ' + err.message)
+      );
+    });
+  }
+
+  if (btnLaunchCopyPosterUrl && launchPosterUrlInput) {
+    btnLaunchCopyPosterUrl.addEventListener('click', async () => {
+      if (!launchPosterUrlInput.value) return;
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(launchPosterUrlInput.value);
+        btnLaunchCopyPosterUrl.textContent = '✅ Copied!';
+        setTimeout(() => { btnLaunchCopyPosterUrl.textContent = '📋 Copy URL'; }, 2000);
+      }
+    });
+  }
+
+  // 4. Template Editor Tab Upload (Inside Tab 4)
   const btnUploadPosterImage = document.getElementById('btnUploadPosterImage');
   const inputPosterImageFile = document.getElementById('inputPosterImageFile');
   const posterUploadResultBar = document.getElementById('posterUploadResultBar');
@@ -1373,44 +1546,24 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btnUploadPosterImage && inputPosterImageFile) {
     btnUploadPosterImage.addEventListener('click', () => inputPosterImageFile.click());
 
-    inputPosterImageFile.addEventListener('change', async () => {
+    inputPosterImageFile.addEventListener('change', () => {
       const file = inputPosterImageFile.files[0];
       if (!file) return;
 
-      const originalBtnText = btnUploadPosterImage.textContent;
-      btnUploadPosterImage.disabled = true;
-      btnUploadPosterImage.textContent = '⏳ Uploading to OCI...';
-
-      try {
-        const formData = new FormData();
-        formData.append('image', file);
-
-        const res = await fetch('/api/upload-image', {
-          method: 'POST',
-          body: formData
-        });
-        const data = await res.json();
-
-        if (!data.ok) {
-          throw new Error(data.error || 'Failed to upload image');
-        }
-
-        if (uploadedPosterUrlInput) uploadedPosterUrlInput.value = data.url;
-        if (posterUploadResultBar) posterUploadResultBar.style.display = 'block';
-
-        // Auto copy to clipboard for convenience
-        if (navigator.clipboard) {
-          await navigator.clipboard.writeText(data.url).catch(() => {});
-        }
-
-        alert(`Image uploaded successfully to OCI Object Storage!\nURL copied to clipboard.`);
-      } catch (err) {
-        alert(`Upload error: ${err.message}`);
-      } finally {
-        btnUploadPosterImage.disabled = false;
-        btnUploadPosterImage.textContent = originalBtnText;
-        inputPosterImageFile.value = '';
-      }
+      const origText = btnUploadPosterImage.textContent;
+      performOciUpload(
+        file,
+        (loading) => {
+          btnUploadPosterImage.disabled = loading;
+          btnUploadPosterImage.textContent = loading ? '⏳ Uploading to OCI...' : origText;
+        },
+        (data) => {
+          if (uploadedPosterUrlInput) uploadedPosterUrlInput.value = data.url;
+          if (posterUploadResultBar) posterUploadResultBar.style.display = 'block';
+          alert(`✅ Image uploaded to OCI Object Storage!\nURL copied to clipboard.`);
+        },
+        (err) => alert('Upload failed: ' + err.message)
+      );
     });
   }
 
@@ -1421,9 +1574,6 @@ document.addEventListener('DOMContentLoaded', () => {
         await navigator.clipboard.writeText(uploadedPosterUrlInput.value);
         btnCopyPosterUrl.textContent = '✅ Copied!';
         setTimeout(() => { btnCopyPosterUrl.textContent = '📋 Copy URL'; }, 2000);
-      } else {
-        uploadedPosterUrlInput.select();
-        document.execCommand('copy');
       }
     });
   }
