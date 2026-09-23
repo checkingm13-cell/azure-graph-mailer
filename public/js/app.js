@@ -1401,6 +1401,13 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    // Template Standard Requirement: Image size should be under 100KB (strict or warning)
+    const sizeKb = file.size / 1024;
+    if (sizeKb > 100) {
+      const confirmLarge = confirm(`⚠️ Image Size Warning:\nFile is ${sizeKb.toFixed(1)} KB (Target recommended: Under 100 KB for optimal mobile email delivery & inbox deliverability).\n\nDo you still want to proceed with uploading?`);
+      if (!confirmLarge) return;
+    }
+
     if (typeof onProgress === 'function') onProgress(true);
 
     try {
@@ -1427,6 +1434,18 @@ document.addEventListener('DOMContentLoaded', () => {
     } finally {
       if (typeof onProgress === 'function') onProgress(false);
     }
+  }
+
+  // Helper to generate 100% compliant mobile-friendly email image HTML
+  function buildEmailImageTag(url, altText = 'Journal Publication Poster') {
+    return `<!-- Mobile-Friendly Email Poster (Under 100KB, Fixed Dimensions & HTTPS) -->
+<table border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; max-width: 640px; margin: 0 auto;">
+  <tr>
+    <td align="center" style="padding: 0; margin: 0;">
+      <img src="${url}" alt="${altText}" width="640" height="640" class="deviceWidth heroCard" style="width: 100%; max-width: 640px; height: auto; aspect-ratio: 1 / 1; display: block; border: 0; border-radius: 12px; outline: none; text-decoration: none;" />
+    </td>
+  </tr>
+</table>\n`;
   }
 
   // 1. Top Header Upload Button
@@ -1486,11 +1505,11 @@ document.addEventListener('DOMContentLoaded', () => {
     btnModalInsertHtml.addEventListener('click', () => {
       const url = modalUploadedUrlInput.value.trim();
       if (!url) return;
-      const imgTag = `<div style="text-align: center; margin: 16px 0;"><img src="${url}" alt="Poster" style="max-width: 100%; height: auto; border-radius: 6px; display: inline-block;" /></div>\n`;
+      const imgTag = buildEmailImageTag(url, 'Academic Journal Publication Poster');
       insertTextAtCursor(tplBody, imgTag);
       closeUploadModal();
       document.querySelector('.nav-tab[data-tab="tab-templates"]')?.click();
-      alert('Image HTML tag inserted into template body!');
+      alert('Mobile-friendly 640x640 Image HTML tag inserted into template body!');
     });
   }
 
@@ -1582,8 +1601,9 @@ document.addEventListener('DOMContentLoaded', () => {
     btnInsertPosterImgTag.addEventListener('click', () => {
       const url = uploadedPosterUrlInput.value.trim();
       if (!url) return;
-      const imgTag = `<div style="text-align: center; margin: 16px 0;"><img src="${url}" alt="Poster" style="max-width: 100%; height: auto; border-radius: 6px; display: inline-block;" /></div>\n`;
+      const imgTag = buildEmailImageTag(url, 'Academic Journal Publication Poster');
       insertTextAtCursor(tplBody, imgTag);
+      alert('Mobile-friendly 640x640 Image HTML tag inserted into template body!');
     });
   }
 
