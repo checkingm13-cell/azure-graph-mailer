@@ -29,6 +29,7 @@ Welcome to the **Azure Graph Mailer** Obsidian Vault. This vault documents the f
 ---
 
 ## 🏗️ Architecture & Specifications
+- **[[ENTERPRISE_DELIVERABILITY_BLUEPRINT_VERP_SES_AND_HEADERS]]**: Reverse-engineered deliverability blueprint from Federal Bank (Amazon SES) and Crocs (Self-Hosted PowerMTA/VERP): strict DMARC `p=reject`, dual DKIM, RFC 8058 One-Click Unsubscribe, VERP bounce routing, hidden preheaders, and MSO table engineering.
 - **[[VISUAL_CAMPAIGN_AND_OCI_ENGINE_SPECIFICATION]]**: Production specification for Visual Graphic Card campaigns, Worldwide Journals CDN hosting, automated `<img` tag categorization, Google Image Proxy edge pre-caching, strict Oracle OCI SMTP engine lock, and Step 2 radio card UI.
 - **[[ALGORITHM_TIMING_SCHEDULING_AND_WORKERS_DSA]]**: Deep technical reference covering fair round-robin interleaving via SQL window functions, 100ms/2500ms pacing and interruptible sleep worker loops, IST timezone arithmetic, two-tier batching (`is_batch`), and test-recipient injection at batch heads.
 - **[[ARCHITECTURE_AND_SYSTEM_DESIGN]]**: High-performance multi-provider engine (Graph API, Azure ACS, Oracle OCI SMTP), fair rotation, dynamic link rewriting, strict Indian Standard Time (IST) normalization (`+330 minutes`), and automatic account fallback upon saturation or cooldown.
