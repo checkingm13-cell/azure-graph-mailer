@@ -74,6 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let campSortOrder = 'newest';
   let campPageSize = 50;
   let campCurrentPage = 1;
+  let currentCampTotalPages = 1;
   let campaignViewMode = 'aggregated'; // 'aggregated' (Parent-Child) or 'table' (Raw)
   const expandedMasterCardIds = new Set(); // Preserves open state across 3s telemetry re-renders
 
@@ -2270,52 +2271,48 @@ document.addEventListener('DOMContentLoaded', () => {
   // --- PARENT-CHILD CAMPAIGN GROUPING & AGGREGATION ---
   function groupCampaignsByMaster(campaignList) {
     const parentMap = new Map();
-    const standalone = [];
+    const childrenMap = new Map();
 
-    // Separate explicit parents vs child batches or infer by naming pattern
+    // 1. Separate explicit parents vs child batches
     for (const c of campaignList) {
       if (c.parent_id) {
-        if (!parentMap.has(c.parent_id)) {
-          parentMap.set(c.parent_id, []);
+        if (!childrenMap.has(c.parent_id)) {
+          childrenMap.set(c.parent_id, []);
         }
-        parentMap.get(c.parent_id).push(c);
+        childrenMap.get(c.parent_id).push(c);
       } else {
-        // Check if this campaign has children or is a master
-        if (!parentMap.has(c.id)) {
-          parentMap.set(c.id, []);
-        }
+        parentMap.set(c.id, c);
       }
     }
 
     const aggregatedGroups = [];
 
-    for (const [parentId, children] of parentMap.entries()) {
-      const parentCamp = campaignList.find(c => c.id === parentId);
-      if (!parentCamp) {
-        // If children without parent found in memory, add them standalone
-        for (const ch of children) standalone.push(ch);
-        continue;
-      }
+    // 2. Build master groups
+    for (const [parentId, parentCamp] of parentMap.entries()) {
+      const children = childrenMap.get(parentId) || [];
 
-      // If parent has children, calculate aggregated metrics
       if (children.length > 0) {
         const totalCount = children.reduce((sum, ch) => sum + (ch.total_count || 0), 0);
         const sentCount = children.reduce((sum, ch) => sum + (ch.sent_count || 0), 0);
         const failedCount = children.reduce((sum, ch) => sum + (ch.failed_count || 0), 0);
-        
+        const remainingCount = Math.max(0, totalCount - (sentCount + failedCount));
+
         let aggregateStatus = 'COMPLETED';
-        const hasRunning = children.some(ch => ch.status === 'RUNNING');
-        const hasQueued = children.some(ch => ch.status === 'QUEUED' || ch.status === 'SCHEDULED');
-        const hasPaused = children.some(ch => ch.status === 'PAUSED');
-        const allCancelled = children.every(ch => ch.status === 'CANCELLED');
+        const allItems = [parentCamp, ...children];
+        const hasRunning = allItems.some(ch => ch.status === 'RUNNING');
+        const hasPaused = allItems.some(ch => ch.status === 'PAUSED');
+        const hasQueued = allItems.some(ch => ch.status === 'QUEUED' || ch.status === 'SCHEDULED');
+        const allCancelled = children.length > 0 && children.every(ch => ch.status === 'CANCELLED');
 
         if (hasRunning) aggregateStatus = 'RUNNING';
         else if (hasPaused) aggregateStatus = 'PAUSED';
-        else if (hasQueued) aggregateStatus = 'QUEUED';
-        else if (allCancelled) aggregateStatus = 'CANCELLED';
+        else if (hasQueued) {
+          const anyQueued = allItems.some(ch => ch.status === 'QUEUED');
+          aggregateStatus = anyQueued ? 'QUEUED' : 'SCHEDULED';
+        } else if (allCancelled) aggregateStatus = 'CANCELLED';
+        else aggregateStatus = 'COMPLETED';
 
         // Calculate Group-wide remaining and realistic completion timestamp
-        const remainingCount = Math.max(0, totalCount - (sentCount + failedCount));
         const totalEtaSec = children.reduce((sum, ch) => {
           if (ch.status === 'RUNNING' || ch.status === 'SCHEDULED' || ch.status === 'QUEUED') {
             return sum + (ch.etaSeconds || 0);
@@ -2338,7 +2335,7 @@ document.addEventListener('DOMContentLoaded', () => {
           groupEstCompletionIST = formatter.format(targetDate);
           const mins = Math.ceil(totalEtaSec / 60);
           groupDurationText = mins < 60 ? `~${mins} min left` : `~${Math.floor(mins / 60)}h ${mins % 60}m left`;
-          
+
           const sampleChild = children.find(c => c.slippagePct !== undefined);
           if (sampleChild) {
             slippageInfo = `+${sampleChild.slippagePct}% slippage buffer applied`;
@@ -2348,12 +2345,7 @@ document.addEventListener('DOMContentLoaded', () => {
         aggregatedGroups.push({
           isMaster: true,
           parent: parentCamp,
-          children: children.sort((a, b) => {
-            const statusWeight = (s) => (s === 'RUNNING' ? 0 : (s === 'QUEUED' || s === 'SCHEDULED' ? 1 : (s === 'PAUSED' ? 2 : 3)));
-            const diff = statusWeight(a.status) - statusWeight(b.status);
-            if (diff !== 0) return diff;
-            return a.id - b.id;
-          }),
+          children: children.sort((a, b) => (a.id || 0) - (b.id || 0)),
           totalCount,
           sentCount,
           failedCount,
@@ -2372,105 +2364,60 @@ document.addEventListener('DOMContentLoaded', () => {
           totalCount: parentCamp.total_count || 0,
           sentCount: parentCamp.sent_count || 0,
           failedCount: parentCamp.failed_count || 0,
+          remainingCount: Math.max(0, (parentCamp.total_count || 0) - ((parentCamp.sent_count || 0) + (parentCamp.failed_count || 0))),
           status: parentCamp.status
         });
       }
     }
 
-    // Include any active child batches whose parent is in a different status under the active filter
-    for (const ch of standalone) {
-      aggregatedGroups.push({
-        isMaster: false,
-        parent: ch,
-        children: [],
-        totalCount: ch.total_count || 0,
-        sentCount: ch.sent_count || 0,
-        failedCount: ch.failed_count || 0,
-        status: ch.status
-      });
+    // 3. Include any child batches whose parent is missing from parentMap
+    for (const [parentId, children] of childrenMap.entries()) {
+      if (!parentMap.has(parentId)) {
+        for (const ch of children) {
+          aggregatedGroups.push({
+            isMaster: false,
+            parent: ch,
+            children: [],
+            totalCount: ch.total_count || 0,
+            sentCount: ch.sent_count || 0,
+            failedCount: ch.failed_count || 0,
+            remainingCount: Math.max(0, (ch.total_count || 0) - ((ch.sent_count || 0) + (ch.failed_count || 0))),
+            status: ch.status
+          });
+        }
+      }
     }
-
-    // Sort groups so that Actively In-Progress batches (1% to 99% progress) are at the ABSOLUTE TOP
-    aggregatedGroups.sort((a, b) => {
-      // Priority 0: Actively sending right now (progress between 1% and 99%)
-      const aIsActivelySending = a.status === 'RUNNING' && a.sentCount > 0 && a.sentCount < a.totalCount ? 1 : 0;
-      const bIsActivelySending = b.status === 'RUNNING' && b.sentCount > 0 && b.sentCount < b.totalCount ? 1 : 0;
-      if (aIsActivelySending !== bIsActivelySending) return bIsActivelySending - aIsActivelySending;
-
-      // Priority 1: Other RUNNING
-      if (a.status === 'RUNNING' && b.status !== 'RUNNING') return -1;
-      if (b.status === 'RUNNING' && a.status !== 'RUNNING') return 1;
-
-      // Priority 2: Queued/Scheduled
-      const groupWeight = (s) => (s === 'QUEUED' || s === 'SCHEDULED' ? 0 : (s === 'PAUSED' ? 1 : (s === 'COMPLETED' ? 2 : 3)));
-      const diff = groupWeight(a.status) - groupWeight(b.status);
-      if (diff !== 0) return diff;
-
-      // Priority 3: Ascending batch/sequence if same group, else newer groups first
-      return (a.parent.id || 0) - (b.parent.id || 0);
-    });
 
     return aggregatedGroups;
   }
 
   function renderCampaignsTable() {
-    // 1. Filter
-    let filtered = allCampaigns.filter(c => {
-      if (currentCampFilter === 'RUNNING') return c.status === 'RUNNING';
-      if (currentCampFilter === 'QUEUED') return c.status === 'QUEUED' || c.status === 'SCHEDULED';
-      if (currentCampFilter === 'COMPLETED') return c.status === 'COMPLETED';
-      if (currentCampFilter === 'FAILED') return c.failed_count > 0 || c.status === 'CANCELLED';
-      if (currentCampFilter === 'TODAY') {
-        const today = new Date().toDateString();
-        const campDate = c.started_at ? new Date(c.started_at).toDateString() : (c.scheduled_at ? new Date(c.scheduled_at).toDateString() : '');
-        return campDate === today;
-      }
-      return true; // ALL
-    });
+    const allGroups = groupCampaignsByMaster(allCampaigns);
 
-    // 2. Search
-    if (campSearchQuery) {
-      const q = campSearchQuery.toLowerCase();
-      filtered = filtered.filter(c =>
-        (c.name && c.name.toLowerCase().includes(q)) ||
-        (c.template_name && c.template_name.toLowerCase().includes(q)) ||
-        (c.sender_email && c.sender_email.toLowerCase().includes(q))
-      );
+    // Update Counter Badges for Filter Pills
+    if (campaignViewMode === 'aggregated') {
+      document.getElementById('countCampAll').textContent = allGroups.length;
+      document.getElementById('countCampRunning').textContent = allGroups.filter(g => g.status === 'RUNNING').length;
+      document.getElementById('countCampQueued').textContent = allGroups.filter(g => g.status === 'QUEUED' || g.status === 'SCHEDULED').length;
+      document.getElementById('countCampCompleted').textContent = allGroups.filter(g => g.status === 'COMPLETED').length;
+      document.getElementById('countCampFailed').textContent = allGroups.filter(g => g.failedCount > 0 || g.status === 'CANCELLED').length;
+      const todayStr = new Date().toDateString();
+      document.getElementById('countCampToday').textContent = allGroups.filter(g => {
+        const d = g.parent.started_at ? new Date(g.parent.started_at).toDateString() : (g.parent.scheduled_at ? new Date(g.parent.scheduled_at).toDateString() : (g.parent.created_at ? new Date(g.parent.created_at).toDateString() : ''));
+        return d === todayStr;
+      }).length;
+    } else {
+      document.getElementById('countCampAll').textContent = allCampaigns.length;
+      document.getElementById('countCampRunning').textContent = allCampaigns.filter(c => c.status === 'RUNNING').length;
+      document.getElementById('countCampQueued').textContent = allCampaigns.filter(c => c.status === 'QUEUED' || c.status === 'SCHEDULED').length;
+      document.getElementById('countCampCompleted').textContent = allCampaigns.filter(c => c.status === 'COMPLETED').length;
+      document.getElementById('countCampFailed').textContent = allCampaigns.filter(c => c.failed_count > 0 || c.status === 'CANCELLED').length;
+      const todayStr = new Date().toDateString();
+      document.getElementById('countCampToday').textContent = allCampaigns.filter(c => {
+        const d = c.started_at ? new Date(c.started_at).toDateString() : (c.scheduled_at ? new Date(c.scheduled_at).toDateString() : (c.created_at ? new Date(c.created_at).toDateString() : ''));
+        return d === todayStr;
+      }).length;
     }
-
-    // 3. Sort
-    filtered.sort((a, b) => {
-      // Top Priority: Actively in-progress sending batches (1% - 99%)
-      const aActive = a.status === 'RUNNING' && a.sent_count > 0 && a.sent_count < a.total_count ? 1 : 0;
-      const bActive = b.status === 'RUNNING' && b.sent_count > 0 && b.sent_count < b.total_count ? 1 : 0;
-      if (aActive !== bActive) return bActive - aActive;
-
-      if (campSortOrder === 'newest' || campSortOrder === 'running') {
-        if (a.status === 'RUNNING' && b.status !== 'RUNNING') return -1;
-        if (b.status === 'RUNNING' && a.status !== 'RUNNING') return 1;
-        return a.id - b.id; // Ascending batch order so Batch 01 is above Batch 40
-      }
-      if (campSortOrder === 'oldest') return a.id - b.id;
-      if (campSortOrder === 'scheduled') {
-        const dateA = a.scheduled_at ? new Date(a.scheduled_at).getTime() : Infinity;
-        const dateB = b.scheduled_at ? new Date(b.scheduled_at).getTime() : Infinity;
-        return dateA - dateB;
-      }
-      if (campSortOrder === 'name') return (a.name || '').localeCompare(b.name || '');
-      return 0;
-    });
-
-    // Update Counters
-    document.getElementById('countCampAll').textContent = allCampaigns.length;
-    document.getElementById('countCampRunning').textContent = allCampaigns.filter(c => c.status === 'RUNNING').length;
-    document.getElementById('countCampQueued').textContent = allCampaigns.filter(c => c.status === 'QUEUED' || c.status === 'SCHEDULED').length;
-    document.getElementById('countCampCompleted').textContent = allCampaigns.filter(c => c.status === 'COMPLETED').length;
-    document.getElementById('countCampFailed').textContent = allCampaigns.filter(c => c.failed_count > 0 || c.status === 'CANCELLED').length;
-    const todayStr = new Date().toDateString();
-    document.getElementById('countCampToday').textContent = allCampaigns.filter(c => {
-      const d = c.started_at ? new Date(c.started_at).toDateString() : (c.scheduled_at ? new Date(c.scheduled_at).toDateString() : '');
-      return d === todayStr;
-    }).length;
 
     const aggregatedContainer = document.getElementById('aggregatedCampaignsContainer');
     const rawTableWrapper = document.getElementById('rawCampaignsTableWrapper');
@@ -2479,12 +2426,77 @@ document.addEventListener('DOMContentLoaded', () => {
       aggregatedContainer.style.display = 'block';
       rawTableWrapper.style.display = 'none';
 
-      const groups = groupCampaignsByMaster(filtered);
+      // 1. Filter
+      let filteredGroups = allGroups.filter(g => {
+        if (currentCampFilter === 'RUNNING') return g.status === 'RUNNING';
+        if (currentCampFilter === 'QUEUED') return g.status === 'QUEUED' || g.status === 'SCHEDULED';
+        if (currentCampFilter === 'COMPLETED') return g.status === 'COMPLETED';
+        if (currentCampFilter === 'FAILED') return g.failedCount > 0 || g.status === 'CANCELLED';
+        if (currentCampFilter === 'TODAY') {
+          const today = new Date().toDateString();
+          const campDate = g.parent.started_at ? new Date(g.parent.started_at).toDateString() : (g.parent.scheduled_at ? new Date(g.parent.scheduled_at).toDateString() : (g.parent.created_at ? new Date(g.parent.created_at).toDateString() : ''));
+          return campDate === today;
+        }
+        return true; // 'ALL'
+      });
 
-      if (groups.length === 0) {
-        aggregatedContainer.innerHTML = `<div class="table-empty" style="padding: 30px; text-align: center;">No campaigns match your current filters.</div>`;
+      // 2. Search
+      if (campSearchQuery) {
+        const q = campSearchQuery.toLowerCase();
+        filteredGroups = filteredGroups.filter(g => {
+          const p = g.parent;
+          if (p.name && p.name.toLowerCase().includes(q)) return true;
+          if (p.template_name && p.template_name.toLowerCase().includes(q)) return true;
+          if (p.sender_email && p.sender_email.toLowerCase().includes(q)) return true;
+          if (String(p.id).includes(q)) return true;
+          return g.children.some(ch =>
+            (ch.name && ch.name.toLowerCase().includes(q)) ||
+            (ch.sender_email && ch.sender_email.toLowerCase().includes(q)) ||
+            String(ch.id).includes(q)
+          );
+        });
+      }
+
+      // 3. Sort
+      filteredGroups.sort((a, b) => {
+        if (campSortOrder === 'name') {
+          return (a.parent.name || '').localeCompare(b.parent.name || '', undefined, { numeric: true, sensitivity: 'base' });
+        }
+        if (campSortOrder === 'oldest') {
+          return (a.parent.id || 0) - (b.parent.id || 0);
+        }
+        if (campSortOrder === 'running') {
+          const aR = a.status === 'RUNNING' ? 1 : 0;
+          const bR = b.status === 'RUNNING' ? 1 : 0;
+          if (aR !== bR) return bR - aR;
+          return (b.parent.id || 0) - (a.parent.id || 0);
+        }
+        if (campSortOrder === 'scheduled') {
+          const dateA = a.parent.scheduled_at ? new Date(a.parent.scheduled_at).getTime() : Infinity;
+          const dateB = b.parent.scheduled_at ? new Date(b.parent.scheduled_at).getTime() : Infinity;
+          if (dateA !== dateB) return dateA - dateB;
+          return (b.parent.id || 0) - (a.parent.id || 0);
+        }
+        // Default: 'newest' (Newest First)
+        return (b.parent.id || 0) - (a.parent.id || 0);
+      });
+
+      // 4. Pagination
+      const totalItems = filteredGroups.length;
+      const totalPages = campPageSize === 'all' ? 1 : Math.ceil(totalItems / campPageSize) || 1;
+      currentCampTotalPages = totalPages;
+      if (campCurrentPage > totalPages) campCurrentPage = totalPages;
+      if (campCurrentPage < 1) campCurrentPage = 1;
+
+      const startIdx = campPageSize === 'all' ? 0 : (campCurrentPage - 1) * campPageSize;
+      const endIdx = campPageSize === 'all' ? totalItems : Math.min(startIdx + campPageSize, totalItems);
+      const pageGroups = campPageSize === 'all' ? filteredGroups : filteredGroups.slice(startIdx, endIdx);
+
+      // Render Cards
+      if (pageGroups.length === 0) {
+        aggregatedContainer.innerHTML = `<div class="table-empty" style="padding: 30px; text-align: center;">No master campaigns match your current filters.</div>`;
       } else {
-        aggregatedContainer.innerHTML = groups.map(g => {
+        aggregatedContainer.innerHTML = pageGroups.map(g => {
           const p = g.parent;
           const total = g.totalCount;
           const sent = g.sentCount;
@@ -2597,7 +2609,7 @@ document.addEventListener('DOMContentLoaded', () => {
           `;
         }).join('');
 
-        // Wire parent card accordion toggles (persistent state)
+        // Wire accordion toggles
         aggregatedContainer.querySelectorAll('.parent-campaign-header').forEach(header => {
           header.addEventListener('click', () => {
             const card = header.closest('.parent-campaign-card');
@@ -2653,7 +2665,6 @@ document.addEventListener('DOMContentLoaded', () => {
               loadCampaigns();
               refreshTelemetry();
 
-              // Fast-poll telemetry every 1.5s for 15s to display rapid parallel progress
               let polls = 0;
               const pollInterval = setInterval(() => {
                 loadCampaigns();
@@ -2686,22 +2697,80 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       }
 
+      // Update Pagination Controls
+      document.getElementById('campaignPageInfo').textContent = `Showing ${totalItems === 0 ? 0 : startIdx + 1}–${endIdx} of ${totalItems} master campaigns`;
+      document.getElementById('campPageNumbers').textContent = `Page ${campCurrentPage} / ${totalPages}`;
+      document.getElementById('btnCampPrev').disabled = campCurrentPage <= 1;
+      document.getElementById('btnCampNext').disabled = campCurrentPage >= totalPages;
+
     } else {
       // RAW TABLE VIEW
       aggregatedContainer.style.display = 'none';
       rawTableWrapper.style.display = 'block';
 
+      // 1. Filter
+      let filtered = allCampaigns.filter(c => {
+        if (currentCampFilter === 'RUNNING') return c.status === 'RUNNING';
+        if (currentCampFilter === 'QUEUED') return c.status === 'QUEUED' || c.status === 'SCHEDULED';
+        if (currentCampFilter === 'COMPLETED') return c.status === 'COMPLETED';
+        if (currentCampFilter === 'FAILED') return c.failed_count > 0 || c.status === 'CANCELLED';
+        if (currentCampFilter === 'TODAY') {
+          const today = new Date().toDateString();
+          const campDate = c.started_at ? new Date(c.started_at).toDateString() : (c.scheduled_at ? new Date(c.scheduled_at).toDateString() : (c.created_at ? new Date(c.created_at).toDateString() : ''));
+          return campDate === today;
+        }
+        return true;
+      });
+
+      // 2. Search
+      if (campSearchQuery) {
+        const q = campSearchQuery.toLowerCase();
+        filtered = filtered.filter(c =>
+          (c.name && c.name.toLowerCase().includes(q)) ||
+          (c.template_name && c.template_name.toLowerCase().includes(q)) ||
+          (c.sender_email && c.sender_email.toLowerCase().includes(q)) ||
+          String(c.id).includes(q)
+        );
+      }
+
+      // 3. Sort
+      filtered.sort((a, b) => {
+        if (campSortOrder === 'name') {
+          return (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' });
+        }
+        if (campSortOrder === 'oldest') {
+          return (a.id || 0) - (b.id || 0);
+        }
+        if (campSortOrder === 'running') {
+          const aR = a.status === 'RUNNING' ? 1 : 0;
+          const bR = b.status === 'RUNNING' ? 1 : 0;
+          if (aR !== bR) return bR - aR;
+          return (b.id || 0) - (a.id || 0);
+        }
+        if (campSortOrder === 'scheduled') {
+          const dateA = a.scheduled_at ? new Date(a.scheduled_at).getTime() : Infinity;
+          const dateB = b.scheduled_at ? new Date(b.scheduled_at).getTime() : Infinity;
+          if (dateA !== dateB) return dateA - dateB;
+          return (b.id || 0) - (a.id || 0);
+        }
+        // Default: 'newest' (Newest First)
+        return (b.id || 0) - (a.id || 0);
+      });
+
       // 4. Pagination
       const totalItems = filtered.length;
       const totalPages = campPageSize === 'all' ? 1 : Math.ceil(totalItems / campPageSize) || 1;
+      currentCampTotalPages = totalPages;
       if (campCurrentPage > totalPages) campCurrentPage = totalPages;
+      if (campCurrentPage < 1) campCurrentPage = 1;
+
       const startIdx = campPageSize === 'all' ? 0 : (campCurrentPage - 1) * campPageSize;
-      const endIdx = campPageSize === 'all' ? totalItems : startIdx + campPageSize;
-      const pageItems = filtered.slice(startIdx, endIdx);
+      const endIdx = campPageSize === 'all' ? totalItems : Math.min(startIdx + campPageSize, totalItems);
+      const pageItems = campPageSize === 'all' ? filtered : filtered.slice(startIdx, endIdx);
 
       // Render Table
       if (pageItems.length === 0) {
-        campaignsTableBody.innerHTML = `<tr><td colspan="8" class="table-empty">No campaigns match your filters.</td></tr>`;
+        campaignsTableBody.innerHTML = `<tr><td colspan="8" class="table-empty">No batches match your current filters.</td></tr>`;
       } else {
         campaignsTableBody.innerHTML = pageItems.map((c) => {
           let statusBadgeClass = 'badge-queued';
@@ -2787,7 +2856,8 @@ document.addEventListener('DOMContentLoaded', () => {
         campaignsTableBody.querySelectorAll('.btn-inspect-batch').forEach(btn => btn.addEventListener('click', () => { openCampaignInspectionDrawer(btn.dataset.id); }));
       }
 
-      document.getElementById('campaignPageInfo').textContent = `Showing ${totalItems === 0 ? 0 : startIdx + 1}–${endIdx} of ${totalItems} campaigns`;
+      // Update Pagination Controls
+      document.getElementById('campaignPageInfo').textContent = `Showing ${totalItems === 0 ? 0 : startIdx + 1}–${endIdx} of ${totalItems} batches`;
       document.getElementById('campPageNumbers').textContent = `Page ${campCurrentPage} / ${totalPages}`;
       document.getElementById('btnCampPrev').disabled = campCurrentPage <= 1;
       document.getElementById('btnCampNext').disabled = campCurrentPage >= totalPages;
@@ -2800,6 +2870,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnToggleCampaignViewMode.addEventListener('click', () => {
       campaignViewMode = campaignViewMode === 'aggregated' ? 'table' : 'aggregated';
       btnToggleCampaignViewMode.textContent = campaignViewMode === 'aggregated' ? '🗂️ View: Grouped Master Sheets' : '📋 View: Raw Batches Table';
+      campCurrentPage = 1;
       renderCampaignsTable();
     });
   }
@@ -2953,6 +3024,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('campaignSortSelect').addEventListener('change', (e) => {
     campSortOrder = e.target.value;
+    campCurrentPage = 1;
     renderCampaignsTable();
   });
 
@@ -2963,23 +3035,17 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   document.getElementById('btnCampPrev').addEventListener('click', () => {
-    if (campCurrentPage > 1) { campCurrentPage--; renderCampaignsTable(); }
+    if (campCurrentPage > 1) {
+      campCurrentPage--;
+      renderCampaignsTable();
+    }
   });
 
   document.getElementById('btnCampNext').addEventListener('click', () => {
-    const totalPages = campPageSize === 'all' ? 1 : Math.ceil((allCampaigns.filter(c => {
-      if (currentCampFilter === 'RUNNING') return c.status === 'RUNNING';
-      if (currentCampFilter === 'QUEUED') return c.status === 'QUEUED' || c.status === 'SCHEDULED';
-      if (currentCampFilter === 'COMPLETED') return c.status === 'COMPLETED';
-      if (currentCampFilter === 'FAILED') return c.failed_count > 0 || c.status === 'CANCELLED';
-      if (currentCampFilter === 'TODAY') {
-        const today = new Date().toDateString();
-        const campDate = c.started_at ? new Date(c.started_at).toDateString() : (c.scheduled_at ? new Date(c.scheduled_at).toDateString() : '');
-        return campDate === today;
-      }
-      return true;
-    }).length) / campPageSize) || 1;
-    if (campCurrentPage < totalPages) { campCurrentPage++; renderCampaignsTable(); }
+    if (campCurrentPage < currentCampTotalPages) {
+      campCurrentPage++;
+      renderCampaignsTable();
+    }
   });
 
   // 9. DETAILED DELIVERY AUDIT LOGS (Paginated & Zero-Flicker)
