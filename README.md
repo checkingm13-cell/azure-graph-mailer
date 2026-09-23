@@ -28,6 +28,10 @@ aliases:
 
 This folder is configured as an **Obsidian-ready vault**. You can open `D:\projects\azure-graph-mailer` directly in Obsidian to browse all linked technical documentation:
 
+* 🏆 **[[docs/ENTERPRISE_DELIVERABILITY_BLUEPRINT_VERP_SES_AND_HEADERS]]**: Reverse engineering Scapia (SES) and Crocs (PowerMTA) standards, DMARC `sp=reject`, OCI Custom Return-Path, and live Inbox validation.
+* 📦 **[[docs/OCI_OBJECT_STORAGE_AND_CDN_IMAGE_HOSTING_SOP]]**: OCI Object Storage setup, S3 Compatibility API (`@aws-sdk/client-s3`), dashboard upload modal, and Method A `.htaccess` rewrites.
+* 🌐 **[[docs/OCI_CUSTOM_RETURN_PATH_AND_DNS_ALIGNMENT_SOP]]**: Complete runbook for OCI Custom Return Path (`bom1...`), DKIM, and strict DMARC zone records in cPanel.
+* 🖼️ **[[docs/VISUAL_CAMPAIGN_AND_OCI_ENGINE_SPECIFICATION]]**: Visual Graphic Card specifications, 60/40 academic feature grid, MSO Outlook rendering, and strict OCI engine locking.
 * 💰 **[[docs/COST_BREAKDOWN_AND_BUDGET]]**: Complete monthly expense calculation (~₹1,700/mo total), free vs paid features, and how 1 M365 license powers 40 accounts for ₹0 extra.
 * 🏗️ **[[docs/ARCHITECTURE_AND_SYSTEM_DESIGN]]**: Detailed multi-account rotation algorithm, database schema, and Graph API vs ACS technical comparison.
 * 📜 **[[docs/MICROSOFT_GRAPH_API_SPEC_AND_PERMISSIONS]]**: Deep-dive into Microsoft Graph `Mail.Send` permissions, `POST /users/{id}/sendMail` schema, `202 Accepted` responses, and 429 throttling policies.

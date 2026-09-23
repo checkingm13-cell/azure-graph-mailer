@@ -1,11 +1,12 @@
 ---
-title: "SOP: Oracle Cloud Infrastructure (OCI) Object Storage & CDN Asset Hosting"
-date: 2026-09-22
+title: "SOP: Oracle Cloud Infrastructure (OCI) Object Storage, S3 Compatibility API & Image Hosting"
+date: 2026-09-23
 tags:
   - oci
   - object-storage
+  - s3-api
+  - aws-sdk
   - cdn
-  - google-image-proxy
   - asset-hosting
   - email-deliverability
   - sop
@@ -13,115 +14,208 @@ tags:
 aliases:
   - OCI Object Storage SOP
   - OCI Image Hosting
-  - OCI CDN Assets
+  - OCI S3 API Integration
 ---
 
-# 📦 SOP: Oracle Cloud Infrastructure (OCI) Object Storage & CDN Asset Hosting
+# 📦 SOP: Oracle Cloud Infrastructure (OCI) Object Storage & S3 API Image Hosting
 
 > [!IMPORTANT]
-> Standard Operating Procedure (SOP) for provisioning public buckets on Oracle Cloud Infrastructure (OCI), uploading campaign graphics, generating permanent high-speed CDN URLs, and configuring Google Image Proxy edge pre-caching.
+> Comprehensive Standard Operating Procedure for provisioning OCI Object Storage buckets, integrating the S3 Compatibility API with `@aws-sdk/client-s3`, enabling the in-app dashboard upload modal, configuring dynamic template insertion, and deploying Method A `.htaccess` reverse-proxy redirects.
 
 ---
 
-## 1. Overview & Architectural Role
+## 1. Architectural Overview & Design Pattern
 
-Visual email campaigns require public, high-throughput, SSL-secured graphic hosting that satisfies Google Image Proxy's pre-caching requirements. Hosting assets on Oracle Cloud Infrastructure (OCI) Object Storage provides:
-* **Isolation from Web Hosting:** If the primary journal web server faces high traffic or maintenance, email poster images remain 100% online with 99.99% cloud SLA.
-* **Direct Fiber Peering:** Oracle Cloud Mumbai (`ap-mumbai-1`) maintains direct low-latency peering with Google edge points of presence across India.
-* **No Anti-Bot Captchas:** Unlike aggressive website WAFs, OCI Object Storage endpoints do not issue challenge pages or bot checks to Google crawler IP ranges.
-
----
-
-## 2. Step-by-Step OCI Web Console Setup
-
-### Step 1: Bucket Provisioning
-1. Log into **[cloud.oracle.com](https://cloud.oracle.com)** with your tenancy credentials.
-2. Open the main navigation menu (top-left ☰) $\to$ **Storage** $\to$ **Buckets**.
-3. Select your designated compartment and region (e.g. `ap-mumbai-1`).
-4. Click **Create Bucket**:
-   - **Bucket Name:** `wwj-email-assets`
-   - **Default Storage Tier:** Select **Standard** *(Never select Archive tier; Standard tier guarantees millisecond read response for email opens)*.
-   - **Encryption:** Oracle-managed key.
-5. Click **Create**.
-
-### Step 2: Enable Public Bucket Visibility
-1. Click the bucket name (`wwj-email-assets`) to enter its detail page.
-2. Under **Bucket Information**, locate the **Visibility** setting.
-3. Click **Edit Visibility**:
-   - Change from *Private* to **Public**.
-4. Click **Save Changes**.
-
-> [!NOTE]
-> Public visibility allows anonymous HTTP `GET` requests for files inside the bucket. Anonymous users cannot list, modify, or delete files—they can only read known object paths.
-
-### Step 3: Upload Campaign Graphics with Proper MIME Types
-1. Scroll down to the **Objects** section and click **Upload**.
-2. Drag and drop your visual cards (e.g. `GJRA-email.jpg`, `IJAR-email.jpg`).
-3. Click **Advanced (Optional)**:
-   - **Content-Type:** Explicitly set to `image/jpeg` (for `.jpg`) or `image/png` (for `.png`).
-   - *(Critical: If left as `application/octet-stream`, Gmail will treat the file as a raw binary download and refuse to render it inline).*
-4. Click **Upload**.
-
-### Step 4: Extract the Public Permanent CDN URL
-1. Next to the uploaded object, click the **three dots (⋮)** $\to$ **View Object Details**.
-2. Locate the **URL Path (URI)** field:
-   ```
-   https://objectstorage.ap-mumbai-1.oraclecloud.com/n/<tenancy-namespace>/b/wwj-email-assets/o/<file-name>.jpg
-   ```
-3. Copy this URL. It is immediately ready for insertion into email template `<img src="...">` tags.
-
----
-
-## 3. Alternative: Pre-Authenticated Requests (PAR)
-
-If organizational policy mandates that the bucket itself remain **Private**:
-1. Inside the private bucket, click the **three dots (⋮)** next to the specific file.
-2. Click **Create Pre-Authenticated Request (PAR)**.
-3. Configuration:
-   - **Access Type:** Permit reads on "Object".
-   - **Expiration Date:** Set 5 to 10 years into the future (e.g., Dec 31, 2035).
-4. Click **Create Pre-Authenticated Request**.
-5. Copy the generated PAR URL. Google Image Proxy will authenticate using the query token embedded in the URL.
-
----
-
-## 4. Technical Analysis: Redirecting vs Direct Hosting
-
-A common architectural question: *Can we set an Apache/LiteSpeed redirect on `worldwidejournals.com` pointing to the OCI bucket to avoid uploading?*
-
-### The Verdict: Direct Hosting is Strongly Superior
-1. **Redirects Do Not Eliminate Uploading:** For an HTTP 301/302 redirect from WWJ to OCI to succeed, the file must already exist in the OCI bucket. Otherwise, the recipient receives a `404 Not Found`.
-2. **Latency Penalty:** A redirect introduces a 2-hop roundtrip (Google Proxy $\to$ WWJ $\to$ 301 $\to$ OCI $\to$ 200 OK), doubling latency.
-3. **Spam Score Impact:** Anti-spam engines (Barracuda, SpamAssassin) assign higher risk scores to email images that bounce across cross-domain redirects compared to static direct URLs.
-4. **Current WWJ CDN Status:** The existing endpoints on `worldwidejournals.com/.../M-Images/...` are already protected by **Sucuri CloudProxy Anycast CDN**, responding with `X-Sucuri-Cache: HIT` and **HTTP/3** in under 25ms.
-
----
-
-## 5. Automated Mailer Dashboard Roadmap (Programmatic Upload)
-
-To eliminate logging into the Oracle Cloud Console every month, the platform supports an integrated upload pipeline via the **OCI REST API / SDK**:
+Visual Graphic Card email campaigns require reliable, high-throughput image hosting that renders in 0.00s across Gmail, Google Workspace, and Microsoft Outlook.
 
 ```
-[ User drops JPG into Mailer Dashboard (Tab 4) ]
-                       │
-                       ▼
-[ Express API Route: POST /api/templates/upload-asset ]
-                       │
-                       ▼
-[ OCI SDK: PutObjectRequest (Content-Type: image/jpeg) ]
-                       │
-                       ▼
-[ OCI Object Storage Bucket: wwj-email-assets ]
-                       │
-                       ▼
-[ Returns Public HTTPS URL directly into Template Editor ]
+┌────────────────────────────────────────────────────────────────────────┐
+│                      IMAGE UPLOAD & DISPATCH PIPELINE                  │
+├────────────────────────────────────────────────────────────────────────┤
+│ 1. Dashboard UI     │ Drag-and-drop file into Upload Modal             │
+│ 2. Express Backend  │ POST /api/upload-image (multer memory storage)   │
+│ 3. S3 Compat API    │ @aws-sdk/client-s3 PutObjectCommand              │
+│ 4. OCI Bucket       │ wwjemailassets in ap-mumbai-1 (Standard Tier)    │
+│ 5. Template Inject  │ Auto-update <img> tag in SQLite database         │
+│ 6. Method A Proxy   │ https://{{senderDomain}}/posters/... -> OCI CDN  │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### Why OCI Object Storage S3 Compatibility?
+* **Native Node.js SDK:** Uses standard `@aws-sdk/client-s3` without heavy proprietary OCI binaries.
+* **Standard Storage Tier:** Millisecond first-byte read latency.
+* **Direct Google Edge Peering:** Oracle Cloud Mumbai (`ap-mumbai-1`) maintains direct fiber interconnects with Google India POPs, eliminating image proxy timeouts.
+
+---
+
+## 2. Server Configuration & Environment Variables
+
+### Production Credentials (`.env`):
+To enable programmatic uploads from the dashboard, configure the following keys in your environment:
+
+```env
+# OCI Object Storage S3 Compatibility Credentials
+OCI_S3_ACCESS_KEY=your_oci_customer_secret_access_key
+OCI_S3_SECRET_KEY=your_oci_customer_secret_key
+OCI_S3_NAMESPACE=bmgxwcqtiqic
+OCI_S3_BUCKET=wwjemailassets
+OCI_S3_REGION=ap-mumbai-1
+```
+
+### Generating OCI S3 Customer Secret Keys in OCI Console:
+1. Log into **[cloud.oracle.com](https://cloud.oracle.com)**.
+2. In top-right user menu, click **Profile / User Settings** (e.g. `checkingm13@gmail.com`).
+3. Under **Resources** (bottom left), select **Customer Secret Keys**.
+4. Click **Generate Secret Key**:
+   - Name: `mailer-s3-uploader`
+5. **Copy the Secret Key immediately** (it will never be displayed again) $\to$ `OCI_S3_SECRET_KEY`.
+6. Copy the **Access Key** shown in the table $\to$ `OCI_S3_ACCESS_KEY`.
+
+---
+
+## 3. Backend Implementation (`server.js`)
+
+The upload engine is implemented using Multer (in-memory buffering) and the AWS SDK v3 S3 client:
+
+```javascript
+import multer from 'multer';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+
+// Configure Multer for memory buffering (max 10MB)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }
+});
+
+// Lazy-initialized OCI S3 Client
+let s3Client = null;
+function getS3Client() {
+  if (!s3Client) {
+    s3Client = new S3Client({
+      region: process.env.OCI_S3_REGION || 'ap-mumbai-1',
+      endpoint: `https://${process.env.OCI_S3_NAMESPACE}.compat.objectstorage.${process.env.OCI_S3_REGION || 'ap-mumbai-1'}.oraclecloud.com`,
+      credentials: {
+        accessKeyId: process.env.OCI_S3_ACCESS_KEY,
+        secretAccessKey: process.env.OCI_S3_SECRET_KEY
+      },
+      forcePathStyle: true
+    });
+  }
+  return s3Client;
+}
+
+// Upload Endpoint
+app.post('/api/upload-image', upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file uploaded' });
+    }
+
+    const client = getS3Client();
+    const cleanFilename = req.file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const objectKey = `${Date.now()}-${cleanFilename}`;
+    const bucket = process.env.OCI_S3_BUCKET || 'wwjemailassets';
+    const namespace = process.env.OCI_S3_NAMESPACE;
+    const region = process.env.OCI_S3_REGION || 'ap-mumbai-1';
+
+    // Upload to OCI Object Storage
+    await client.send(new PutObjectCommand({
+      Bucket: bucket,
+      Key: objectKey,
+      Body: req.file.buffer,
+      ContentType: req.file.mimetype || 'image/jpeg'
+    }));
+
+    // Generate permanent OCI CDN URL
+    const ociUrl = `https://objectstorage.${region}.oraclecloud.com/n/${namespace}/b/${bucket}/o/${encodeURIComponent(objectKey)}`;
+    const senderDomainUrl = `https://{{senderDomain}}/posters/${encodeURIComponent(objectKey)}`;
+
+    // Optional: Auto-update template if templateId provided
+    if (req.body.templateId) {
+      const template = getTemplateById(req.body.templateId);
+      if (template) {
+        const targetUrl = req.body.urlType === 'senderDomain' ? senderDomainUrl : ociUrl;
+        const updatedHtml = template.html_body.replace(
+          /<img\b([^>]*?)src=["'][^"']*?["']([^>]*?)>/i,
+          `<img$1src="${targetUrl}"$2>`
+        );
+        updateTemplateHtml(req.body.templateId, updatedHtml);
+      }
+    }
+
+    res.json({
+      success: true,
+      ociUrl,
+      senderDomainUrl,
+      objectKey
+    });
+  } catch (err) {
+    console.error('Image upload failed:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 ```
 
 ---
 
-## 🔗 Related Notes (Obsidian Links)
-* [[VISUAL_CAMPAIGN_AND_OCI_ENGINE_SPECIFICATION]]
-* [[INCIDENT_REPORT_INVALID_SENDER_DOMAIN_TRIPLE_SLASH_AND_VISUAL_OCI_LOCK]]
-* [[JOURNAL_TEMPLATES_AND_DYNAMIC_LINKS]]
-* [[ARCHITECTURE_AND_SYSTEM_DESIGN]]
-* [[README]]
+## 4. Frontend Dashboard UI (`public/index.html` & `public/js/app.js`)
+
+### Modal Capabilities:
+1. **File Input:** Supports JPG, PNG, WEBP up to 10MB.
+2. **URL Routing Mode Selection:**
+   - **Method A (Recommended):** Dynamic Sender Domain (`https://{{senderDomain}}/posters/...`).
+   - **Direct OCI CDN:** Direct public cloud URL (`https://objectstorage.ap-mumbai-1.oraclecloud.com/...`).
+3. **Target Template Selector:** Dropdown dynamically populated with all database templates (e.g. *GJRA Call for Papers*, *Paripex October Issue*). Selecting a template automatically updates its `<img src="...">` tag upon successful upload.
+
+---
+
+## 5. Method A Apache / LiteSpeed Rewrite Rule
+
+To enable the `https://{{senderDomain}}/posters/...` URL pattern without hosting large image files on the cPanel server:
+
+Add the following rule to the root `.htaccess` of each sending domain (`researchandrise.com`, `onlypaperpublication.com`, `yourpaperpublication.com`):
+
+```apache
+# ====================================================================
+# METHOD A: WWJ POSTER ASSET 301 REWRITE TO OCI OBJECT STORAGE CDN
+# ====================================================================
+RewriteEngine On
+RewriteRule ^posters/(.*)$ https://objectstorage.ap-mumbai-1.oraclecloud.com/n/bmgxwcqtiqic/b/wwjemailassets/o/$1 [R=301,L]
+```
+
+### Operational Verification:
+Test the rewrite using PowerShell:
+```powershell
+curl.exe -I "https://education.researchandrise.com/posters/GJRA-email.jpg"
+```
+**Expected Response:**
+```text
+HTTP/2 301
+location: https://objectstorage.ap-mumbai-1.oraclecloud.com/n/bmgxwcqtiqic/b/wwjemailassets/o/GJRA-email.jpg
+```
+
+---
+
+## 6. Production Troubleshooting & Post-Mortem
+
+### Issue: `Upload failed: Unexpected token '<'`
+* **Symptom:** When clicking "Upload Poster" in the dashboard, the browser alert displayed: `Upload failed: Unexpected token '<', "<!DOCTYPE "... is not valid JSON`.
+* **Root Cause:** The production server on `mailapp.balajiimpex.store` returned an HTML 404/500 error page because:
+  1. The new `/api/upload-image` route was not yet loaded in the running PM2 memory.
+  2. The `@aws-sdk/client-s3` dependency was missing from `node_modules` on the server.
+* **Resolution Executed:**
+  ```bash
+  ssh balajiimpex.store_bml3kawopzt@balajiimpex.store
+  cd /var/www/vhosts/balajiimpex.store/mailapp.balajiimpex.store
+  npm install --production @aws-sdk/client-s3
+  pm2 restart 0
+  ```
+  Verified `POST /api/upload-image` returns `200 OK` with valid JSON payload.
+
+---
+
+## 🔗 Related Documentation
+- [[ENTERPRISE_DELIVERABILITY_BLUEPRINT_VERP_SES_AND_HEADERS]]
+- [[VISUAL_CAMPAIGN_AND_OCI_ENGINE_SPECIFICATION]]
+- [[JOURNAL_TEMPLATES_AND_DYNAMIC_LINKS]]
+- [[ARCHITECTURE_AND_SYSTEM_DESIGN]]
