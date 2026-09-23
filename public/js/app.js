@@ -24,6 +24,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnCancelEditAccount = document.getElementById('btnCancelEditAccount');
   const accEmailHelp = document.getElementById('accEmailHelp');
   let allLoadedAccounts = [];
+  let allLoadedTemplates = [];
+  let currentPreviewData = null;
   const campaignsTableBody = document.getElementById('campaignsTableBody');
   const formTemplate = document.getElementById('formTemplate');
   const tplId = document.getElementById('tplId');
@@ -1641,7 +1643,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let previewContactIndex = 0;
 
   function updateSampleEmailPreview() {
-    if (!currentPreviewData || !currentPreviewData.contacts.length) return;
+    if (!currentPreviewData || !currentPreviewData.contacts || !currentPreviewData.contacts.length) return;
     const isRotation = chkEnableTemplateRotation && chkEnableTemplateRotation.checked;
     const checkedBoxes = Array.from(document.querySelectorAll('.chk-rotate-tpl:checked'));
     

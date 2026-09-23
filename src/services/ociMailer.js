@@ -6,6 +6,7 @@
 const nodemailer = require('nodemailer');
 const dns = require('dns').promises;
 const config = require('../config/env');
+const { extractApexDomain } = require('./templateEngine');
 
 // Regional connection pool cache: Map<host, Transporter>
 const transporters = new Map();
@@ -209,19 +210,33 @@ async function sendViaOCI({ fromEmail, toEmail, subject, htmlBody, textBody, reg
   const mailer = getTransporter(targetRegion);
 
   const senderClean = sender.includes('<') ? sender.match(/<([^>]+)>/)?.[1] || sender : sender.trim();
-  const senderDomain = senderClean.includes('@') ? senderClean.split('@')[1].trim() : 'worldwidejournals.com';
+  const rawSenderDomain = senderClean.includes('@') ? senderClean.split('@')[1].trim() : 'worldwidejournals.com';
+  const apexDomain = extractApexDomain(rawSenderDomain) || rawSenderDomain;
   const displayName = resolveSenderDisplayName(senderClean);
 
   const plainText = textBody || htmlToPlainText(htmlBody);
 
   // Enterprise MakeMyTrip-style Message-ID & headers
   const uniqueId = `${Date.now()}${Math.floor(100000 + Math.random() * 900000)}`;
-  const customMessageId = `<${uniqueId}@${senderDomain}>`;
+  const customMessageId = `<${uniqueId}@${apexDomain}>`;
+
+  // VERP (Variable Envelope Return Path) for automated bounce isolation
+  const recipientClean = toEmail.trim().toLowerCase().replace(/[@+]/g, '=');
+  const verpReturnPath = process.env.ENABLE_VERP === 'true'
+    ? `bounce-${recipientClean}@${apexDomain}`
+    : senderClean;
+
+  // Proper Reply-To domain matching the sender's apex domain
+  const replyToEmail = `editor@${apexDomain}`;
 
   const mailOptions = {
     from: sender.includes('<') ? sender : `"${displayName}" <${senderClean}>`,
-    replyTo: `"${displayName}" <${senderClean}>`,
+    replyTo: `"${displayName}" <${replyToEmail}>`,
     to: toEmail.trim(),
+    envelope: {
+      from: verpReturnPath,
+      to: toEmail.trim()
+    },
     subject: subject,
     text: plainText,
     html: htmlBody,
@@ -229,9 +244,10 @@ async function sendViaOCI({ fromEmail, toEmail, subject, htmlBody, textBody, reg
     headers: {
       'Date': formatRfc2822IST(),
       'X-OCI-Region': targetRegion,
-      'Feedback-ID': `journal:${senderDomain.replace(/\./g, '_')}:oci`,
-      'List-Unsubscribe': `<https://${senderDomain}/unsubscribe>, <mailto:unsubscribe@${senderDomain}?subject=Unsubscribe>`,
-      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click'
+      'Feedback-ID': `journal:${apexDomain.replace(/\./g, '_')}:oci`,
+      'List-Unsubscribe': `<https://${apexDomain}/unsubscribe>, <mailto:unsubscribe@${apexDomain}?subject=Unsubscribe>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      'Return-Path': `<${verpReturnPath}>`
     }
   };
 

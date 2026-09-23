@@ -252,9 +252,13 @@ function seedJournalTemplates(db) {
 <html>
 <head>
 <meta charset="utf-8">
-<title></title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IJSR - Call For Papers</title>
 </head>
-<body>
+<body style="margin: 0; padding: 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+<div style="display:none !important; font-size:0px; line-height:0px; max-height:0px; max-width:0px; opacity:0; overflow:hidden; mso-hide:all; visibility:hidden;">
+  International Journal of Scientific Research (IJSR) - Call For Papers October Issue. Peer Reviewed Journal Accepted by UGC & NMC.
+</div>
 
 <span style="font-size:22px;">
 <span style="font-family:Verdana,Geneva,sans-serif;">
@@ -330,9 +334,13 @@ To Opt Out
 <html>
 <head>
 <meta charset="utf-8">
-<title></title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IJAR - Call For Papers</title>
 </head>
-<body>
+<body style="margin: 0; padding: 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+<div style="display:none !important; font-size:0px; line-height:0px; max-height:0px; max-width:0px; opacity:0; overflow:hidden; mso-hide:all; visibility:hidden;">
+  Indian Journal of Applied Research (IJAR) - Call For Papers October Issue. Peer Reviewed Journal Accepted by UGC & NMC.
+</div>
 
 <span style="font-size:22px;">
 <span style="font-family:Verdana,Geneva,sans-serif;">
@@ -408,9 +416,13 @@ To Opt Out
 <html>
 <head>
 <meta charset="utf-8">
-<title></title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GJRA - Call For Papers</title>
 </head>
-<body>
+<body style="margin: 0; padding: 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+<div style="display:none !important; font-size:0px; line-height:0px; max-height:0px; max-width:0px; opacity:0; overflow:hidden; mso-hide:all; visibility:hidden;">
+  Global Journal For Research Analysis (GJRA) - Call For Papers October Issue. Peer Reviewed Journal Accepted by UGC & NMC.
+</div>
 
 <span style="font-size:22px;">
 <span style="font-family:Verdana,Geneva,sans-serif;">
@@ -486,9 +498,13 @@ To Opt Out
 <html>
 <head>
 <meta charset="utf-8">
-<title></title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paripex - Call For Papers</title>
 </head>
-<body>
+<body style="margin: 0; padding: 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+<div style="display:none !important; font-size:0px; line-height:0px; max-height:0px; max-width:0px; opacity:0; overflow:hidden; mso-hide:all; visibility:hidden;">
+  Paripex Indian Journal of Research - Call For Papers October Issue. Peer Reviewed Journal Accepted by UGC & NMC.
+</div>
 
 <span style="font-size:22px;">
 <span style="font-family:Verdana,Geneva,sans-serif;">

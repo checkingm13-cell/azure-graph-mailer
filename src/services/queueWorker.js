@@ -12,7 +12,7 @@ const { sendViaGraph } = require('./graphMailer');
 const { sendViaACS } = require('./acsMailer');
 const { sendViaOCI } = require('./ociMailer');
 const { sendViaMailgun } = require('./mailgunMailer');
-const { renderTemplate } = require('./templateEngine');
+const { renderTemplate, extractApexDomain } = require('./templateEngine');
 const batchChainManager = require('./batchChainManager');
 const { toISTString, IST_SQL_NOW, formatISTClock, formatDuration, parseIST } = require('../utils/time');
 
@@ -507,11 +507,13 @@ class QueueWorker {
                 htmlBody: dynamicHtml
               }), 15000, 'Mailgun API dispatch');
             } else {
+              const apexDomain = extractApexDomain(account.email) || 'worldwidejournals.com';
               await withTimeout(sendViaGraph({
                 fromEmail: account.email,
                 toEmail: item.email,
                 subject: dynamicSubject,
-                htmlBody: dynamicHtml
+                htmlBody: dynamicHtml,
+                replyTo: [`editor@${apexDomain}`]
               }), 15000, 'Microsoft Graph dispatch');
             }
 
