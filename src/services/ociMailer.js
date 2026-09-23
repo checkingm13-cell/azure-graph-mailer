@@ -25,7 +25,7 @@ async function autoDetectOciRegion(emailOrDomain) {
     return domainRegionCache.get(domain);
   }
 
-  const selectors = ['oci', 'oci-us', 'oci-iad', 'oci-fra', 'oci-bom', 'oci-syd', 'default'];
+  const selectors = ['oci', 'ashburn', 'publication', 'oci-us', 'oci-iad', 'oci-fra', 'oci-bom', 'oci-syd', 'default'];
   for (const sel of selectors) {
     try {
       const cnames = await dns.resolveCname(`${sel}._domainkey.${domain}`);
