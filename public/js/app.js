@@ -2082,6 +2082,13 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       sampleEmailBody.innerHTML = rawHtml;
     }
+    // Ensure poster images scale inside the preview container
+    sampleEmailBody.querySelectorAll('img').forEach(img => {
+      img.style.maxWidth = '100%';
+      img.style.height = 'auto';
+      img.style.display = 'block';
+      img.style.borderRadius = '8px';
+    });
   }
 
   const chkIncludeTestRecipients = document.getElementById('chkIncludeTestRecipients');
