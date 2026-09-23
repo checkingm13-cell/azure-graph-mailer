@@ -1377,12 +1377,35 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnModalCopyUrl = document.getElementById('btnModalCopyUrl');
   const btnModalInsertHtml = document.getElementById('btnModalInsertHtml');
 
-  function openUploadModal() {
+  const selectTargetTemplateForImage = document.getElementById('selectTargetTemplateForImage');
+  const radioUrlSenderDomain = document.getElementById('radioUrlSenderDomain');
+  const radioUrlDirectOci = document.getElementById('radioUrlDirectOci');
+  let lastUploadedData = null;
+
+  async function openUploadModal() {
     if (modalUploadImagePopup) {
       modalUploadImagePopup.style.display = 'flex';
       if (modalUploadLoading) modalUploadLoading.style.display = 'none';
       if (modalUploadResultBox) modalUploadResultBox.style.display = 'none';
       if (modalUploadedUrlInput) modalUploadedUrlInput.value = '';
+      lastUploadedData = null;
+
+      // Populate template dropdown dynamically
+      if (selectTargetTemplateForImage) {
+        selectTargetTemplateForImage.innerHTML = '<option value="active_editor">📝 Currently Active Editor / Cursor</option>';
+        try {
+          const res = await fetch('/api/templates');
+          const data = await res.json();
+          if (data.ok && Array.isArray(data.templates)) {
+            data.templates.forEach(t => {
+              const opt = document.createElement('option');
+              opt.value = t.id;
+              opt.textContent = `📄 ${t.name} (${t.category || 'TEMPLATE'})`;
+              selectTargetTemplateForImage.appendChild(opt);
+            });
+          }
+        } catch (_) {}
+      }
     }
   }
 
@@ -1422,10 +1445,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!data.ok) throw new Error(data.error || 'Failed to upload image');
 
-      // Auto-copy to clipboard
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(data.url).catch(() => {});
-      }
+      lastUploadedData = data;
+
+      // Compute display URL based on selected radio
+      updateModalUrlDisplay();
 
       if (typeof onSuccess === 'function') onSuccess(data);
     } catch (err) {
@@ -1435,6 +1458,25 @@ document.addEventListener('DOMContentLoaded', () => {
       if (typeof onProgress === 'function') onProgress(false);
     }
   }
+
+  function getEffectiveImageUrl() {
+    if (!lastUploadedData) return modalUploadedUrlInput?.value || '';
+    const isSenderDomain = radioUrlSenderDomain ? radioUrlSenderDomain.checked : true;
+    if (isSenderDomain) {
+      const keyOrFilename = lastUploadedData.key ? lastUploadedData.key.replace(/^posters\//, '') : lastUploadedData.filename;
+      return `https://{{senderDomain}}/posters/${keyOrFilename}`;
+    }
+    return lastUploadedData.url;
+  }
+
+  function updateModalUrlDisplay() {
+    if (modalUploadedUrlInput) {
+      modalUploadedUrlInput.value = getEffectiveImageUrl();
+    }
+  }
+
+  if (radioUrlSenderDomain) radioUrlSenderDomain.addEventListener('change', updateModalUrlDisplay);
+  if (radioUrlDirectOci) radioUrlDirectOci.addEventListener('change', updateModalUrlDisplay);
 
   // Helper to generate 100% compliant mobile-friendly email image HTML
   function buildEmailImageTag(url, altText = 'Journal Publication Poster') {
@@ -1478,7 +1520,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (modalDropZonePoster) modalDropZonePoster.style.display = loading ? 'none' : 'block';
       },
       (data) => {
-        if (modalUploadedUrlInput) modalUploadedUrlInput.value = data.url;
+        updateModalUrlDisplay();
         if (modalUploadedFileSize) modalUploadedFileSize.textContent = `${(data.size / 1024).toFixed(1)} KB`;
         if (modalUploadResultBox) modalUploadResultBox.style.display = 'block';
         if (modalDropZonePoster) modalDropZonePoster.style.display = 'block';
@@ -1496,20 +1538,61 @@ document.addEventListener('DOMContentLoaded', () => {
       if (navigator.clipboard) {
         await navigator.clipboard.writeText(modalUploadedUrlInput.value);
         btnModalCopyUrl.textContent = '✅ Copied!';
-        setTimeout(() => { btnModalCopyUrl.textContent = '📋 Copy CDN URL'; }, 2000);
+        setTimeout(() => { btnModalCopyUrl.textContent = '📋 Copy URL'; }, 2000);
       }
     });
   }
 
   if (btnModalInsertHtml && modalUploadedUrlInput) {
-    btnModalInsertHtml.addEventListener('click', () => {
-      const url = modalUploadedUrlInput.value.trim();
+    btnModalInsertHtml.addEventListener('click', async () => {
+      const url = getEffectiveImageUrl();
       if (!url) return;
       const imgTag = buildEmailImageTag(url, 'Academic Journal Publication Poster');
-      insertTextAtCursor(tplBody, imgTag);
-      closeUploadModal();
-      document.querySelector('.nav-tab[data-tab="tab-templates"]')?.click();
-      alert('Mobile-friendly 640x640 Image HTML tag inserted into template body!');
+      const targetId = selectTargetTemplateForImage ? selectTargetTemplateForImage.value : 'active_editor';
+
+      if (targetId === 'active_editor') {
+        insertTextAtCursor(tplBody, imgTag);
+        closeUploadModal();
+        document.querySelector('.nav-tab[data-tab="tab-templates"]')?.click();
+        alert('Mobile-friendly 640x640 Image HTML tag inserted into template editor!');
+      } else {
+        // Fetch the target template, prepend or replace hero image, and save to DB
+        try {
+          const tplRes = await fetch(`/api/templates`);
+          const tplData = await tplRes.json();
+          const targetTpl = tplData.templates?.find(t => String(t.id) === String(targetId));
+          if (!targetTpl) throw new Error('Selected template not found.');
+
+          // Replace existing hero <img> src if present, or prepend new table
+          let newHtml = targetTpl.body_html;
+          if (newHtml.includes('<img ') || newHtml.includes('<img\n')) {
+            newHtml = newHtml.replace(/<img[^>]+src=["'][^"']+["'][^>]*>/i, (match) => {
+              return match.replace(/src=["'][^"']+["']/i, `src="${url}"`);
+            });
+          } else {
+            newHtml = imgTag + '\n' + newHtml;
+          }
+
+          const saveRes = await fetch(`/api/templates/${targetId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: targetTpl.name,
+              subject: targetTpl.subject,
+              bodyHtml: newHtml,
+              category: 'VISUAL'
+            })
+          });
+          const saveJson = await saveRes.json();
+          if (!saveJson.ok) throw new Error(saveJson.error || 'Failed to update template');
+
+          closeUploadModal();
+          loadTemplates();
+          alert(`✅ Poster updated successfully in "${targetTpl.name}"!`);
+        } catch (err) {
+          alert(`Failed to insert into template: ${err.message}`);
+        }
+      }
     });
   }
 

@@ -1104,8 +1104,29 @@
           <span id="modalUploadedFileSize" style="font-size: 10.5px; color: var(--text-muted);"></span>
         </div>
         <input type="text" id="modalUploadedUrlInput" readonly style="width: 100%; box-sizing: border-box; padding: 6px 10px; font-size: 11.5px; background: #0f172a; border: 1px solid #334155; color: #38bdf8; border-radius: 6px; margin-bottom: 8px;">
+        
+        <!-- URL Format & Target Template Selection -->
+        <div style="margin-bottom: 10px; padding: 8px 10px; background: rgba(15, 23, 42, 0.4); border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
+          <div style="font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">URL Format:</div>
+          <div style="display: flex; gap: 14px; font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">
+            <label style="cursor: pointer; display: flex; align-items: center; gap: 4px;">
+              <input type="radio" name="uploadUrlMode" value="senderDomain" checked id="radioUrlSenderDomain">
+              <span>🛡️ Sender Domain Redirect: <code>https://{{senderDomain}}/posters/...</code></span>
+            </label>
+            <label style="cursor: pointer; display: flex; align-items: center; gap: 4px;">
+              <input type="radio" name="uploadUrlMode" value="directOci" id="radioUrlDirectOci">
+              <span>⚡ Direct Oracle CDN</span>
+            </label>
+          </div>
+          
+          <div style="font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Insert into Template:</div>
+          <select id="selectTargetTemplateForImage" class="form-select" style="font-size: 12px; padding: 5px 8px; width: 100%; background: #1e293b; color: #f8fafc; border: 1px solid #475569; border-radius: 6px;">
+            <option value="active_editor">📝 Currently Active Editor / Cursor</option>
+          </select>
+        </div>
+
         <div style="display: flex; gap: 8px; justify-content: flex-end;">
-          <button type="button" id="btnModalCopyUrl" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 4px 10px;">📋 Copy CDN URL</button>
+          <button type="button" id="btnModalCopyUrl" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 4px 10px;">📋 Copy URL</button>
           <button type="button" id="btnModalInsertHtml" class="btn btn-primary btn-sm" style="font-size: 11px; padding: 4px 10px;">➕ Insert in Template</button>
         </div>
       </div>
