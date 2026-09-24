@@ -507,9 +507,13 @@ class QueueWorker {
               }
             }
 
+            // Track provider response metadata
+            let providerResult = null;
+            let errorStage = 'DISPATCH';
+
             if (account.provider === 'AZURE_ACS') {
               try {
-                await withTimeout(sendViaACS({
+                providerResult = await withTimeout(sendViaACS({
                   fromEmail: account.email,
                   toEmail: item.email,
                   subject: dynamicSubject,
@@ -526,7 +530,7 @@ class QueueWorker {
                 `).get();
 
                 if (ociAccount) {
-                  await withTimeout(sendViaOCI({
+                  providerResult = await withTimeout(sendViaOCI({
                     fromEmail: ociAccount.email,
                     toEmail: item.email,
                     subject: dynamicSubject,
@@ -540,7 +544,7 @@ class QueueWorker {
                 }
               }
             } else if (account.provider === 'OCI') {
-              await withTimeout(sendViaOCI({
+              providerResult = await withTimeout(sendViaOCI({
                 fromEmail: account.email,
                 toEmail: item.email,
                 subject: dynamicSubject,
@@ -549,7 +553,7 @@ class QueueWorker {
                 attachments
               }), 15000, 'OCI SMTP dispatch');
             } else if (account.provider === 'MAILGUN') {
-              await withTimeout(sendViaMailgun({
+              providerResult = await withTimeout(sendViaMailgun({
                 fromEmail: account.email,
                 toEmail: item.email,
                 subject: dynamicSubject,
@@ -557,7 +561,7 @@ class QueueWorker {
               }), 15000, 'Mailgun API dispatch');
             } else {
               const apexDomain = extractApexDomain(account.email) || 'worldwidejournals.com';
-              await withTimeout(sendViaGraph({
+              providerResult = await withTimeout(sendViaGraph({
                 fromEmail: account.email,
                 toEmail: item.email,
                 subject: dynamicSubject,
@@ -566,28 +570,71 @@ class QueueWorker {
               }), 15000, 'Microsoft Graph dispatch');
             }
 
+            const messageIdResolved = (providerResult && providerResult.messageId) 
+              ? providerResult.messageId 
+              : 'msg_' + hex(randomblob(8));
+
+            const auditMetadata = JSON.stringify({
+              template_id: targetTemplateId,
+              template_name: liveTemplate?.name || item.template_name || 'Standard',
+              provider: account.provider,
+              sender_account_id: account.id,
+              sender_email: account.email,
+              recipient_email: item.email,
+              recipient_name: item.name || '',
+              subject: dynamicSubject,
+              oci_region: account.oci_region || null,
+              has_cid_attachments: attachments.length > 0
+            });
+
+            const auditResponse = (providerResult && providerResult.response) 
+              ? String(providerResult.response) 
+              : '250 2.0.0 OK: Delivered';
+
             // Record Success
             db.prepare(`
               UPDATE queue
               SET status = 'sent',
                   sent_at = datetime('now', '+330 minutes'),
                   accepted_at = datetime('now', '+330 minutes'),
-                  provider_message_id = COALESCE(provider_message_id, 'msg_' || hex(randomblob(8))),
+                  provider_message_id = ?,
                   last_error = ''
               WHERE id = ?
-            `).run(item.id);
+            `).run(messageIdResolved, item.id);
 
-            // Detailed Delivery Audit Log: Record Success
+            // Detailed Delivery Audit Log: Record Full Payload & Server Response
             try {
               db.prepare(`
                 UPDATE delivery_logs 
                 SET status = 'sent', 
+                    account_id = ?,
+                    sender_email = ?,
+                    sender_provider = ?,
+                    subject = ?,
+                    template_name = ?,
                     completed_at = datetime('now', '+330 minutes'),
-                    provider_message_id = COALESCE(provider_message_id, 'msg_' || hex(randomblob(8))),
-                    error_message = ''
+                    provider_message_id = ?,
+                    rendered_html_sent = ?,
+                    dispatch_metadata = ?,
+                    response_payload = ?,
+                    error_message = '',
+                    error_stage = ''
                 WHERE queue_id = ?
-              `).run(item.id);
-            } catch (_) {}
+              `).run(
+                account.id,
+                account.email,
+                account.provider,
+                dynamicSubject,
+                liveTemplate?.name || item.template_name || 'Standard',
+                messageIdResolved,
+                dynamicHtml,
+                auditMetadata,
+                auditResponse,
+                item.id
+              );
+            } catch (auditErr) {
+              console.warn('[QueueWorker] Audit log update notice:', auditErr.message);
+            }
 
             AccountPool.recordSendSuccess(account.id);
 
@@ -704,16 +751,24 @@ class QueueWorker {
                 WHERE id = ?
               `).run(isPermanent ? 'failed' : 'queued', dispatchErr.message, item.id);
 
-              // Detailed Delivery Audit Log: Record Failure
+              // Detailed Delivery Audit Log: Record Failure with full diagnostics
               try {
                 db.prepare(`
                   UPDATE delivery_logs 
                   SET status = ?, 
                       completed_at = datetime('now', '+330 minutes'),
                       error_message = ?,
+                      error_stage = ?,
+                      response_payload = ?,
                       attempts = attempts + 1
                   WHERE queue_id = ?
-                `).run(isPermanent ? 'failed' : 'queued', dispatchErr.message || 'Unknown error', item.id);
+                `).run(
+                  isPermanent ? 'failed' : 'queued',
+                  dispatchErr.message || 'Unknown error',
+                  'DISPATCH_ERROR',
+                  dispatchErr.stack || dispatchErr.message || '',
+                  item.id
+                );
               } catch (_) {}
 
               if (isPermanent) {

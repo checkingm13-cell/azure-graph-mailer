@@ -107,7 +107,11 @@ CREATE TABLE IF NOT EXISTS delivery_logs (
     status TEXT NOT NULL DEFAULT 'queued', -- 'queued', 'sending', 'sent', 'failed'
     attempts INTEGER DEFAULT 0,
     error_message TEXT DEFAULT '',
+    error_stage TEXT DEFAULT '', -- 'RESOLVE_TEMPLATE', 'ACCOUNT_SELECTION', 'SMTP_CONNECT', 'TLS_HANDSHAKE', 'DISPATCH'
     provider_message_id TEXT DEFAULT '',
+    rendered_html_sent TEXT DEFAULT '', -- Exact raw HTML dispatched over the wire
+    dispatch_metadata TEXT DEFAULT '', -- JSON of merge tags, sender domain, headers, timing
+    response_payload TEXT DEFAULT '', -- Exact server response or full error stack
     queued_at TEXT,
     started_at TEXT,
     completed_at TEXT,
@@ -226,6 +230,20 @@ function initSchema(db) {
       db.exec("ALTER TABLE templates ADD COLUMN category TEXT DEFAULT 'TEXT'");
     }
     db.exec("UPDATE templates SET category = 'VISUAL' WHERE (category IS NULL OR category = 'TEXT') AND (body_html LIKE '%<img%' OR body_html LIKE '%<IMG%');");
+
+    const deliveryLogCols = db.prepare("PRAGMA table_info(delivery_logs)").all().map(c => c.name);
+    if (!deliveryLogCols.includes('error_stage')) {
+      db.exec("ALTER TABLE delivery_logs ADD COLUMN error_stage TEXT DEFAULT ''");
+    }
+    if (!deliveryLogCols.includes('rendered_html_sent')) {
+      db.exec("ALTER TABLE delivery_logs ADD COLUMN rendered_html_sent TEXT DEFAULT ''");
+    }
+    if (!deliveryLogCols.includes('dispatch_metadata')) {
+      db.exec("ALTER TABLE delivery_logs ADD COLUMN dispatch_metadata TEXT DEFAULT ''");
+    }
+    if (!deliveryLogCols.includes('response_payload')) {
+      db.exec("ALTER TABLE delivery_logs ADD COLUMN response_payload TEXT DEFAULT ''");
+    }
 
     db.exec("CREATE INDEX IF NOT EXISTS idx_campaigns_parent ON campaigns(parent_id);");
     db.exec("CREATE INDEX IF NOT EXISTS idx_queue_schedule ON queue(status, scheduled_at, id);");

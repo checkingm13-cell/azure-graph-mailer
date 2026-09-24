@@ -876,7 +876,9 @@ router.get('/campaigns/:id/preview', (req, res) => {
     sampleItems = db.prepare(`
       SELECT 
         dl.id, dl.recipient_email AS email, dl.recipient_name AS name, dl.subject,
+        COALESCE(dl.rendered_html_sent, '') AS rendered_html,
         dl.status, dl.attempts, dl.error_message AS last_error, dl.completed_at AS sent_at,
+        dl.error_stage, dl.provider_message_id, dl.dispatch_metadata, dl.response_payload,
         dl.sender_email AS assigned_sender_email, dl.sender_provider AS assigned_provider,
         a.oci_region AS assigned_oci_region,
         dl.template_name
