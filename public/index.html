@@ -1108,16 +1108,14 @@
         <!-- URL Format & Target Template Selection -->
         <div style="margin-bottom: 10px; padding: 8px 10px; background: rgba(15, 23, 42, 0.4); border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
           <div style="font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">URL Format:</div>
-          <div style="display: flex; gap: 14px; font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">
             <label style="cursor: pointer; display: flex; align-items: center; gap: 4px;">
-              <input type="radio" name="uploadUrlMode" value="senderDomain" checked id="radioUrlSenderDomain">
+              <input type="radio" name="uploadUrlMode" value="directOci" checked id="radioUrlDirectOci">
+              <span>⚡ Direct Oracle CDN (Recommended for Gmail)</span>
+            </label>
+            <label style="cursor: pointer; display: flex; align-items: center; gap: 4px;">
+              <input type="radio" name="uploadUrlMode" value="senderDomain" id="radioUrlSenderDomain">
               <span>🛡️ Sender Domain Redirect: <code>https://{{senderDomain}}/posters/...</code></span>
             </label>
-            <label style="cursor: pointer; display: flex; align-items: center; gap: 4px;">
-              <input type="radio" name="uploadUrlMode" value="directOci" id="radioUrlDirectOci">
-              <span>⚡ Direct Oracle CDN</span>
-            </label>
-          </div>
           
           <div style="font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Insert into Template:</div>
           <select id="selectTargetTemplateForImage" class="form-select" style="font-size: 12px; padding: 5px 8px; width: 100%; background: #1e293b; color: #f8fafc; border: 1px solid #475569; border-radius: 6px;">

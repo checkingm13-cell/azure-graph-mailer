@@ -1462,7 +1462,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function getEffectiveImageUrl() {
     if (!lastUploadedData) return modalUploadedUrlInput?.value || '';
-    const isSenderDomain = radioUrlSenderDomain ? radioUrlSenderDomain.checked : true;
+    const isSenderDomain = radioUrlSenderDomain ? radioUrlSenderDomain.checked : false;
     if (isSenderDomain) {
       const keyOrFilename = lastUploadedData.key ? lastUploadedData.key.replace(/^posters\//, '') : lastUploadedData.filename;
       return `https://{{senderDomain}}/posters/${keyOrFilename}`;
