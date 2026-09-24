@@ -86,15 +86,15 @@ document.addEventListener('DOMContentLoaded', () => {
   function updateThroughputTicker(currentSentCount) {
     const now = Date.now();
     const timeDeltaSec = (now - lastCheckTime) / 1000;
-    
+
     if (timeDeltaSec > 0 && lastSentCount > 0) {
       const instantRate = Math.max(0, (currentSentCount - lastSentCount) / timeDeltaSec);
       currentThroughput = (0.35 * instantRate) + (0.65 * currentThroughput);
     }
-    
+
     lastSentCount = currentSentCount;
     lastCheckTime = now;
-    
+
     const throughputEl = document.getElementById('throughputTicker');
     if (throughputEl) {
       throughputEl.textContent = currentThroughput > 0.05 ? `⚡ ${currentThroughput.toFixed(1)} emails/sec` : '⚡ Idle (0.0/s)';
@@ -112,7 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (data.ok && inputSendInterval) {
         inputSendInterval.value = data.sendIntervalMs;
       }
-    } catch (e) {}
+    } catch (e) { }
   }
   loadSettings();
 
@@ -164,7 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btnSaveInterval.textContent = 'Saved!';
         setTimeout(() => { btnSaveInterval.textContent = 'Save'; }, 1200);
       }
-    } catch (e) {}
+    } catch (e) { }
     if (btn) btn.disabled = false;
   }
 
@@ -978,15 +978,15 @@ document.addEventListener('DOMContentLoaded', () => {
           const serviceName = a.provider === 'AZURE_ACS' ? 'Azure Email' : (a.provider === 'OCI' ? 'Oracle Email' : 'Microsoft 365');
           const healthScore = a.computed_health_score || a.health_score || 100;
           const healthLabel = healthScore >= 90 ? 'Healthy' : (healthScore >= 70 ? 'Good' : 'Needs Review');
-          
-          const humanStatus = isLimitReached 
-            ? 'Daily Limit Reached' 
+
+          const humanStatus = isLimitReached
+            ? 'Daily Limit Reached'
             : (a.human_status || (isCooldown ? 'Temporarily paused' : (a.is_active ? 'Ready' : 'Disabled')));
-          const statusColor = isLimitReached 
-            ? 'var(--rose)' 
+          const statusColor = isLimitReached
+            ? 'var(--rose)'
             : (a.status_color === 'rose' ? 'var(--rose)' : (a.status_color === 'amber' || isCooldown ? 'var(--amber)' : (a.is_active ? 'var(--emerald)' : 'var(--text-muted)')));
-          const statusDot = isLimitReached 
-            ? '🛑' 
+          const statusDot = isLimitReached
+            ? '🛑'
             : (a.status_color === 'rose' ? '✕' : (isCooldown ? '⏸' : (a.is_active ? '●' : '○')));
 
           const remPct = a.daily_limit > 0 ? Math.min(100, Math.round((remaining / a.daily_limit) * 100)) : 0;
@@ -1179,7 +1179,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!batchSenderSelect || !allLoadedAccounts) return;
 
     const curVal = batchSenderSelect.value;
-    const eligibleAccounts = isVisual 
+    const eligibleAccounts = isVisual
       ? allLoadedAccounts.filter(a => a.provider === 'OCI')
       : allLoadedAccounts;
 
@@ -1343,7 +1343,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-    formTemplate.addEventListener('submit', async (e) => {
+  formTemplate.addEventListener('submit', async (e) => {
     e.preventDefault();
     const payload = { id: tplId.value || null, name: tplName.value.trim(), subject: tplSubject.value.trim(), bodyHtml: tplBody.value.trim() };
     const res = await fetch('/api/templates', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -1405,7 +1405,7 @@ document.addEventListener('DOMContentLoaded', () => {
               selectTargetTemplateForImage.appendChild(opt);
             });
           }
-        } catch (_) {}
+        } catch (_) { }
       }
     }
   }
@@ -1879,12 +1879,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const skip = chkSkipPreviouslyContacted ? chkSkipPreviouslyContacted.checked : false;
     const totalRaw = currentPreviewData.contacts.length;
     const previouslyContactedTotal = currentPreviewData.previouslyContactedCount || 0;
-    
+
     let contacts = currentPreviewData.contacts;
     if (skip) {
       contacts = contacts.filter((c) => !c.previouslyContacted);
     }
-    
+
     const banner = document.getElementById('skipContactedBreakdownBanner');
     if (banner) {
       if (skip) {
@@ -1980,7 +1980,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!currentPreviewData || !currentPreviewData.contacts || !currentPreviewData.contacts.length) return;
     const isRotation = chkEnableTemplateRotation && chkEnableTemplateRotation.checked;
     const checkedBoxes = Array.from(document.querySelectorAll('.chk-rotate-tpl:checked'));
-    
+
     let activeTemplatesList = [];
     if (isRotation && checkedBoxes.length > 0) {
       activeTemplatesList = checkedBoxes.map(cb => allLoadedTemplates.find(t => String(t.id) === String(cb.value))).filter(Boolean);
@@ -2013,7 +2013,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ` : '';
 
     sampleRecipientEmail.innerHTML = navHtml + `<span>Recipient: <strong>${escapeHtml(currentContact.email)}</strong> (${escapeHtml(currentContact.name || 'Author')})</span>`;
-    
+
     // Attach buttons for stepping through sample contacts
     document.getElementById('btnPrevSampleContact')?.addEventListener('click', () => {
       if (previewContactIndex > 0) { previewContactIndex--; updateSampleEmailPreview(); }
@@ -2033,7 +2033,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const isVisual = typeof getActiveCategory === 'function' && getActiveCategory() === 'VISUAL';
       const defaultDomain = isVisual ? 'yourpaperedition.com' : 'theparipexjournal.com';
       let rawDomain = activeSender.includes('@') ? activeSender.split('@')[1].replace(/[^a-zA-Z0-9.-]/g, '') : defaultDomain;
-      
+
       // Extract apex domain
       const parts = rawDomain.split('.');
       let senderDomain = rawDomain;
@@ -2070,12 +2070,18 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       // Self-heal any accidental triple slash in preview
       out = out.replace(/https?:\/\/\//gi, `https://${senderDomain}/`);
+
+      // Route all /posters/... image URLs directly to OCI Object Storage CDN for reliable browser preview
+      out = out.replace(
+        /https?:\/\/[^"'\s>]+\/posters\/([^"'\s>]+)/gi,
+        'https://objectstorage.ap-mumbai-1.oraclecloud.com/n/bmgxwcqtiqic/b/wwjemailassets/o/posters/$1'
+      );
       return out;
     }
 
     const rotationInfo = isRotation ? ` [Rotating: ${activeTemplatesList.length} Templates Active]` : '';
     sampleSubjectLine.innerHTML = `<span style="color: var(--text-muted); font-size: 11px;">Subject:</span> <b>${escapeHtml(merge(assignedTemplate.subject, currentContact))}</b>${rotationInfo}`;
-    
+
     const rawHtml = merge(assignedTemplate.body_html, currentContact);
     if (typeof DOMPurify !== 'undefined') {
       sampleEmailBody.innerHTML = DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true } });
@@ -2103,13 +2109,13 @@ document.addEventListener('DOMContentLoaded', () => {
       const mode = campaignScheduleMode.value;
       if (mode === 'scheduled') {
         groupScheduledStartTime.style.display = 'block'; groupStaggerInterval.style.display = 'none';
-        if (!campaignScheduledStartTime.value) { 
-          campaignScheduledStartTime.value = toLocalDatetimeInputString(new Date()); 
+        if (!campaignScheduledStartTime.value) {
+          campaignScheduledStartTime.value = toLocalDatetimeInputString(new Date());
         }
       } else if (mode === 'staggered') {
         groupScheduledStartTime.style.display = 'block'; groupStaggerInterval.style.display = 'block';
-        if (!campaignScheduledStartTime.value) { 
-          campaignScheduledStartTime.value = toLocalDatetimeInputString(new Date()); 
+        if (!campaignScheduledStartTime.value) {
+          campaignScheduledStartTime.value = toLocalDatetimeInputString(new Date());
         }
       } else {
         groupScheduledStartTime.style.display = 'none'; groupStaggerInterval.style.display = 'none';
@@ -2197,7 +2203,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       btnConfirmLaunchBatches.disabled = true;
       btnConfirmLaunchBatches.textContent = '⏳ Creating Campaigns & Scheduling Queue...';
-      
+
       const senderAccountIdVal = document.getElementById('batchSenderAccountSelect')?.value;
       const rawSenderId = senderAccountIdVal && senderAccountIdVal !== '' ? parseInt(senderAccountIdVal, 10) : null;
       const hasExplicitSender = !isNaN(rawSenderId) && rawSenderId > 0;
@@ -2210,7 +2216,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const fallbackAllowed = document.getElementById('chkFallbackAllowed') ? document.getElementById('chkFallbackAllowed').checked : false;
       const selectedSpeedPreset = document.querySelector('input[name="sendingSpeedPreset"]:checked')?.value || 'FAST';
       const templateRotationStrategy = document.querySelector('input[name="templateRotationStrategy"]:checked')?.value || 'PER_EMAIL';
-      
+
       let customMs = 2500;
       if (selectedSpeedPreset === 'SAFE') customMs = 6500;
       else if (selectedSpeedPreset === 'BALANCED') customMs = 2500;
@@ -3113,7 +3119,7 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (log.status === 'sending') statusBadge = '<span class="badge badge-sending">⏳ Sending</span>';
         else statusBadge = '<span class="badge badge-queued">⏸ Queued</span>';
 
-        const errorCell = log.error_message 
+        const errorCell = log.error_message
           ? `<span style="color: var(--rose); font-size: 11px;" title="${escapeHtml(log.error_message)}">${escapeHtml(log.error_message.substring(0, 40))}${log.error_message.length > 40 ? '...' : ''}</span>`
           : '<span style="color: var(--text-muted);">-</span>';
 
@@ -3300,7 +3306,7 @@ document.addEventListener('DOMContentLoaded', () => {
         campaignFilter.innerHTML = '<option value="">All Campaigns</option>' +
           (data.campaigns || []).map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   function escapeHtml(str) {
@@ -3467,7 +3473,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function openCampaignPreviewModal(campaignId) {
     if (!modalCampaignPreview) return;
-    activePreviewCampaignId = campaignId; 
+    activePreviewCampaignId = campaignId;
     modalCampaignPreview.style.display = 'flex';
     previewModalTableBody.innerHTML = '<tr><td colspan="6" class="table-empty">⏳ Loading campaign details and queue snapshot...</td></tr>';
 
@@ -3513,15 +3519,15 @@ document.addEventListener('DOMContentLoaded', () => {
           btnPreviewModalReschedule.style.display = 'none';
         }
       }
-      
+
       const totalCount = s.total || 0;
       const sentCount = s.sent || 0;
       const failedCount = s.failed || 0;
       const queuedCount = (s.queued || 0) + (s.sending || 0);
 
-      previewModalTotal.textContent = totalCount; 
-      previewModalSent.textContent = sentCount; 
-      previewModalFailed.textContent = failedCount; 
+      previewModalTotal.textContent = totalCount;
+      previewModalSent.textContent = sentCount;
+      previewModalFailed.textContent = failedCount;
       previewModalQueued.textContent = queuedCount;
 
       // Smart Scope Auto-Detect
@@ -3591,9 +3597,9 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (err) { alert('Error fetching preview: ' + err.message); closeCampaignPreviewModal(); }
   }
 
-  function closeCampaignPreviewModal() { 
-    if (modalCampaignPreview) modalCampaignPreview.style.display = 'none'; 
-    activePreviewCampaignId = null; 
+  function closeCampaignPreviewModal() {
+    if (modalCampaignPreview) modalCampaignPreview.style.display = 'none';
+    activePreviewCampaignId = null;
   }
 
   if (btnCloseCampaignPreview) btnCloseCampaignPreview.addEventListener('click', closeCampaignPreviewModal);
@@ -3614,7 +3620,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!modalReschedule) return;
     activeRescheduleCampaignId = campId;
     if (rescheduleCampName) rescheduleCampName.textContent = campName || `#${campId}`;
-    
+
     if (rescheduleCurrentTimeBadge) {
       rescheduleCurrentTimeBadge.textContent = currentScheduledTime ? formatDateTime(currentScheduledTime) : 'Immediate / Not set';
     }
@@ -3624,8 +3630,8 @@ document.addEventListener('DOMContentLoaded', () => {
       inputRescheduleTime.min = nowIST;
       let defaultVal = nowIST;
       if (currentScheduledTime) {
-        const cleanStr = currentScheduledTime.includes('Z') || currentScheduledTime.includes('+') 
-          ? currentScheduledTime 
+        const cleanStr = currentScheduledTime.includes('Z') || currentScheduledTime.includes('+')
+          ? currentScheduledTime
           : (currentScheduledTime.length === 16 ? currentScheduledTime + ':00+05:30' : currentScheduledTime.replace(' ', 'T') + '+05:30');
         const parsed = new Date(cleanStr);
         if (parsed && !isNaN(parsed.getTime()) && parsed.getTime() > Date.now()) {
