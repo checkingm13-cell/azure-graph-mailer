@@ -599,6 +599,9 @@ router.post('/templates', (req, res) => {
       SET name = ?, subject = ?, body_html = ?, category = ?, updated_at = datetime('now')
       WHERE id = ?
     `).run(name, subject, bodyHtml, assignedCategory, id);
+    if (typeof queueWorker.invalidateTemplateCache === 'function') {
+      queueWorker.invalidateTemplateCache(id);
+    }
     return res.json({ ok: true, message: 'Template updated.' });
   }
 
@@ -623,6 +626,9 @@ router.delete('/templates/:id', (req, res) => {
   }
 
   db.prepare('DELETE FROM templates WHERE id = ?').run(tplId);
+  if (typeof queueWorker.invalidateTemplateCache === 'function') {
+    queueWorker.invalidateTemplateCache(tplId);
+  }
   res.json({ ok: true, message: 'Template deleted successfully.' });
 });
 

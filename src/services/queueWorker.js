@@ -39,6 +39,36 @@ const VISUAL_CID_ATTACHMENTS = {
   }
 };
 
+// --- SMART TEMPLATE CACHE FOR JIT RENDERING ---
+const templateCache = new Map();
+
+function getCachedTemplate(templateId) {
+  if (!templateId) return null;
+  const cached = templateCache.get(templateId);
+  // Cache for 10 seconds or until invalidated
+  if (cached && (Date.now() - cached.cachedAt) < 10000) {
+    return cached.data;
+  }
+  try {
+    const tmpl = db.prepare('SELECT id, name, subject, body_html, category, updated_at FROM templates WHERE id = ?').get(templateId);
+    if (tmpl) {
+      templateCache.set(templateId, { data: tmpl, cachedAt: Date.now() });
+      return tmpl;
+    }
+  } catch (err) {
+    console.error(`[QueueWorker] Failed to query template #${templateId}:`, err.message);
+  }
+  return null;
+}
+
+function invalidateTemplateCache(templateId) {
+  if (templateId) {
+    templateCache.delete(Number(templateId));
+  } else {
+    templateCache.clear();
+  }
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function getSendIntervalMs() {
@@ -275,6 +305,7 @@ class QueueWorker {
           WITH RankedQueue AS (
             SELECT q.*, c.name AS campaign_name, c.status AS campaign_status,
                    c.mode AS campaign_mode,
+                   c.template_id AS campaign_template_id,
                    COALESCE(c.pinned_account_id, c.sender_account_id) AS campaign_pinned_account_id,
                    c.fallback_allowed AS campaign_fallback_allowed,
                    c.custom_interval_ms AS campaign_custom_interval_ms,
@@ -439,16 +470,27 @@ class QueueWorker {
           try {
             console.log(`[QueueWorker] ✉️ [Parallel] Sending to "${item.email}" via [${account.provider}] ${account.email}...`);
 
-            const dynamicSubject = renderTemplate(item.subject, {
+            // --- JIT DYNAMIC TEMPLATE RESOLUTION (Smart Cache) ---
+            const targetTemplateId = item.template_id || item.campaign_template_id;
+            const liveTemplate = getCachedTemplate(targetTemplateId);
+
+            const mergeContext = {
               sender_email: account.email,
               email: item.email,
               name: item.name
-            }, true);
-            let dynamicHtml = renderTemplate(item.rendered_html, {
-              sender_email: account.email,
-              email: item.email,
-              name: item.name
-            }, false);
+            };
+
+            const dynamicSubject = renderTemplate(
+              (liveTemplate && liveTemplate.subject) ? liveTemplate.subject : item.subject,
+              mergeContext,
+              true
+            );
+
+            let dynamicHtml = renderTemplate(
+              (liveTemplate && liveTemplate.body_html) ? liveTemplate.body_html : item.rendered_html,
+              mergeContext,
+              false
+            );
 
             // Self-heal legacy or pre-rendered poster image URLs directly to 0-hop Oracle Cloud CDN
             const OCI_POSTER_CDN_BASE = 'https://objectstorage.ap-mumbai-1.oraclecloud.com/n/bmgxwcqtiqic/b/wwjemailassets/o/posters';
@@ -819,5 +861,6 @@ class QueueWorker {
 
 // Singleton instance
 const queueWorker = new QueueWorker();
+queueWorker.invalidateTemplateCache = invalidateTemplateCache;
 
 module.exports = queueWorker;
