@@ -853,7 +853,7 @@ router.get('/campaigns/:id/preview', (req, res) => {
 
   let sampleItems = db.prepare(`
     SELECT 
-      q.id, q.email, q.name, q.subject, q.status, q.attempts, q.last_error, q.sent_at,
+      q.id, q.email, q.name, q.subject, q.rendered_html, q.status, q.attempts, q.last_error, q.sent_at,
       a.email AS assigned_sender_email, a.provider AS assigned_provider, a.oci_region AS assigned_oci_region,
       t.name AS template_name
     FROM queue q

@@ -2948,9 +2948,12 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (!data.sampleItems || data.sampleItems.length === 0) {
-        drawerTableBody.innerHTML = `<tr><td colspan="5" class="table-empty">No queue records found for this batch.</td></tr>`;
+        drawerTableBody.innerHTML = `<tr><td colspan="6" class="table-empty">No queue records found for this batch.</td></tr>`;
       } else {
-        drawerTableBody.innerHTML = data.sampleItems.map(item => {
+        // Cache items in memory for inspection modal
+        window._activeDrawerSampleItems = data.sampleItems;
+
+        drawerTableBody.innerHTML = data.sampleItems.map((item, itemIdx) => {
           let statusBadge = '<span class="badge badge-queued" style="font-size: 10px;">QUEUED</span>';
           if (item.status === 'sent') {
             statusBadge = '<span class="badge badge-completed" style="font-size: 10px;">✓ SENT</span>';
@@ -2997,11 +3000,25 @@ document.addEventListener('DOMContentLoaded', () => {
             senderDisplay = `<span style="color: var(--text-muted); font-size: 11px; font-style: italic;" title="Account will be selected fairly from active pool upon dispatch">⚡ Pool (Auto-Rotate)</span>`;
           }
 
+          // Subject Line & Template Variant Display
+          const subjectText = item.subject || '(Empty Subject)';
+          const templateName = item.template_name || 'Standard Template';
+          const hasBody = Boolean(item.rendered_html);
+
           return `
             <tr>
               <td style="font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; color: var(--text-primary); word-break: break-all;">
                 ${escapeHtml(item.email)}
                 ${item.name ? `<div style="font-size: 10px; color: var(--text-muted); font-weight: normal; font-family: var(--font-sans);">${escapeHtml(item.name)}</div>` : ''}
+              </td>
+              <td>
+                <div style="font-size: 11.5px; font-weight: 600; color: #fff; line-height: 1.35; margin-bottom: 3px;" title="${escapeHtml(subjectText)}">
+                  ${escapeHtml(subjectText)}
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px; font-size: 10px;">
+                  <span style="color: var(--sky); font-weight: 500;">📑 ${escapeHtml(templateName)}</span>
+                  ${hasBody ? `<button type="button" class="btn btn-secondary btn-xs btn-inspect-email-body" data-idx="${itemIdx}" style="padding: 1px 5px; font-size: 9.5px; border-radius: 3px;">👁️ View Body</button>` : ''}
+                </div>
               </td>
               <td>${senderDisplay}</td>
               <td>${statusBadge}</td>
@@ -3012,11 +3029,77 @@ document.addEventListener('DOMContentLoaded', () => {
             </tr>
           `;
         }).join('');
+
+        // Attach Inspect Body click events
+        drawerTableBody.querySelectorAll('.btn-inspect-email-body').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            const idx = parseInt(e.currentTarget.dataset.idx, 10);
+            const targetItem = (window._activeDrawerSampleItems || [])[idx];
+            if (targetItem) openInspectEmailModal(targetItem);
+          });
+        });
       }
     } catch (err) {
-      drawerTableBody.innerHTML = `<tr><td colspan="5" class="table-empty" style="color: var(--rose);">Error: ${err.message}</td></tr>`;
+      drawerTableBody.innerHTML = `<tr><td colspan="6" class="table-empty" style="color: var(--rose);">Error: ${err.message}</td></tr>`;
     }
   }
+
+  // 11b. INSPECT RECIPIENT EMAIL MODAL
+  const modalInspectEmail = document.getElementById('modalInspectEmail');
+  const inspectModalToEmail = document.getElementById('inspectModalToEmail');
+  const inspectModalSubject = document.getElementById('inspectModalSubject');
+  const inspectModalSenderBadge = document.getElementById('inspectModalSenderBadge');
+  const inspectModalBodyContainer = document.getElementById('inspectModalBodyContainer');
+  const btnCloseInspectEmailModal = document.getElementById('btnCloseInspectEmailModal');
+  const btnCancelInspectEmail = document.getElementById('btnCancelInspectEmail');
+
+  function openInspectEmailModal(item) {
+    if (!modalInspectEmail) return;
+    if (inspectModalToEmail) inspectModalToEmail.textContent = `${item.email}${item.name ? ` (${item.name})` : ''}`;
+    if (inspectModalSubject) inspectModalSubject.textContent = item.subject || '(No Subject Line)';
+    
+    if (inspectModalSenderBadge) {
+      const senderText = item.assigned_sender_email || 'Pool (Auto-Rotate)';
+      const statusText = (item.status || 'queued').toUpperCase();
+      inspectModalSenderBadge.innerHTML = `
+        <span class="badge badge-queued" style="font-size: 10px;">${escapeHtml(senderText)}</span>
+        <span class="badge badge-${(item.status || 'queued').toLowerCase()}" style="font-size: 10px; margin-left: 6px;">${statusText}</span>
+      `;
+    }
+
+    if (inspectModalBodyContainer) {
+      if (item.rendered_html) {
+        // Rewrite image links to direct OCI CDN for guaranteed clean rendering
+        let cleanHtml = item.rendered_html.replace(
+          /https?:\/\/[^"'\s>]+\/posters\/([^"'\s>]+)/gi,
+          'https://objectstorage.ap-mumbai-1.oraclecloud.com/n/bmgxwcqtiqic/b/wwjemailassets/o/posters/$1'
+        );
+        if (typeof DOMPurify !== 'undefined') {
+          inspectModalBodyContainer.innerHTML = DOMPurify.sanitize(cleanHtml, { USE_PROFILES: { html: true } });
+        } else {
+          inspectModalBodyContainer.innerHTML = cleanHtml;
+        }
+        inspectModalBodyContainer.querySelectorAll('img').forEach(img => {
+          img.style.maxWidth = '100%';
+          img.style.height = 'auto';
+        });
+      } else {
+        inspectModalBodyContainer.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-muted);">No rendered HTML body available for this record.</div>';
+      }
+    }
+
+    modalInspectEmail.style.display = 'flex';
+  }
+
+  function closeInspectEmailModal() {
+    if (modalInspectEmail) modalInspectEmail.style.display = 'none';
+  }
+
+  if (btnCloseInspectEmailModal) btnCloseInspectEmailModal.addEventListener('click', closeInspectEmailModal);
+  if (btnCancelInspectEmail) btnCancelInspectEmail.addEventListener('click', closeInspectEmailModal);
+  modalInspectEmail?.addEventListener('click', (e) => {
+    if (e.target === modalInspectEmail) closeInspectEmailModal();
+  });
 
   // Campaign Filter, Search, Sort, Pagination Event Listeners
   document.querySelectorAll('.filter-pill').forEach(pill => {
@@ -3582,10 +3665,20 @@ document.addEventListener('DOMContentLoaded', () => {
             ? `<span style="font-size: 11px; color: var(--sky); font-weight: 500;">${escapeHtml(item.template_name)}</span>`
             : `<span style="font-size: 11px; color: var(--text-secondary);">${escapeHtml(c.template_name || 'Template')}</span>`;
 
+          const subjectText = item.subject || '(Standard Subject)';
+
           return `
             <tr>
-              <td><strong>${escapeHtml(item.email)}</strong></td>
-              <td>${templateVariantBadge}</td>
+              <td>
+                <strong>${escapeHtml(item.email)}</strong>
+                ${item.name ? `<div style="font-size: 10px; color: var(--text-muted); font-weight: normal;">${escapeHtml(item.name)}</div>` : ''}
+              </td>
+              <td>
+                <div style="font-weight: 600; color: #fff; font-size: 11.5px; margin-bottom: 2px;" title="${escapeHtml(subjectText)}">
+                  ${escapeHtml(subjectText)}
+                </div>
+                <div>${templateVariantBadge}</div>
+              </td>
               <td>${assignedSenderBadge}</td>
               <td><span class="badge ${badgeClass}">${item.status.toUpperCase()}</span></td>
               <td>${item.attempts || 0}</td>
