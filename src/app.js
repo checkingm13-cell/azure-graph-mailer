@@ -40,10 +40,35 @@ const batchChainRoutes = require('./routes/batchChain');
 app.use('/api', apiRoutes);
 app.use('/api/batch-chain', batchChainRoutes);
 
-// Static frontend dashboard with 7-day edge/browser caching for assets
+const fs = require('fs');
+
+// Unique boot timestamp generated whenever PM2 restarts on deployment
+const APP_VERSION = Date.now();
+
+// 1. Dynamic root route with cache-busting version tags & no-cache headers for index.html
+app.get(['/', '/index.html'], (req, res) => {
+  const indexPath = path.resolve(__dirname, '../public/index.html');
+  try {
+    let html = fs.readFileSync(indexPath, 'utf8');
+    // Auto-append ?v=<boot_timestamp> to internal JS and CSS assets
+    html = html.replace(/(src|href)="((?:js\/|css\/)[^"]*?\.(?:js|css))"/gi, `$1="$2?v=${APP_VERSION}"`);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.send(html);
+  } catch (err) {
+    res.status(500).send('Error loading dashboard: ' + err.message);
+  }
+});
+
+// 2. Static asset middleware with conditional cache control
 app.use(express.static(path.resolve(__dirname, '../public'), {
-  maxAge: '7d',
-  immutable: true
+  maxAge: '1h',
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+  }
 }));
 
 // Lightweight Health & Heartbeat Endpoint (For Uptime Monitors & Azure Health Checks)
@@ -54,11 +79,6 @@ app.get(['/health', '/heartbeat', '/ping'], (req, res) => {
     timestamp: new Date().toISOString(),
     worker: queueWorker.isRunning && !queueWorker.isPaused ? 'active' : 'idle'
   });
-});
-
-// Fallback to index.html for root or SPA navigation
-app.get('/', (req, res) => {
-  res.sendFile(path.resolve(__dirname, '../public/index.html'));
 });
 
 function seedDefaultAccount() {
