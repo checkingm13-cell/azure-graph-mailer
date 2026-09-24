@@ -36,10 +36,15 @@ Visual Graphic Card email campaigns require reliable, high-throughput image host
 │ 2. Express Backend  │ POST /api/upload-image (multer memory storage)   │
 │ 3. S3 Compat API    │ @aws-sdk/client-s3 PutObjectCommand              │
 │ 4. OCI Bucket       │ wwjemailassets in ap-mumbai-1 (Standard Tier)    │
-│ 5. Template Inject  │ Auto-update <img> tag in SQLite database         │
-│ 6. Method A Proxy   │ https://{{senderDomain}}/posters/... -> OCI CDN  │
+│ 5. Template Inject  │ Direct OCI CDN URL into <img> tag in SQLite DB   │
+│ 6. Google Proxy     │ 0-hop direct fetch from Oracle Cloud Mumbai CDN  │
 └────────────────────────────────────────────────────────────────────────┘
 ```
+
+> [!TIP]
+> **Why Direct OCI CDN for `<img>` vs Sender Domain for `<a href>`:**
+> - `<img src>` tags use direct Oracle Cloud Object Storage URLs to prevent Google Image Proxy from hitting 301 redirect timeouts.
+> - `<a href>` links retain `https://{{senderDomain}}/...` to preserve domain alignment and sender reputation for user clicks.
 
 ### Why OCI Object Storage S3 Compatibility?
 * **Native Node.js SDK:** Uses standard `@aws-sdk/client-s3` without heavy proprietary OCI binaries.

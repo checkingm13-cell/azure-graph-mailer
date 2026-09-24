@@ -26,12 +26,12 @@ aliases:
 
 ## 1. Supported Academic Journals & Official CDN Assets
 
-| Journal | ISSN | Primary CTA Endpoint | Official CDN Visual Poster URL |
+| Journal | ISSN | Primary CTA Endpoint | Official Direct OCI CDN Poster URL |
 | :--- | :--- | :--- | :--- |
-| **IJAR** | `2249-555X` | `/indian-journal-of-applied-research-(IJAR)/page/u/upload-your-article` | `https://www.worldwidejournals.com/global-journal-for-research-analysis-GJRA/M-Images/IJAR-email.jpg` |
-| **IJSR** | `2277-8179` | `/international-journal-of-scientific-research-(IJSR)/page/p/upload-your-article` | `https://www.worldwidejournals.com/global-journal-for-research-analysis-GJRA/M-Images/IJSR-email.jpg` |
-| **GJRA** | `2277-8160` | `/global-journal-for-research-analysis-GJRA/page/p/upload-your-article` | `https://www.worldwidejournals.com/global-journal-for-research-analysis-GJRA/M-Images/GJRA-email.jpg` |
-| **PARIPEX** | `2250-1991` | `/paripex/page/p/upload-your-article` | `https://www.worldwidejournals.com/global-journal-for-research-analysis-GJRA/M-Images/PARIPEX-email.jpg` |
+| **IJAR** | `2249-555X` | `/indian-journal-of-applied-research-(IJAR)/page/u/upload-your-article` | `https://objectstorage.ap-mumbai-1.oraclecloud.com/n/bmgxwcqtiqic/b/wwjemailassets/o/posters/ijar-email_41660ed1f394.jpg` |
+| **IJSR** | `2277-8179` | `/international-journal-of-scientific-research-(IJSR)/page/p/upload-your-article` | `https://objectstorage.ap-mumbai-1.oraclecloud.com/n/bmgxwcqtiqic/b/wwjemailassets/o/posters/ijsr-email_bcff413ca1d6.jpg` |
+| **GJRA** | `2277-8160` | `/global-journal-for-research-analysis-GJRA/page/p/upload-your-article` | `https://objectstorage.ap-mumbai-1.oraclecloud.com/n/bmgxwcqtiqic/b/wwjemailassets/o/posters/gjra-email_7ec5b37cb5f5.jpg` |
+| **PARIPEX** | `2250-1991` | `/paripex/page/p/upload-your-article` | `https://objectstorage.ap-mumbai-1.oraclecloud.com/n/bmgxwcqtiqic/b/wwjemailassets/o/posters/paripex-email_1f3538555e6a.jpg` |
 
 ---
 

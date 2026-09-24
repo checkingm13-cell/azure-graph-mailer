@@ -48,29 +48,27 @@ Visual Graphic Card templates are high-converting, single-poster email campaigns
 
 ---
 
-## 2. Image Asset Delivery: Method A Reverse-Proxy Rewrite
+## 2. Image Asset Delivery: Direct OCI Object Storage CDN (Standard)
 
-### The Deliverability Problem with Direct Cloud URLs
-Directly embedding cloud storage URLs (`objectstorage.ap-mumbai-1.oraclecloud.com/...`) in outbound cold emails triggers cross-domain asset warnings in Google and enterprise spam filters.
+### Why Direct OCI CDN Supersedes Method A for `<img src>`
+Previously, Method A routed `<img src>` through a LiteSpeed `.htaccess` 301 redirect (`https://{{senderDomain}}/posters/...` $\to$ OCI Object Storage). However, empirical analysis of Gmail delivery revealed:
 
-### The Method A Standard:
-All visual card templates point to the sender's own domain:
+1. **Google Image Proxy (`googleusercontent.com`) Timeout Risk:** Google’s edge proxy crawlers require immediate 200 OK responses with low latency. Double-hop requests (SSL handshake with sender domain $\to$ 301 Moved Permanently $\to$ second SSL handshake with Oracle Cloud) frequently hit timeout thresholds or SSL verification hiccups.
+2. **Permanent Error Caching:** Once Google Image Proxy encounters a timeout or 502/504 on the 301 hop, it caches the failure permanently for that specific URL string, rendering a broken image box indefinitely for that recipient.
+3. **Link vs Image Distinction:**
+   - **Clickable Links (`<a href>`):** Retain `https://{{senderDomain}}/...` because human clicks in standard web browsers follow 301 redirects flawlessly and maintain first-party domain reputation.
+   - **Embedded Posters (`<img src>`):** Must use direct **Oracle Cloud Mumbai Object Storage CDN** URLs with zero redirect hops.
+
+### Production Image Standard:
+All visual card templates point directly to the OCI Mumbai Object Storage CDN:
 ```html
-<img src="https://{{senderDomain}}/posters/GJRA-email.jpg" width="600" height="600" border="0" alt="Call for Papers" style="display:block; width:100%; max-width:600px; height:auto; border-radius:8px;">
+<img src="https://objectstorage.ap-mumbai-1.oraclecloud.com/n/bmgxwcqtiqic/b/wwjemailassets/o/posters/GJRA-email_7ec5b37cb5f5.jpg" width="640" height="640" border="0" alt="Call for Papers" style="display:block; width:100%; max-width:640px; height:auto; border-radius:14px;">
 ```
 
-### Server-Side Apache/LiteSpeed `.htaccess` Rule:
-On each sending domain (`103.224.246.201`):
-```apache
-# METHOD A: WWJ POSTER ASSET 301 REWRITE TO OCI OBJECT STORAGE CDN
-RewriteEngine On
-RewriteRule ^posters/(.*)$ https://objectstorage.ap-mumbai-1.oraclecloud.com/n/bmgxwcqtiqic/b/wwjemailassets/o/$1 [R=301,L]
-```
-
-### Google Image Proxy Edge Pre-Caching
-1. **First-Party Request:** Google Image Proxy fetches `https://education.researchandrise.com/posters/GJRA-email.jpg`.
-2. **Instant 301 Redirect:** LiteSpeed redirects Google's crawler to Oracle Cloud Mumbai Object Storage (`ap-mumbai-1`).
-3. **0.00s User Latency:** Google caches the asset on `googleusercontent.com`. When the recipient opens the message, the image renders immediately without "Click here to download pictures" prompts.
+### Direct Google Edge Peering Benefits:
+1. **0-Hop Fetch:** Google Image Proxy fetches directly from Oracle Cloud Mumbai (`ap-mumbai-1`) without hitting the sender domain web server.
+2. **0.00s User Latency:** Google pre-caches the asset on `googleusercontent.com` with 100% reliability, eliminating broken image boxes in Gmail and Google Workspace.
+3. **No Apache/LiteSpeed Load:** Offloads image bandwidth entirely from the sending domains' cPanel/LiteSpeed server (`103.224.246.201`).
 
 ---
 

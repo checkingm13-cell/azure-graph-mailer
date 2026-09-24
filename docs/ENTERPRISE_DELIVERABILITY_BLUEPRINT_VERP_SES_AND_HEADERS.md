@@ -29,7 +29,7 @@ date: 2026-09-23
 | **DKIM Signature** | Dual DKIM (`@federalbank.co.in` + `@amazonses.com`) | Single DKIM (`@host.discountwalas.com`) | Author Subdomain DKIM (`s=oci`) + OCI Regional DKIM |
 | **Envelope Return-Path** | Subdomain (`comm2.federalbank.co.in`) | **VERP** (`info-user=gmail.com@host...`) | **OCI Custom Return Path (`bom1.<subdomain>...`)** |
 | **SPF Alignment** | 100% Pass (Envelope matches From) | 100% Pass (Envelope matches From) | **100% Pass (Envelope matches Subdomain & Apex)** |
-| **Image Hosting** | CleverTap CDN (`img.clevertap.com`) | Custom CDN (`img.discountwalas.com`) | **Method A First-Party Rewrite (`https://{{senderDomain}}/posters/...`)** |
+| **Image Hosting** | CleverTap CDN (`img.clevertap.com`) | Custom CDN (`img.discountwalas.com`) | **Direct OCI Object Storage CDN (0-Hop, Google Peered)** |
 | **Unsubscribe Standard** | One-Click RFC 8058 (`List-Unsubscribe-Post`) | Dual: HTTPS Link + Mailto URL + One-Click | **Dual: HTTPS Link + Mailto URL + RFC 8058 One-Click** |
 | **List Identification** | Amazon SES Internal Campaign Header | Mailwizz Campaign Identifier | **`List-ID: ${displayName} <bulletin.${apexDomain}>`** |
 | **CAN-SPAM Address** | Bangalore HQ Postal Address | Surat HQ Postal Address | **Worldwide Journals, Ahmedabad HQ Postal Address** |
