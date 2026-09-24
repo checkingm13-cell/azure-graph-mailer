@@ -862,13 +862,17 @@ body {
    RESPONSIVE UI / UX OVERHAUL
    ========================================== */
 
-/* Tablet & Mobile Screens (<= 992px) */
+/* ==========================================
+   RESPONSIVE UI / UX OVERHAUL (Mobile-First Polish)
+   ========================================== */
+
+/* Tablet Screens (<= 992px) */
 @media (max-width: 992px) {
   .app-header {
     flex-direction: column;
     align-items: stretch;
-    gap: 14px;
-    padding: 14px 20px;
+    gap: 12px;
+    padding: 12px 18px;
   }
 
   .header-left {
@@ -884,87 +888,125 @@ body {
 
   .diagnostics-bar {
     grid-template-columns: repeat(3, 1fr);
-    padding: 12px 20px;
-    gap: 12px;
-  }
-
-  .metrics-strip {
-    padding: 20px 20px 0;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    gap: 12px;
-  }
-
-  .main-container {
-    padding: 20px;
-  }
-
-  .two-col-layout {
-    grid-template-columns: 1fr;
-    gap: 20px;
-  }
-}
-
-/* Mobile Screens (<= 768px) */
-@media (max-width: 768px) {
-  .app-header {
-    padding: 12px 16px;
-  }
-
-  .app-title {
-    font-size: 16px;
-  }
-
-  .app-subtitle {
-    font-size: 11px;
-  }
-
-  .app-logo {
-    font-size: 22px;
-    padding: 4px 8px;
-  }
-
-  .header-right {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .header-right > * {
-    margin-left: 0 !important;
-  }
-
-  .diagnostics-bar {
-    grid-template-columns: repeat(2, 1fr);
-    padding: 10px 16px;
+    padding: 10px 18px;
     gap: 10px;
   }
 
   .metrics-strip {
-    padding: 16px 16px 0;
-    grid-template-columns: 1fr;
+    padding: 16px 18px 0;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 10px;
-  }
-
-  .metric-card {
-    padding: 12px 16px;
-  }
-
-  .metric-value {
-    font-size: 22px;
   }
 
   .main-container {
     padding: 16px;
   }
 
-  .nav-tabs {
-    gap: 4px;
-    margin-bottom: 18px;
+  .two-col-layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
+/* Mobile Screens (<= 768px) */
+@media (max-width: 768px) {
+  /* 1. Header: Clean 2-Row Stack */
+  .app-header {
+    padding: 10px 14px;
+    gap: 10px;
+  }
+
+  .header-left {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+  }
+
+  .app-title {
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  .app-subtitle {
+    font-size: 10.5px;
+  }
+
+  .app-logo {
+    font-size: 20px;
+    padding: 3px 6px;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     overflow-x: auto;
     white-space: nowrap;
-    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    padding-bottom: 4px;
     scrollbar-width: none;
-    padding-bottom: 2px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .header-right::-webkit-scrollbar {
+    display: none;
+  }
+
+  .header-right .btn, 
+  .header-right .status-badge {
+    font-size: 11px;
+    padding: 5px 9px;
+    min-height: 32px;
+    flex-shrink: 0;
+  }
+
+  /* 2. Diagnostics & Metrics */
+  .diagnostics-bar {
+    grid-template-columns: repeat(2, 1fr);
+    padding: 8px 12px;
+    gap: 8px;
+  }
+
+  .metrics-strip {
+    padding: 12px 12px 0;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .metric-card {
+    padding: 10px 14px;
+  }
+
+  .metric-value {
+    font-size: 20px;
+  }
+
+  /* 3. Main Workspace & Mobile Padding */
+  .main-container {
+    padding: 12px 12px 80px 12px; /* Bottom space for Fixed Bottom App Bar */
+  }
+
+  /* 4. Navigation: Fixed Mobile Bottom App Bar */
+  .nav-tabs {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background: rgba(11, 15, 25, 0.95);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid var(--border-color);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 0 4px;
+    margin: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
 
   .nav-tabs::-webkit-scrollbar {
@@ -972,20 +1014,38 @@ body {
   }
 
   .nav-tab {
-    padding: 8px 12px;
-    font-size: 12px;
-    flex-shrink: 0;
+    flex: 1;
+    min-width: 58px;
+    padding: 6px 4px;
+    font-size: 10px;
+    font-weight: 600;
+    border-radius: 6px;
+    border-bottom: none !important;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    white-space: normal;
+    line-height: 1.2;
+    min-height: 48px; /* 48px thumb tap target */
   }
 
+  .nav-tab.active {
+    background: rgba(56, 189, 248, 0.12);
+    color: var(--sky);
+  }
+
+  /* 5. Panels & Forms */
   .panel-card {
-    padding: 16px;
-    border-radius: 10px;
+    padding: 14px 12px;
+    border-radius: 8px;
   }
 
   .panel-header {
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: flex-start;
     gap: 8px;
-    padding-bottom: 10px;
   }
 
   .form-row {
@@ -993,6 +1053,47 @@ body {
     gap: 10px;
   }
 
+  /* 6. Parent-Child Campaign Cards */
+  .parent-campaign-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .parent-title-group {
+    width: 100%;
+    min-width: auto;
+  }
+
+  .parent-metrics-group {
+    width: 100%;
+    max-width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .parent-actions-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .parent-actions-group .btn {
+    flex: 1 1 calc(50% - 4px);
+    min-height: 36px;
+    font-size: 11px;
+  }
+
+  .child-batch-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 10px 12px 10px 20px;
+  }
+
+  /* 7. Tables: Compact View with Touch Momentum Scrolling */
   .table-responsive {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -1000,40 +1101,73 @@ body {
   }
 
   .data-table {
-    min-width: 560px;
+    min-width: 580px; /* Enable horizontal swipe without text squishing */
   }
 
   .data-table th,
   .data-table td {
-    padding: 8px 10px;
-    font-size: 11px;
+    padding: 7px 8px;
+    font-size: 10.5px;
   }
 
-  .speed-preset-card:hover {
-    border-color: var(--sky) !important;
-    background: rgba(56, 189, 248, 0.08) !important;
+  /* 8. Full-Screen Mobile Bottom Sheet for Drawer */
+  .slide-over-drawer {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 94vh !important;
+    max-height: 94vh !important;
+    border-radius: 16px 16px 0 0;
+    border-left: none;
+    border-top: 1px solid var(--sky);
+    transform: translateY(100%);
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.7);
   }
 
-  .speed-preset-card input[type="radio"]:checked + div {
-    color: var(--sky);
+  .slide-over-drawer.active {
+    transform: translateY(0);
+  }
+
+  .drawer-header {
+    padding: 12px 16px;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .drawer-body {
+    padding: 12px 14px;
+  }
+
+  .drawer-footer {
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* 9. Modals (Center / Bottom Safe-Area) */
+  .modal-card {
+    padding: 14px;
+    margin: 8px;
+    width: 95%;
+    max-height: 92vh;
+    overflow-y: auto;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
   }
 
   .accounts-grid {
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 16px;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
+/* Extra Small Phones (<= 480px) */
+@media (max-width: 480px) {
+  .diagnostics-bar {
+    grid-template-columns: 1fr;
   }
 
-  .modal-card {
-    padding: 18px;
-    margin: 10px;
-    max-height: 92vh;
-    overflow-y: auto;
-  }
-
-  .pagination-bar {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
+  .parent-actions-group .btn {
+    flex: 1 1 100%; /* Full-width stacked buttons on narrow devices */
   }
 }
 
