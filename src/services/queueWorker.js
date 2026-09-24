@@ -444,11 +444,18 @@ class QueueWorker {
               email: item.email,
               name: item.name
             }, true);
-            const dynamicHtml = renderTemplate(item.rendered_html, {
+            let dynamicHtml = renderTemplate(item.rendered_html, {
               sender_email: account.email,
               email: item.email,
               name: item.name
             }, false);
+
+            // Self-heal legacy or pre-rendered poster image URLs directly to 0-hop Oracle Cloud CDN
+            const OCI_POSTER_CDN_BASE = 'https://objectstorage.ap-mumbai-1.oraclecloud.com/n/bmgxwcqtiqic/b/wwjemailassets/o/posters';
+            dynamicHtml = dynamicHtml.replace(
+              /<img\b([^>]*?)\bsrc=["'](?:https?:?\/\/?[^"']*?\/posters(?:%2F|\/))([^"']+?)["']([^>]*?)>/gi,
+              `<img$1src="${OCI_POSTER_CDN_BASE}/$2"$3>`
+            );
 
             // Auto-detect and bind inline CID image attachments for visual cards
             const attachments = [];
