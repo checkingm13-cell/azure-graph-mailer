@@ -597,9 +597,8 @@ To Opt Out
     const existing = db.prepare('SELECT id FROM templates WHERE name = ?').get(t.name);
     if (!existing) {
       db.prepare('INSERT INTO templates (name, subject, body_html, category) VALUES (?, ?, ?, ?)').run(t.name, t.subject, t.body_html, 'TEXT');
-    } else {
-      db.prepare('UPDATE templates SET subject = ?, body_html = ?, category = ? WHERE id = ?').run(t.subject, t.body_html, 'TEXT', existing.id);
     }
+    // Existing user-edited templates are preserved — no overwrite on restart!
   }
 }
 
@@ -640,14 +639,12 @@ function seedVisualImageTemplates(db) {
       const filePath = path.resolve(__dirname, '../../public', vt.file);
       if (!fs.existsSync(filePath)) continue;
       let html = fs.readFileSync(filePath, 'utf-8');
-      // Use direct HTTPS CDN URL (MakeMyTrip architecture) for instant zero-latency Google proxy pre-caching
 
       const existing = db.prepare('SELECT id FROM templates WHERE name = ?').get(vt.name);
       if (!existing) {
         db.prepare('INSERT INTO templates (name, subject, body_html, category) VALUES (?, ?, ?, ?)').run(vt.name, vt.subject, html, 'VISUAL');
-      } else {
-        db.prepare('UPDATE templates SET subject = ?, body_html = ?, category = ? WHERE id = ?').run(vt.subject, html, 'VISUAL', existing.id);
       }
+      // Existing user-edited templates are preserved — no overwrite on restart!
     } catch (e) {
       console.warn(`[Schema] Warning seeding visual template "${vt.name}":`, e.message);
     }
