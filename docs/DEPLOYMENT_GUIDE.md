@@ -236,19 +236,75 @@ To route incoming traffic from `https://mailapp.balajiimpex.store` to the Node.j
 
 ---
 
-### 5.6 Troubleshooting Live Logs & Common Plesk Issues
+---
 
-#### 1. Let's Encrypt ACME Challenge Succeeded (`/.well-known/acme-challenge/` -> 200 OK)
-* **Log Evidence:** Lines 64–73 in server logs showed Let's Encrypt servers connecting and receiving `200 OK` on `/.well-known/acme-challenge/`.
-* **Result:** SSL certificate successfully validated and issued. HTTPS is active on `mailapp.balajiimpex.store`.
+## 6. Plesk Git Webhook CI/CD Pipeline & SQLite Database Auto-Migration (Flow A)
 
-#### 2. Serving Plesk Default Page (`200 GET / HTTP/1.1`) vs Node App
-* **Cause:** Default `index.html` file in `/mailapp.balajiimpex.store` intercepted requests before proxying.
-* **Fix:** Deleted/renamed `index.html` to `index.html.bak`.
+### 6.1 End-to-End Continuous Deployment Flow
 
-#### 3. Resolving 500 Error on Campaign Launch (`start is not defined`)
-* **Cause:** In `src/routes/api.js`, the batch slice loop was missing `const start = i * numericBatchSize; const end = start + numericBatchSize;`.
-* **Fix:** Added `start` and `end` definitions in commit `1f17bb7`, synced to server, and restarted PM2.
+```
+[ Local Developer ] ──► git push origin main ──► [ GitHub (origin/main) ]
+                                                            │
+                                                            │ Webhook (POST)
+                                                            ▼
+                                                 [ Plesk Git Webhook ]
+                                          (https://vps-d1389241.vps.ovh.ca:8443)
+                                                            │
+                                                            │ Automatic Deploy
+                                                            ▼
+                                            [ Execute Deploy Actions ]
+                                             ├─ cd mailapp.balajiimpex.store
+                                             ├─ git fetch origin main
+                                             ├─ git reset --hard origin/main
+                                             └─ pm2 restart azure-graph-mailer
+                                                            │
+                                                            │ Server Boot Lifecycle
+                                                            ▼
+                                           [ Flow A: SQLite Self-Migration ]
+                                             ├─ src/db/index.js -> initSchema()
+                                             ├─ Apply table/column ALTERs
+                                             ├─ seedVisualImageTemplates()
+                                             └─ SQLite mailer.db synced 100%!
+```
+
+### 6.2 Plesk Git Webhook Configuration
+- **Repository URL:** `https://github.com/checkingm13-cell/azure-graph-mailer/`
+- **Branch:** `main`
+- **Webhook Endpoint:**
+  ```text
+  https://vps-d1389241.vps.ovh.ca:8443/modules/git/public/web-hook.php?uuid=555d935b-6a88-9cf1-20c3-e56b4e0366dd
+  ```
+- **Deployment Mode:** `Automatic`
+- **Deploy Actions:**
+  ```bash
+  export PATH=/opt/plesk/node/22/bin:/var/www/vhosts/balajiimpex.store/.npm-global/bin:$PATH
+  cd /var/www/vhosts/balajiimpex.store/mailapp.balajiimpex.store
+  git fetch origin main
+  git reset --hard origin/main
+  pm2 restart azure-graph-mailer
+  ```
+
+> [!IMPORTANT]
+> **Why `git reset --hard origin/main` is mandatory:**
+> Standard checkout fails whenever runtime logs or local modifications occur on the production server. `git reset --hard` cleanly forces alignment with `origin/main` without manual intervention or conflict aborts.
+
+---
+
+### 6.3 Flow A: Automated Database Migration on Server Boot
+
+SQLite databases (`data/mailer.db`) are excluded from Git to protect production campaign metrics and account limits. To ensure database templates, queries, and schemas stay 100% synchronized with Git code commits without manual SQL commands, the engine implements **Flow A (Self-Healing Boot Migrations)**:
+
+1. **Schema Evolution:**
+   When `pm2 restart azure-graph-mailer` fires, `src/db/index.js` executes `initSchema(db)` in `src/db/schema.js`.
+2. **Template Synchronization:**
+   `seedVisualImageTemplates(db)` reads the updated HTML files from `public/` (e.g. `email-preview-paripex.html`, `email-preview-gjra.html`) and executes:
+   ```sql
+   UPDATE templates SET subject = ?, body_html = ?, category = 'VISUAL' WHERE id = ?;
+   ```
+3. **Guaranteed Consistency:**
+   Any changes committed to `public/*.html` (such as direct OCI CDN poster links) are automatically compiled into the production SQLite database within milliseconds of server boot.
+
+---
 
 ---
 
