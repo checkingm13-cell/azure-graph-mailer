@@ -1942,7 +1942,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const durationStr = durationSec < 60 ? `${durationSec}s` : `${Math.ceil(durationSec / 60)} min`;
       const timeStr = new Date(startMs).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
       const timeBadge = mode === 'immediate' && i === 0 ? '⚡ Starts Now' : formatTimeUntil(new Date(startMs).toISOString());
-      const includeTest = chkIncludeTestRecipients ? chkIncludeTestRecipients.checked : true;
+      const includeTest = chkIncludeTestRecipients ? chkIncludeTestRecipients.checked : false;
       const testEmailBadge = includeTest ? '<span style="color: #38bdf8; font-size: 10.5px; font-weight: 600; margin-left: 4px;">(+5 Test Inboxes)</span>' : '';
       const totalBatchCount = count + (includeTest ? 5 : 0);
       batchesListContainer.innerHTML += `
@@ -1956,7 +1956,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
       `;
     }
-    const includeTestOverall = chkIncludeTestRecipients ? chkIncludeTestRecipients.checked : true;
+    const includeTestOverall = chkIncludeTestRecipients ? chkIncludeTestRecipients.checked : false;
     const finalTotalEmails = contacts.length + (includeTestOverall ? (totalBatches * 5) : 0);
     btnConfirmLaunchBatches.textContent = `🚀 Confirm & Schedule All ${totalBatches} Batches (${finalTotalEmails} Total Emails${includeTestOverall ? ' incl. 5 Test/Batch' : ''})`;
   }
@@ -2233,7 +2233,7 @@ document.addEventListener('DOMContentLoaded', () => {
         templateRotationStrategy: templateRotationStrategy,
         batchSize: parseInt(batchSizeInput.value || '50', 10),
         skipPreviouslyContacted: chkSkipPreviouslyContacted.checked,
-        includeTestRecipients: chkIncludeTestRecipients ? chkIncludeTestRecipients.checked : true,
+        includeTestRecipients: chkIncludeTestRecipients ? chkIncludeTestRecipients.checked : false,
         scheduleMode: campaignScheduleMode ? campaignScheduleMode.value : 'immediate',
         scheduledStartTime: (campaignScheduledStartTime && campaignScheduledStartTime.value) ? campaignScheduledStartTime.value : '',
         staggerMinutes: parseInt(campaignStaggerMinutes ? campaignStaggerMinutes.value || '60' : '60', 10),
