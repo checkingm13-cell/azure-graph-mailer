@@ -563,8 +563,25 @@ router.delete('/accounts/:id', (req, res) => {
     console.warn('[Accounts API] Failed to update suppressed_accounts:', err.message);
   }
 
-  db.prepare('DELETE FROM accounts WHERE id = ?').run(req.params.id);
-  res.json({ ok: true, message: `Account "${account.email}" permanently removed from pool.` });
+  const deleteTx = db.transaction(() => {
+    // 1. Unlink foreign key references so SQLite doesn't fail with FOREIGN KEY constraint failed
+    db.prepare('UPDATE campaigns SET pinned_account_id = NULL WHERE pinned_account_id = ?').run(account.id);
+    db.prepare('UPDATE campaigns SET sender_account_id = NULL WHERE sender_account_id = ?').run(account.id);
+    db.prepare('UPDATE queue SET account_id = NULL WHERE account_id = ?').run(account.id);
+    db.prepare('UPDATE delivery_logs SET account_id = NULL WHERE account_id = ?').run(account.id);
+    db.prepare('UPDATE logs SET account_id = NULL WHERE account_id = ?').run(account.id);
+
+    // 2. Perform deletion
+    db.prepare('DELETE FROM accounts WHERE id = ?').run(account.id);
+  });
+
+  try {
+    deleteTx();
+    res.json({ ok: true, message: `Account "${account.email}" permanently removed from pool.` });
+  } catch (err) {
+    console.error('[Accounts API] Delete transaction failed:', err);
+    res.status(500).json({ ok: false, error: 'Database error deleting account: ' + err.message });
+  }
 });
 
 router.patch('/accounts/:id/toggle', (req, res) => {
