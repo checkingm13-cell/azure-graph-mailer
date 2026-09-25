@@ -883,7 +883,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const batchSenderSelect = document.getElementById('batchSenderAccountSelect');
       const quickTestSenderSelect = document.getElementById('quickTestSenderAccount');
       const rerunSenderSelect = document.getElementById('rerunSenderAccountSelect');
-      const optionsHtml = allLoadedAccounts.map(a => {
+      const activeAccounts = allLoadedAccounts.filter(a => a.is_active === 1);
+      const optionsHtml = activeAccounts.map(a => {
         const engineLabel = a.provider === 'AZURE_ACS' ? '⚡ Azure ACS' : (a.provider === 'OCI' ? `🏛️ OCI (${a.oci_region || 'ap-mumbai-1'})` : (a.provider === 'MAILGUN' ? '🚀 Mailgun API' : '🔷 Graph API'));
         return `<option value="${a.id}">[${engineLabel}] ${escapeHtml(a.email)} (${escapeHtml(a.display_name)})</option>`;
       }).join('');
@@ -894,12 +895,14 @@ document.addEventListener('DOMContentLoaded', () => {
       if (quickTestSenderSelect) {
         const curVal = quickTestSenderSelect.value;
         quickTestSenderSelect.innerHTML = `<option value="">⚡ Next Available Account in Pool</option>` + optionsHtml;
-        if (curVal) quickTestSenderSelect.value = curVal;
+        if (curVal && activeAccounts.some(a => String(a.id) === String(curVal))) quickTestSenderSelect.value = curVal;
+        else if (curVal) quickTestSenderSelect.value = '';
       }
       if (rerunSenderSelect) {
         const curVal = rerunSenderSelect.value;
         rerunSenderSelect.innerHTML = `<option value="">⚡ Original / Auto-Rotate Pool</option>` + optionsHtml;
-        if (curVal) rerunSenderSelect.value = curVal;
+        if (curVal && activeAccounts.some(a => String(a.id) === String(curVal))) rerunSenderSelect.value = curVal;
+        else if (curVal) rerunSenderSelect.value = '';
       }
 
       if (allLoadedAccounts.length === 0) {
@@ -959,15 +962,29 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         document.querySelectorAll('.btn-toggle-account, .btn-toggle-status').forEach((btn) => {
           btn.addEventListener('click', async () => {
-            await fetch(`/api/accounts/${btn.dataset.id}/toggle`, { method: 'PATCH' });
-            loadAccounts(); refreshTelemetry();
+            const res = await fetch(`/api/accounts/${btn.dataset.id}/toggle`, { method: 'PATCH' });
+            const data = await res.json();
+            if (data.ok) {
+              loadAccounts(); refreshTelemetry();
+            } else {
+              alert('❌ Failed to toggle account: ' + (data.error || 'Unknown error'));
+            }
           });
         });
         document.querySelectorAll('.btn-del-account').forEach((btn) => {
           btn.addEventListener('click', async () => {
-            if (!confirm('Remove this sender account from pool?')) return;
-            await fetch(`/api/accounts/${btn.dataset.id}`, { method: 'DELETE' });
-            loadAccounts(); refreshTelemetry();
+            if (!confirm('Permanently remove this sender account from the pool?')) return;
+            try {
+              const res = await fetch(`/api/accounts/${btn.dataset.id}`, { method: 'DELETE' });
+              const data = await res.json();
+              if (data.ok) {
+                loadAccounts(); refreshTelemetry();
+              } else {
+                alert('❌ Failed to delete account: ' + (data.error || 'Unknown error'));
+              }
+            } catch (err) {
+              alert('❌ Network error while deleting: ' + err.message);
+            }
           });
         });
 
@@ -1179,9 +1196,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!batchSenderSelect || !allLoadedAccounts) return;
 
     const curVal = batchSenderSelect.value;
+    const activeAccounts = allLoadedAccounts.filter(a => a.is_active === 1);
     const eligibleAccounts = isVisual
-      ? allLoadedAccounts.filter(a => a.provider === 'OCI')
-      : allLoadedAccounts;
+      ? activeAccounts.filter(a => a.provider === 'OCI')
+      : activeAccounts;
 
     const defaultOptionText = isVisual
       ? '🏛️ All Active Oracle OCI Accounts (Auto-Rotate)'

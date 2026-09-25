@@ -492,6 +492,20 @@ router.post('/accounts', (req, res) => {
     return res.status(400).json({ ok: false, error: 'Email address is required.' });
   }
 
+  const emailLower = email.toLowerCase().trim();
+
+  // If user explicitly adds back a previously deleted account, remove from suppression list
+  try {
+    const row = db.prepare("SELECT value FROM settings WHERE key = 'suppressed_accounts'").get();
+    if (row && row.value) {
+      let suppressed = JSON.parse(row.value);
+      if (Array.isArray(suppressed) && suppressed.includes(emailLower)) {
+        suppressed = suppressed.filter(e => e !== emailLower);
+        db.prepare("UPDATE settings SET value = ? WHERE key = 'suppressed_accounts'").run(JSON.stringify(suppressed));
+      }
+    }
+  } catch (_) {}
+
   AccountPool.upsertAccount({
     email,
     displayName: displayName || email.split('@')[0],
@@ -524,8 +538,33 @@ router.put('/accounts/:id', (req, res) => {
 });
 
 router.delete('/accounts/:id', (req, res) => {
+  const account = db.prepare('SELECT id, email FROM accounts WHERE id = ?').get(req.params.id);
+  if (!account) {
+    return res.status(404).json({ ok: false, error: 'Account not found.' });
+  }
+
+  // Record deleted email in suppression list so bootstrap seeders never resurrect it
+  try {
+    const row = db.prepare("SELECT value FROM settings WHERE key = 'suppressed_accounts'").get();
+    let suppressed = [];
+    if (row && row.value) {
+      try { suppressed = JSON.parse(row.value); } catch (_) {}
+    }
+    const emailLower = account.email.toLowerCase().trim();
+    if (!suppressed.includes(emailLower)) {
+      suppressed.push(emailLower);
+      db.prepare(`
+        INSERT INTO settings (key, value)
+        VALUES ('suppressed_accounts', ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      `).run(JSON.stringify(suppressed));
+    }
+  } catch (err) {
+    console.warn('[Accounts API] Failed to update suppressed_accounts:', err.message);
+  }
+
   db.prepare('DELETE FROM accounts WHERE id = ?').run(req.params.id);
-  res.json({ ok: true, message: 'Account removed from pool.' });
+  res.json({ ok: true, message: `Account "${account.email}" permanently removed from pool.` });
 });
 
 router.patch('/accounts/:id/toggle', (req, res) => {
@@ -620,9 +659,9 @@ router.delete('/templates/:id', (req, res) => {
     return res.status(404).json({ ok: false, error: 'Template not found.' });
   }
 
-  const activeCamp = db.prepare("SELECT COUNT(*) AS count FROM campaigns WHERE template_id = ? AND status IN ('QUEUED', 'RUNNING')").get(tplId);
+  const activeCamp = db.prepare("SELECT COUNT(*) AS count FROM campaigns WHERE template_id = ? AND status IN ('SCHEDULED', 'QUEUED', 'RUNNING', 'PAUSED')").get(tplId);
   if (activeCamp.count > 0) {
-    return res.status(400).json({ ok: false, error: 'Cannot delete template while active campaigns are using it.' });
+    return res.status(400).json({ ok: false, error: 'Cannot delete template while active or scheduled campaigns are using it.' });
   }
 
   db.prepare('DELETE FROM templates WHERE id = ?').run(tplId);
@@ -1573,12 +1612,13 @@ router.post('/campaigns/:id/pause', (req, res) => {
   const camp = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campId);
   if (!camp) return res.status(404).json({ ok: false, error: 'Campaign not found' });
 
-  if (camp.status !== 'RUNNING' && camp.status !== 'QUEUED') {
+  if (camp.status !== 'RUNNING' && camp.status !== 'QUEUED' && camp.status !== 'SCHEDULED') {
     return res.status(400).json({ ok: false, error: `Cannot pause campaign with status ${camp.status}` });
   }
 
-  db.prepare("UPDATE campaigns SET status = 'PAUSED' WHERE id = ? OR parent_id = ?").run(campId, campId);
-  db.prepare("INSERT INTO logs (campaign_id, level, message) VALUES (?, 'INFO', ?)").run(campId, `Campaign "${camp.name}" paused.`);
+  const prefix = `${camp.name}_Batch_%`;
+  db.prepare("UPDATE campaigns SET status = 'PAUSED' WHERE id = ? OR parent_id = ? OR name LIKE ?").run(campId, campId, prefix);
+  db.prepare("INSERT INTO logs (campaign_id, level, message) VALUES (?, 'INFO', ?)").run(campId, `Campaign "${camp.name}" and associated batches paused.`);
   res.json({ ok: true, message: `Campaign "${camp.name}" paused.` });
 });
 
@@ -1591,9 +1631,22 @@ router.post('/campaigns/:id/resume', (req, res) => {
     return res.status(400).json({ ok: false, error: `Campaign is not paused.` });
   }
 
-  const nextStatus = camp.started_at ? 'RUNNING' : 'QUEUED';
-  db.prepare("UPDATE campaigns SET status = ? WHERE id = ? OR parent_id = ?").run(nextStatus, campId, campId);
-  db.prepare("INSERT INTO logs (campaign_id, level, message) VALUES (?, 'INFO', ?)").run(campId, `Campaign "${camp.name}" resumed.`);
+  const prefix = `${camp.name}_Batch_%`;
+  const nextStatus = camp.scheduled_at && new Date(camp.scheduled_at).getTime() > Date.now()
+    ? 'SCHEDULED'
+    : (camp.started_at ? 'RUNNING' : 'QUEUED');
+
+  db.prepare(`
+    UPDATE campaigns 
+    SET status = CASE 
+      WHEN scheduled_at IS NOT NULL AND strftime('%s', scheduled_at) > strftime('%s', 'now', '+330 minutes') THEN 'SCHEDULED'
+      WHEN started_at IS NOT NULL THEN 'RUNNING' 
+      ELSE 'QUEUED' 
+    END 
+    WHERE id = ? OR parent_id = ? OR name LIKE ?
+  `).run(campId, campId, prefix);
+
+  db.prepare("INSERT INTO logs (campaign_id, level, message) VALUES (?, 'INFO', ?)").run(campId, `Campaign "${camp.name}" and associated batches resumed.`);
   res.json({ ok: true, message: `Campaign "${camp.name}" resumed.` });
 });
 

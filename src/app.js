@@ -83,8 +83,17 @@ app.get(['/health', '/heartbeat', '/ping'], (req, res) => {
 
 function seedDefaultAccount() {
   // Never overwrite user-configured cooldowns or daily limits on startup
+  // Do not revive accounts that the user explicitly deleted (suppressed_accounts)
+  let suppressed = [];
+  try {
+    const row = db.prepare("SELECT value FROM settings WHERE key = 'suppressed_accounts'").get();
+    if (row && row.value) {
+      suppressed = JSON.parse(row.value);
+    }
+  } catch (_) {}
+  const isSuppressed = (email) => Array.isArray(suppressed) && suppressed.includes(String(email).toLowerCase().trim());
 
-  if (config.defaultSenderEmail) {
+  if (config.defaultSenderEmail && !isSuppressed(config.defaultSenderEmail)) {
     const existing = db.prepare('SELECT id FROM accounts WHERE email = ?').get(config.defaultSenderEmail);
     if (!existing) {
       console.log(`[Bootstrap] Seeding dedicated primary sender account: ${config.defaultSenderEmail}`);
@@ -104,6 +113,7 @@ function seedDefaultAccount() {
       { email: 'Rishank@mail.theparipexjournal.com', name: 'Worldwide Journals (Rishank)' }
     ];
     for (const sender of acsSenders) {
+      if (isSuppressed(sender.email)) continue;
       const existing = db.prepare('SELECT id FROM accounts WHERE email = ?').get(sender.email);
       if (!existing) {
         console.log(`[Bootstrap] Seeding Azure Communication Services account: ${sender.email}`);
@@ -128,6 +138,7 @@ function seedDefaultAccount() {
   ];
 
   for (const sender of ociSenders) {
+    if (isSuppressed(sender.email)) continue;
     const existing = db.prepare('SELECT id FROM accounts WHERE email = ?').get(sender.email);
     if (!existing) {
       console.log(`[Bootstrap] Seeding Verified OCI account: ${sender.email}`);

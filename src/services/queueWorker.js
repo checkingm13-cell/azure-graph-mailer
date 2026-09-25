@@ -387,11 +387,26 @@ class QueueWorker {
                 console.log(`[QueueWorker] 🔄 Pinned sender (ID: ${item.campaign_pinned_account_id}) unavailable. Fallback allowed — using ${isVisualItem ? 'OCI' : 'pool'} account: ${account.email}`);
               }
             } else if (!account) {
-              // Pinned account not available and fallback NOT allowed — postpone, don't leak!
+              // Check if pinned account was permanently deleted or disabled
+              const pinnedCheck = db.prepare('SELECT id, email, is_active FROM accounts WHERE id = ?').get(item.campaign_pinned_account_id);
+              if (!pinnedCheck || pinnedCheck.is_active === 0) {
+                const failReason = !pinnedCheck
+                  ? `Assigned sender account (ID: ${item.campaign_pinned_account_id}) was deleted. Campaign automatically paused.`
+                  : `Assigned sender account "${pinnedCheck.email}" was disabled. Campaign automatically paused.`;
+                console.warn(`[QueueWorker] ⚠️ ${failReason}`);
+                db.prepare("UPDATE campaigns SET status = 'PAUSED' WHERE id = ?").run(item.campaign_id);
+                db.prepare("UPDATE queue SET last_error = ? WHERE id = ?").run(failReason, item.id);
+                try {
+                  db.prepare("INSERT INTO logs (campaign_id, level, message) VALUES (?, 'WARN', ?)").run(item.campaign_id, failReason);
+                } catch (_) {}
+                return;
+              }
+
+              // Pinned account exists & is active, but currently on cooldown or reached daily limit
               const waitReason = isVisualItem
-                ? 'Pinned sender unavailable or not OCI. Waiting for OCI sender quota (no fallback).'
-                : 'Pinned sender unavailable. Waiting for cooldown/quota refresh (no fallback).';
-              console.log(`[QueueWorker] ⏳ Pinned sender (ID: ${item.campaign_pinned_account_id}) unavailable. Fallback disabled — postponing "${item.email}" 60s.`);
+                ? 'Pinned sender is currently resting or at quota limit. Waiting for cooldown/quota refresh.'
+                : 'Pinned sender is currently resting or at quota limit. Waiting for cooldown/quota refresh.';
+              console.log(`[QueueWorker] ⏳ Pinned sender (${pinnedCheck.email}) resting/busy. Postponing "${item.email}" 60s.`);
               db.prepare(`
                 UPDATE queue
                 SET scheduled_at = datetime('now', '+330 minutes', '+60 seconds'),
