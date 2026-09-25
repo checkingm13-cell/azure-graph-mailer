@@ -15,6 +15,8 @@ Welcome to the **Azure Graph Mailer** Obsidian Vault. This vault documents the f
 ---
 
 ## 🚨 Incident Reports & Production Audits
+- **[[INCIDENT_REPORT_ACCOUNT_DELETION_FK_AND_SUPPRESSION_PERSISTENCE]]**
+  *Complete analysis and architectural resolution for the September 25, 2026 account lifecycle incident: SQLite FOREIGN KEY constraint failure on account deletion (HTTP 500 NGINX HTML parse error), startup seeder re-insertion prevention via persistent suppression lists, and Controlled Send dropdown active filtering.*
 - **[[INCIDENT_REPORT_LIVE_SAMPLE_PREVIEW_AND_DIRECT_OCI_CDN]]**
   *Detailed post-mortem and architectural resolution for the September 24, 2026 Live Sample Preview image failure: fallback domain 404 audit, regex whitespace bug in app.js, Google Image Proxy 301 drop prevention, and the Direct OCI CDN standard for `<img src>`.*
 - **[[INCIDENT_REPORT_INVALID_SENDER_DOMAIN_TRIPLE_SLASH_AND_VISUAL_OCI_LOCK]]**
