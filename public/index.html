@@ -1089,43 +1089,42 @@
 
       <div id="modalDropZonePoster" class="file-drop-zone" style="cursor: pointer; padding: 26px 16px; margin-bottom: 14px; border: 2px dashed rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.04);">
         <div style="font-size: 32px; margin-bottom: 6px;">📤</div>
-        <div style="font-weight: 600; font-size: 14px; color: var(--text-primary);">Click or Drag &amp; Drop Image Here</div>
-        <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px;">Supports PNG, JPEG, WebP, GIF (Max 10MB)</div>
-        <input type="file" id="modalInputPosterFile" accept="image/*" style="display: none;">
+        <div style="font-weight: 600; font-size: 14px; color: var(--text-primary);">Click or Drag &amp; Drop Images Here (Single or Multiple)</div>
+        <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px;">Supports PNG, JPEG, WebP, GIF • Auto-Compresses under 100KB WebP</div>
+        <input type="file" id="modalInputPosterFile" accept="image/*" multiple style="display: none;">
       </div>
 
       <div id="modalUploadLoading" style="display: none; text-align: center; padding: 14px; color: var(--amber); font-size: 13px; font-weight: 600;">
-        <span style="display: inline-block; animation: pulse 1.5s infinite;">⏳ Uploading directly to OCI S3 Bucket...</span>
+        <span style="display: inline-block; animation: pulse 1.5s infinite;">⏳ Compressing &amp; uploading images to OCI CDN in parallel...</span>
       </div>
 
       <div id="modalUploadResultBox" style="display: none; margin-bottom: 14px; padding: 12px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px;">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-          <span style="color: var(--emerald); font-weight: 700; font-size: 12px;">✅ Upload Complete &amp; Publicly Cached!</span>
-          <span id="modalUploadedFileSize" style="font-size: 10.5px; color: var(--text-muted);"></span>
-        </div>
-        <input type="text" id="modalUploadedUrlInput" readonly style="width: 100%; box-sizing: border-box; padding: 6px 10px; font-size: 11.5px; background: #0f172a; border: 1px solid #334155; color: #38bdf8; border-radius: 6px; margin-bottom: 8px;">
-        
-        <!-- URL Format & Target Template Selection -->
-        <div style="margin-bottom: 10px; padding: 8px 10px; background: rgba(15, 23, 42, 0.4); border-radius: 6px; border: 1px solid rgba(255,255,255,0.06);">
-          <div style="font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">URL Format:</div>
-            <label style="cursor: pointer; display: flex; align-items: center; gap: 4px;">
-              <input type="radio" name="uploadUrlMode" value="directOci" checked id="radioUrlDirectOci">
-              <span>⚡ Direct Oracle CDN (Recommended for Gmail)</span>
-            </label>
-            <label style="cursor: pointer; display: flex; align-items: center; gap: 4px;">
-              <input type="radio" name="uploadUrlMode" value="senderDomain" id="radioUrlSenderDomain">
-              <span>🛡️ Sender Domain Redirect: <code>https://{{senderDomain}}/posters/...</code></span>
-            </label>
-          
-          <div style="font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 4px;">Insert into Template:</div>
-          <select id="selectTargetTemplateForImage" class="form-select" style="font-size: 12px; padding: 5px 8px; width: 100%; background: #1e293b; color: #f8fafc; border: 1px solid #475569; border-radius: 6px;">
-            <option value="active_editor">📝 Currently Active Editor / Cursor</option>
-          </select>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+          <span style="color: var(--emerald); font-weight: 700; font-size: 13px;">✅ Compressed (&lt;100KB WebP) &amp; Uploaded to CDN</span>
+          <span id="modalUploadedFileSize" style="font-size: 11px; color: var(--text-muted); font-weight: 600;"></span>
         </div>
 
-        <div style="display: flex; gap: 8px; justify-content: flex-end;">
-          <button type="button" id="btnModalCopyUrl" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 4px 10px;">📋 Copy URL</button>
-          <button type="button" id="btnModalInsertHtml" class="btn btn-primary btn-sm" style="font-size: 11px; padding: 4px 10px;">➕ Insert in Template</button>
+        <!-- URL Format Switcher -->
+        <div style="margin-bottom: 10px; padding: 6px 10px; background: rgba(15, 23, 42, 0.4); border-radius: 6px; border: 1px solid rgba(255,255,255,0.06); display: flex; gap: 16px; align-items: center;">
+          <span style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">URL Format:</span>
+          <label style="cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 11px;">
+            <input type="radio" name="uploadUrlMode" value="directOci" checked id="radioUrlDirectOci">
+            <span>⚡ Direct OCI CDN</span>
+          </label>
+          <label style="cursor: pointer; display: flex; align-items: center; gap: 4px; font-size: 11px;">
+            <input type="radio" name="uploadUrlMode" value="senderDomain" id="radioUrlSenderDomain">
+            <span>🛡️ Domain Redirect (<code>https://{{senderDomain}}/posters/...</code>)</span>
+          </label>
+        </div>
+
+        <!-- Container for individual image list items with size & individual copy buttons -->
+        <div id="modalUploadedItemsContainer" style="display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto; padding-right: 4px;">
+          <!-- Populated dynamically by JavaScript -->
+        </div>
+
+        <div style="display: flex; gap: 8px; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.08);">
+          <span id="modalMultiCopySummary" style="font-size: 11px; color: var(--text-muted);"></span>
+          <button type="button" id="btnModalCopyAllUrls" class="btn btn-primary btn-sm" style="font-size: 11px; padding: 5px 12px;">📋 Copy All URLs</button>
         </div>
       </div>
 

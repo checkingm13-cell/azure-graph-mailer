@@ -41,10 +41,10 @@ async function uploadToOCI(buffer, originalName, mimeType = 'image/png') {
 
   const s3 = getS3Client();
 
-  const ext = path.extname(originalName) || (mimeType === 'image/jpeg' ? '.jpg' : '.png');
-  const baseName = path.basename(originalName, ext).replace(/[^a-zA-Z0-9_-]/g, '_');
-  const uniqueSuffix = crypto.randomBytes(6).toString('hex');
-  const objectKey = `posters/${baseName}_${uniqueSuffix}${ext}`;
+  const ext = path.extname(originalName) || (mimeType === 'image/webp' ? '.webp' : '.png');
+  const baseName = path.basename(originalName, ext).replace(/[^a-zA-Z0-9_.-]/g, '_');
+  // Keep the exact original name requested by the user
+  const objectKey = `posters/${baseName}${ext}`;
 
   const command = new PutObjectCommand({
     Bucket: config.ociS3Bucket,

@@ -1437,24 +1437,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Core Upload Routine
   async function performOciUpload(file, onProgress, onSuccess, onError) {
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
-      alert('⚠️ Only image files (PNG, JPG, WebP, GIF) are allowed.');
-      return;
-    }
-
-    // Template Standard Requirement: Image size should be under 100KB (strict or warning)
-    const sizeKb = file.size / 1024;
-    if (sizeKb > 100) {
-      const confirmLarge = confirm(`⚠️ Image Size Warning:\nFile is ${sizeKb.toFixed(1)} KB (Target recommended: Under 100 KB for optimal mobile email delivery & inbox deliverability).\n\nDo you still want to proceed with uploading?`);
-      if (!confirmLarge) return;
-    }
+    const filesArray = Array.from(files);
+    if (filesArray.length === 0) return;
 
     if (typeof onProgress === 'function') onProgress(true);
 
     try {
       const formData = new FormData();
-      formData.append('image', file);
+      filesArray.forEach((file) => {
+        formData.append('images', file);
+      });
 
       const res = await fetch('/api/upload-image', {
         method: 'POST',
@@ -1462,7 +1454,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
       const data = await res.json();
 
-      if (!data.ok) throw new Error(data.error || 'Failed to upload image');
+      if (!data.ok) throw new Error(data.error || 'Failed to upload images');
 
       lastUploadedData = data;
 
@@ -1481,6 +1473,18 @@ document.addEventListener('DOMContentLoaded', () => {
   function getEffectiveImageUrl() {
     if (!lastUploadedData) return modalUploadedUrlInput?.value || '';
     const isSenderDomain = radioUrlSenderDomain ? radioUrlSenderDomain.checked : false;
+    
+    // Multiple items
+    if (lastUploadedData.items && lastUploadedData.items.length > 1) {
+      return lastUploadedData.items.map(item => {
+        if (isSenderDomain) {
+          const keyOrFilename = item.key ? item.key.replace(/^posters\//, '') : item.filename;
+          return `https://{{senderDomain}}/posters/${keyOrFilename}`;
+        }
+        return item.url;
+      }).join('\n');
+    }
+
     if (isSenderDomain) {
       const keyOrFilename = lastUploadedData.key ? lastUploadedData.key.replace(/^posters\//, '') : lastUploadedData.filename;
       return `https://{{senderDomain}}/posters/${keyOrFilename}`;
@@ -1515,7 +1519,7 @@ document.addEventListener('DOMContentLoaded', () => {
     btnHeaderUploadPoster.addEventListener('click', openUploadModal);
   }
 
-  // 2. Modal Dropzone & File Input
+  // 2. Modal Dropzone & File Input (Supports Multiple Files in Parallel)
   if (modalDropZonePoster && modalInputPosterFile) {
     modalDropZonePoster.addEventListener('click', () => modalInputPosterFile.click());
     modalDropZonePoster.addEventListener('dragover', (e) => { e.preventDefault(); modalDropZonePoster.classList.add('dragover'); });
@@ -1523,24 +1527,34 @@ document.addEventListener('DOMContentLoaded', () => {
     modalDropZonePoster.addEventListener('drop', (e) => {
       e.preventDefault();
       modalDropZonePoster.classList.remove('dragover');
-      if (e.dataTransfer.files.length > 0) handleModalFileUpload(e.dataTransfer.files[0]);
+      if (e.dataTransfer.files.length > 0) handleModalFileUpload(e.dataTransfer.files);
     });
 
     modalInputPosterFile.addEventListener('change', () => {
-      if (modalInputPosterFile.files.length > 0) handleModalFileUpload(modalInputPosterFile.files[0]);
+      if (modalInputPosterFile.files.length > 0) handleModalFileUpload(modalInputPosterFile.files);
     });
   }
 
-  function handleModalFileUpload(file) {
+  function handleModalFileUpload(files) {
     performOciUpload(
-      file,
+      files,
       (loading) => {
         if (modalUploadLoading) modalUploadLoading.style.display = loading ? 'block' : 'none';
         if (modalDropZonePoster) modalDropZonePoster.style.display = loading ? 'none' : 'block';
       },
       (data) => {
         updateModalUrlDisplay();
-        if (modalUploadedFileSize) modalUploadedFileSize.textContent = `${(data.size / 1024).toFixed(1)} KB`;
+        if (modalUploadedFileSize) {
+          if (data.items && data.items.length > 1) {
+            const summary = data.items.map(it => `${it.filename}: ${it.originalSizeKB}KB ➔ ${it.compressedSizeKB}KB (${it.durationMs}ms)`).join(' | ');
+            modalUploadedFileSize.textContent = `${data.items.length} images compressed (<100KB WebP) in ${data.items[0]?.durationMs || 0}ms: ${summary}`;
+          } else if (data.items && data.items[0]) {
+            const it = data.items[0];
+            modalUploadedFileSize.textContent = `${it.originalSizeKB} KB ➔ ${it.compressedSizeKB} KB WebP (${it.durationMs}ms)`;
+          } else {
+            modalUploadedFileSize.textContent = `${(data.size / 1024).toFixed(1)} KB WebP`;
+          }
+        }
         if (modalUploadResultBox) modalUploadResultBox.style.display = 'block';
         if (modalDropZonePoster) modalDropZonePoster.style.display = 'block';
       },
@@ -1551,66 +1565,84 @@ document.addEventListener('DOMContentLoaded', () => {
     );
   }
 
-  if (btnModalCopyUrl && modalUploadedUrlInput) {
-    btnModalCopyUrl.addEventListener('click', async () => {
-      if (!modalUploadedUrlInput.value) return;
-      if (navigator.clipboard) {
-        await navigator.clipboard.writeText(modalUploadedUrlInput.value);
-        btnModalCopyUrl.textContent = '✅ Copied!';
-        setTimeout(() => { btnModalCopyUrl.textContent = '📋 Copy URL'; }, 2000);
-      }
+  const modalUploadedItemsContainer = document.getElementById('modalUploadedItemsContainer');
+  const btnModalCopyAllUrls = document.getElementById('btnModalCopyAllUrls');
+  const modalMultiCopySummary = document.getElementById('modalMultiCopySummary');
+
+  function renderUploadedItems() {
+    if (!modalUploadedItemsContainer || !lastUploadedData) return;
+    modalUploadedItemsContainer.innerHTML = '';
+
+    const items = lastUploadedData.items || [lastUploadedData];
+    const isSenderDomain = radioUrlSenderDomain ? radioUrlSenderDomain.checked : false;
+
+    items.forEach((item, index) => {
+      const keyOrFilename = item.key ? item.key.replace(/^posters\//, '') : item.filename;
+      const effectiveUrl = isSenderDomain 
+        ? `https://{{senderDomain}}/posters/${keyOrFilename}`
+        : item.url;
+
+      const itemCard = document.createElement('div');
+      itemCard.style.cssText = 'display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px;';
+
+      itemCard.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+          <div style="font-weight: 700; color: #f8fafc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 280px;" title="${item.filename}">
+            🖼️ ${item.filename}
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <span style="color: #94a3b8; font-size: 10px;">${item.originalSizeKB ? item.originalSizeKB + ' KB ➔ ' : ''}<strong style="color: #34d399;">${item.compressedSizeKB || (item.size/1024).toFixed(1)} KB</strong></span>
+            <span style="color: #38bdf8; font-size: 10px; font-family: monospace;">WebP</span>
+          </div>
+        </div>
+        <div style="display: flex; gap: 6px; align-items: center; margin-top: 2px;">
+          <input type="text" readonly value="${effectiveUrl}" class="form-input font-mono" style="flex: 1; padding: 4px 8px; font-size: 11px; height: 28px; background: #090d16; border: 1px solid #334155; color: #38bdf8; border-radius: 4px;">
+          <button type="button" class="btn btn-secondary btn-sm btn-copy-single" data-url="${effectiveUrl}" style="padding: 3px 8px; font-size: 10.5px; height: 28px; white-space: nowrap;">📋 Copy</button>
+        </div>
+      `;
+
+      modalUploadedItemsContainer.appendChild(itemCard);
     });
+
+    // Attach click listener for individual copy buttons
+    modalUploadedItemsContainer.querySelectorAll('.btn-copy-single').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const urlToCopy = btn.getAttribute('data-url');
+        if (navigator.clipboard && urlToCopy) {
+          await navigator.clipboard.writeText(urlToCopy);
+          const orig = btn.textContent;
+          btn.textContent = '✅ Copied!';
+          setTimeout(() => { btn.textContent = orig; }, 1800);
+        }
+      });
+    });
+
+    if (modalMultiCopySummary) {
+      modalMultiCopySummary.textContent = `${items.length} image${items.length > 1 ? 's' : ''} ready`;
+    }
   }
 
-  if (btnModalInsertHtml && modalUploadedUrlInput) {
-    btnModalInsertHtml.addEventListener('click', async () => {
-      const url = getEffectiveImageUrl();
-      if (!url) return;
-      const imgTag = buildEmailImageTag(url, 'Academic Journal Publication Poster');
-      const targetId = selectTargetTemplateForImage ? selectTargetTemplateForImage.value : 'active_editor';
+  function updateModalUrlDisplay() {
+    renderUploadedItems();
+  }
 
-      if (targetId === 'active_editor') {
-        insertTextAtCursor(tplBody, imgTag);
-        closeUploadModal();
-        document.querySelector('.nav-tab[data-tab="tab-templates"]')?.click();
-        alert('Mobile-friendly 640x640 Image HTML tag inserted into template editor!');
-      } else {
-        // Fetch the target template, prepend or replace hero image, and save to DB
-        try {
-          const tplRes = await fetch(`/api/templates`);
-          const tplData = await tplRes.json();
-          const targetTpl = tplData.templates?.find(t => String(t.id) === String(targetId));
-          if (!targetTpl) throw new Error('Selected template not found.');
+  if (btnModalCopyAllUrls) {
+    btnModalCopyAllUrls.addEventListener('click', async () => {
+      if (!lastUploadedData) return;
+      const items = lastUploadedData.items || [lastUploadedData];
+      const isSenderDomain = radioUrlSenderDomain ? radioUrlSenderDomain.checked : false;
 
-          // Replace existing hero <img> src if present, or prepend new table
-          let newHtml = targetTpl.body_html;
-          if (newHtml.includes('<img ') || newHtml.includes('<img\n')) {
-            newHtml = newHtml.replace(/<img[^>]+src=["'][^"']+["'][^>]*>/i, (match) => {
-              return match.replace(/src=["'][^"']+["']/i, `src="${url}"`);
-            });
-          } else {
-            newHtml = imgTag + '\n' + newHtml;
-          }
+      const allUrls = items.map(item => {
+        const keyOrFilename = item.key ? item.key.replace(/^posters\//, '') : item.filename;
+        return isSenderDomain 
+          ? `https://{{senderDomain}}/posters/${keyOrFilename}`
+          : item.url;
+      }).join('\n');
 
-          const saveRes = await fetch(`/api/templates/${targetId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name: targetTpl.name,
-              subject: targetTpl.subject,
-              bodyHtml: newHtml,
-              category: 'VISUAL'
-            })
-          });
-          const saveJson = await saveRes.json();
-          if (!saveJson.ok) throw new Error(saveJson.error || 'Failed to update template');
-
-          closeUploadModal();
-          loadTemplates();
-          alert(`✅ Poster updated successfully in "${targetTpl.name}"!`);
-        } catch (err) {
-          alert(`Failed to insert into template: ${err.message}`);
-        }
+      if (navigator.clipboard && allUrls) {
+        await navigator.clipboard.writeText(allUrls);
+        btnModalCopyAllUrls.textContent = '✅ All Copied!';
+        setTimeout(() => { btnModalCopyAllUrls.textContent = '📋 Copy All URLs'; }, 2000);
       }
     });
   }
