@@ -35,7 +35,6 @@ const imageUpload = multer({
 });
 
 const storageService = require('../services/storageService');
-const { compressToEmailWebP } = require('../services/imageCompressor');
 const csvParser = require('csv-parser');
 
 // Helper function to extract rows from Excel or CSV using fast streaming for CSV
@@ -114,7 +113,11 @@ router.all('/webhook/deploy', (req, res) => {
     ? '/var/www/vhosts/balajiimpex.store/.npm-global/bin/pm2'
     : 'pm2';
 
-  const deployCmd = `git fetch origin main && git reset --hard origin/main && ${pm2Bin} restart all`;
+  const npmBin = fs.existsSync('/opt/plesk/node/22/bin/npm')
+    ? '/opt/plesk/node/22/bin/npm'
+    : 'npm';
+
+  const deployCmd = `git fetch origin main && git reset --hard origin/main && ${npmBin} install --omit=dev && ${pm2Bin} restart all`;
   const { exec } = require('child_process');
   exec(deployCmd, { cwd: projectRoot }, (error, stdout, stderr) => {
     if (error) {
@@ -1943,6 +1946,8 @@ router.post('/upload-image', imageUpload.any(), async (req, res) => {
     if (rawFiles.length === 0) {
       return res.status(400).json({ ok: false, error: 'No image files provided in upload request.' });
     }
+
+    const { compressToEmailWebP } = require('../services/imageCompressor');
 
     // Process all images in parallel using Promise.all for sub-100ms concurrency
     const uploadTasks = rawFiles.map(async (file) => {
