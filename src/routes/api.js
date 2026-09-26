@@ -30,7 +30,7 @@ const imageUpload = multer({
   storage: multer.memoryStorage(),
   limits: { 
     fileSize: 25 * 1024 * 1024, // 25MB limit per individual image
-    files: 30 // Support up to 30 images in a single parallel batch
+    files: 150 // Easily supports 100+ images in a single batch
   }
 });
 
