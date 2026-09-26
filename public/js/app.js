@@ -1435,9 +1435,12 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btnCloseUploadModal) btnCloseUploadModal.addEventListener('click', closeUploadModal);
   if (btnCancelUploadModal) btnCancelUploadModal.addEventListener('click', closeUploadModal);
 
-  // Core Upload Routine
-  async function performOciUpload(file, onProgress, onSuccess, onError) {
-    const filesArray = Array.from(files);
+  // Core Upload Routine (Accepts File, FileList, or File[])
+  async function performOciUpload(filesInput, onProgress, onSuccess, onError) {
+    if (!filesInput) return;
+    const filesArray = filesInput instanceof FileList 
+      ? Array.from(filesInput) 
+      : (Array.isArray(filesInput) ? filesInput : [filesInput]);
     if (filesArray.length === 0) return;
 
     if (typeof onProgress === 'function') onProgress(true);
