@@ -1,4 +1,4 @@
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, HeadObjectCommand } = require('@aws-sdk/client-s3');
 const path = require('path');
 const crypto = require('crypto');
 const config = require('../config/env');
@@ -27,6 +27,47 @@ function getS3Client() {
   return s3ClientInstance;
 }
 
+function getObjectKey(originalName, mimeType = 'image/webp') {
+  const ext = path.extname(originalName) || (mimeType === 'image/webp' ? '.webp' : '.png');
+  const baseName = path.basename(originalName, ext).replace(/[^a-zA-Z0-9_.-]/g, '_');
+  return `posters/${baseName}${ext}`;
+}
+
+function getPublicUrl(objectKey) {
+  const region = config.ociS3Region || 'ap-mumbai-1';
+  const encodedKey = objectKey.split('/').map(encodeURIComponent).join('/');
+  return `https://objectstorage.${region}.oraclecloud.com/n/${config.ociS3Namespace}/b/${config.ociS3Bucket}/o/${encodedKey}`;
+}
+
+/**
+ * Checks if an object already exists in OCI Object Storage
+ * @param {string} objectKey - e.g. 'posters/filename.webp'
+ * @returns {Promise<{ exists: boolean, size?: number, key: string, url: string }>}
+ */
+async function checkObjectExists(objectKey) {
+  if (!config.ociS3Bucket) return { exists: false, key: objectKey, url: getPublicUrl(objectKey) };
+  const s3 = getS3Client();
+  try {
+    const headRes = await s3.send(new HeadObjectCommand({
+      Bucket: config.ociS3Bucket,
+      Key: objectKey
+    }));
+    return {
+      exists: true,
+      size: headRes.ContentLength || 0,
+      key: objectKey,
+      url: getPublicUrl(objectKey)
+    };
+  } catch (err) {
+    // 404 / NotFound means it doesn't exist yet
+    if (err.name === 'NotFound' || err.$metadata?.httpStatusCode === 404) {
+      return { exists: false, key: objectKey, url: getPublicUrl(objectKey) };
+    }
+    // If any other permission/network error occurs, assume doesn't exist so upload continues
+    return { exists: false, key: objectKey, url: getPublicUrl(objectKey) };
+  }
+}
+
 /**
  * Uploads an image or file buffer to Oracle Cloud Object Storage
  * @param {Buffer} buffer - File buffer
@@ -40,11 +81,7 @@ async function uploadToOCI(buffer, originalName, mimeType = 'image/png') {
   }
 
   const s3 = getS3Client();
-
-  const ext = path.extname(originalName) || (mimeType === 'image/webp' ? '.webp' : '.png');
-  const baseName = path.basename(originalName, ext).replace(/[^a-zA-Z0-9_.-]/g, '_');
-  // Keep the exact original name requested by the user
-  const objectKey = `posters/${baseName}${ext}`;
+  const objectKey = getObjectKey(originalName, mimeType);
 
   const command = new PutObjectCommand({
     Bucket: config.ociS3Bucket,
@@ -56,18 +93,16 @@ async function uploadToOCI(buffer, originalName, mimeType = 'image/png') {
 
   await s3.send(command);
 
-  // Standard public URL for OCI Object Storage
-  const region = config.ociS3Region || 'ap-mumbai-1';
-  const encodedKey = objectKey.split('/').map(encodeURIComponent).join('/');
-  const publicUrl = `https://objectstorage.${region}.oraclecloud.com/n/${config.ociS3Namespace}/b/${config.ociS3Bucket}/o/${encodedKey}`;
-
   return {
     key: objectKey,
-    url: publicUrl
+    url: getPublicUrl(objectKey)
   };
 }
 
 module.exports = {
   uploadToOCI,
+  checkObjectExists,
+  getObjectKey,
+  getPublicUrl,
   getS3Client
 };

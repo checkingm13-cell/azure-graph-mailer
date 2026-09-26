@@ -1602,7 +1602,8 @@ document.addEventListener('DOMContentLoaded', () => {
             🖼️ ${item.filename}
           </div>
           <div style="display: flex; gap: 8px; align-items: center;">
-            <span style="color: #94a3b8; font-size: 10px;">${item.originalSizeKB ? item.originalSizeKB + ' KB ➔ ' : ''}<strong style="color: #34d399;">${item.compressedSizeKB || (item.size/1024).toFixed(1)} KB</strong></span>
+            ${item.alreadyExists ? '<span style="color: #a78bfa; font-size: 10px; background: rgba(167, 139, 250, 0.15); padding: 1px 6px; border-radius: 4px;">⚡ Existing (Reused)</span>' : ''}
+            <span style="color: #94a3b8; font-size: 10px;">${!item.alreadyExists && item.originalSizeKB ? item.originalSizeKB + ' KB ➔ ' : ''}<strong style="color: #34d399;">${item.compressedSizeKB || (item.size/1024).toFixed(1)} KB</strong></span>
             <span style="color: #38bdf8; font-size: 10px; font-family: monospace;">WebP</span>
           </div>
         </div>

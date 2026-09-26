@@ -1965,12 +1965,29 @@ router.post('/upload-image', imageUpload.any(), async (req, res) => {
         throw new Error(`File "${file.originalname}" is not a valid image format.`);
       }
 
-      // Step 1: Instant parallel compression to WebP under 100 KB
-      const compressed = await compressToEmailWebP(file.buffer);
-
       // WebP filename for OCI CDN
       const baseName = path.basename(file.originalname, path.extname(file.originalname));
       const webpFileName = `${baseName}.webp`;
+      const objectKey = `posters/${webpFileName}`;
+
+      // Check if image already exists in Oracle Object Storage
+      const existing = await storageService.checkObjectExists(objectKey);
+      if (existing.exists) {
+        return {
+          originalName: file.originalname,
+          filename: webpFileName,
+          url: existing.url,
+          key: existing.key,
+          originalSizeKB: +(file.size / 1024).toFixed(1),
+          compressedSizeKB: +(existing.size / 1024).toFixed(1),
+          format: 'webp',
+          alreadyExists: true,
+          durationMs: 0
+        };
+      }
+
+      // Step 1: Instant parallel compression to WebP under 100 KB
+      const compressed = await compressToEmailWebP(file.buffer);
 
       // Step 2: Upload compressed WebP buffer to OCI Object Storage
       const uploadResult = await storageService.uploadToOCI(
@@ -1988,6 +2005,7 @@ router.post('/upload-image', imageUpload.any(), async (req, res) => {
         compressedSizeKB: +(compressed.size / 1024).toFixed(1),
         dimensions: `${compressed.width}x${compressed.height}`,
         format: 'webp',
+        alreadyExists: false,
         durationMs: compressed.durationMs
       };
     });
