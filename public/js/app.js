@@ -1455,7 +1455,15 @@ document.addEventListener('DOMContentLoaded', () => {
         method: 'POST',
         body: formData
       });
-      const data = await res.json();
+      
+      const contentType = res.headers.get('content-type') || '';
+      let data;
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(`Server returned HTTP ${res.status}: ${text.slice(0, 120)}`);
+      }
 
       if (!data.ok) throw new Error(data.error || 'Failed to upload images');
 

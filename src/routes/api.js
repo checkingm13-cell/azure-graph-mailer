@@ -28,7 +28,10 @@ const upload = multer({
 
 const imageUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit for poster images
+  limits: { 
+    fileSize: 25 * 1024 * 1024, // 25MB limit per individual image
+    files: 30 // Support up to 30 images in a single parallel batch
+  }
 });
 
 const storageService = require('../services/storageService');
