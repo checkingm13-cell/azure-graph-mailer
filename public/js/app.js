@@ -1447,15 +1447,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       const formData = new FormData();
-      if (filesArray.length === 1) {
-        formData.append('image', filesArray[0]);
-        formData.append('images', filesArray[0]);
-      } else {
-        filesArray.forEach((file) => {
-          formData.append('images', file);
-          formData.append('image', file);
-        });
-      }
+      filesArray.forEach((file) => {
+        formData.append('images', file);
+      });
 
       const res = await fetch('/api/upload-image', {
         method: 'POST',

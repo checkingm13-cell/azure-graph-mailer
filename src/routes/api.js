@@ -1947,10 +1947,19 @@ router.post('/upload-image', imageUpload.any(), async (req, res) => {
       return res.status(400).json({ ok: false, error: 'No image files provided in upload request.' });
     }
 
+    // Deduplicate files by originalname and size in case duplicate form parts are sent
+    const seenFiles = new Set();
+    const uniqueFiles = rawFiles.filter(file => {
+      const key = `${file.originalname}_${file.size}`;
+      if (seenFiles.has(key)) return false;
+      seenFiles.add(key);
+      return true;
+    });
+
     const { compressToEmailWebP } = require('../services/imageCompressor');
 
     // Process all images in parallel using Promise.all for sub-100ms concurrency
-    const uploadTasks = rawFiles.map(async (file) => {
+    const uploadTasks = uniqueFiles.map(async (file) => {
       const mime = (file.mimetype || '').toLowerCase();
       if (!mime.startsWith('image/')) {
         throw new Error(`File "${file.originalname}" is not a valid image format.`);
