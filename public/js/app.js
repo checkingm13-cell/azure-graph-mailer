@@ -3014,16 +3014,23 @@ document.addEventListener('DOMContentLoaded', () => {
       const badgesBox = document.getElementById('drawerCustomizationBadges');
       if (badgesBox && c) {
         const isVisual = c.category === 'VISUAL';
-        const speedSec = (c.custom_interval_ms ? (c.custom_interval_ms / 1000).toFixed(1) : (c.sending_speed === 'FAST' ? '1.0' : '2.5')) + 's';
+        const isCustom = c.sending_speed === 'CUSTOM';
+        const speedSec = (c.custom_interval_ms ? (c.custom_interval_ms / 1000).toFixed(1) : (c.sending_speed === 'FAST' ? '1.0' : (c.sending_speed === 'SAFE' ? '6.5' : '2.5'))) + 's';
+        const speedLabel = isCustom ? `🛠️ CUSTOM (${speedSec}/email)` : `⏱️ ${c.sending_speed || 'FAST'} (${speedSec})`;
         const senderText = c.mode === 'CONTROLLED' ? `🎯 Pinned: ${c.sender_email || 'Sender'}` : '⚡ Smart Pool';
         const batchBadge = data.childBatchCount > 0
           ? `<span class="badge" style="font-size: 10px; background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.35);">📦 ${data.childBatchCount} Auto-Split Batches</span>`
           : (c.is_batch ? `<span class="badge" style="font-size: 10px; background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.35);">📦 Sub-Batch (${c.total_count} emails)</span>` : '');
 
+        const scheduleBadge = c.scheduled_at
+          ? `<span class="badge" style="font-size: 10px; background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.35);" title="Scheduled Launch (IST)">⏰ ${c.scheduled_at.replace('T', ' ').slice(0, 16)}</span>`
+          : '';
+
         badgesBox.innerHTML = `
           ${batchBadge}
+          ${scheduleBadge}
           <span class="badge" style="font-size: 10px; background: rgba(56, 189, 248, 0.15); color: var(--sky); border: 1px solid rgba(56, 189, 248, 0.3);">${senderText}</span>
-          <span class="badge" style="font-size: 10px; background: rgba(16, 185, 129, 0.15); color: var(--emerald); border: 1px solid rgba(16, 185, 129, 0.3);">⏱️ ${c.sending_speed || 'FAST'} (${speedSec})</span>
+          <span class="badge" style="font-size: 10px; background: rgba(16, 185, 129, 0.15); color: var(--emerald); border: 1px solid rgba(16, 185, 129, 0.3);">${speedLabel}</span>
           <span class="badge" style="font-size: 10px; background: rgba(245, 158, 11, 0.15); color: var(--amber); border: 1px solid rgba(245, 158, 11, 0.3);">${isVisual ? '🖼️ Visual (OCI Locked)' : '📄 Standard Text'}</span>
         `;
       }
