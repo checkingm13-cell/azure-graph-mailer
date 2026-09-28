@@ -137,6 +137,7 @@ WITH RankedQueue AS (
     AND c.status IN ('SCHEDULED', 'QUEUED', 'RUNNING')
 )
 SELECT * FROM RankedQueue
+WHERE (campaign_turn = 1 OR campaign_id IN (:priorityIds))
 ORDER BY 
   /* Priority Tier 0: Send-Now priority campaigns */
   CASE WHEN campaign_id IN (:priorityIds) THEN 0 WHEN campaign_status = 'RUNNING' THEN 1 ELSE 2 END ASC,
@@ -148,13 +149,13 @@ LIMIT :concurrencySlots;
 
 #### Algorithmic Execution Breakdown:
 1. `ROW_NUMBER() OVER (PARTITION BY q.campaign_id)` assigns an integer counter (`campaign_turn` = 1, 2, 3...) to each queue row grouped by its campaign.
-2. `ORDER BY campaign_turn ASC, id ASC`:
+2. **Pacing Guard (`WHERE campaign_turn = 1`)**: Non-priority campaigns dispatch at most **1 email per worker tick**. Parallel accounts rotate sequentially across ticks rather than firing same-campaign emails in simultaneous bursts. Priority "Send Now" campaigns bypass this restriction via `OR campaign_id IN (:priorityIds)` for instant parallel throughput.
+3. `ORDER BY campaign_turn ASC, id ASC`:
    * Turn 1: 1st email from Campaign A
    * Turn 1: 1st email from Campaign B
    * Turn 1: 1st email from Campaign C
-   * Turn 2: 2nd email from Campaign A
-   * Turn 2: 2nd email from Campaign B
-3. **Starvation Prevention**: Even if Campaign A has 50,000 queued emails, Campaign B with 50 emails gets equal representation in the 10 available dispatch slots.
+4. **Per-Recipient Timestamp Staggering**: When creating queue items in `src/routes/api.js`, each recipient's `scheduled_at` is spaced by `startMs + (cIdx * customIntervalMs)`. This ensures that even across multiple accounts in the Smart Pool, emails are scheduled and logged at precise intervals (`T+0s`, `T+60s`, `T+120s`).
+5. **Starvation Prevention**: Even if Campaign A has 50,000 queued emails, Campaign B with 50 emails gets equal representation in the 10 available dispatch slots.
 
 ---
 

@@ -15,6 +15,8 @@ Welcome to the **Azure Graph Mailer** Obsidian Vault. This vault documents the f
 ---
 
 ## 🚨 Incident Reports & Production Audits
+- **[[INCIDENT_REPORT_DISPATCH_PACING_PARALLEL_BURST_AND_RECIPIENT_STAGGER]]**
+  *Detailed post-mortem and architectural resolution for the September 28, 2026 pacing incident: custom interval bypass caused by parallel multi-account leasing, granular per-recipient queue timestamp staggering (`startMs + cIdx * customIntervalMs`), worker `campaign_turn = 1` pacing guard, and Smart Pool auto-rotation synchronization.*
 - **[[INCIDENT_REPORT_ACCOUNT_DELETION_FK_AND_SUPPRESSION_PERSISTENCE]]**
   *Complete analysis and architectural resolution for the September 25, 2026 account lifecycle incident: SQLite FOREIGN KEY constraint failure on account deletion (HTTP 500 NGINX HTML parse error), startup seeder re-insertion prevention via persistent suppression lists, and Controlled Send dropdown active filtering.*
 - **[[INCIDENT_REPORT_LIVE_SAMPLE_PREVIEW_AND_DIRECT_OCI_CDN]]**
