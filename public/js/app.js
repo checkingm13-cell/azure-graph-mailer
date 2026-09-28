@@ -490,7 +490,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (upcoming.length > 0) {
           monitorUpcomingContainer.style.display = 'block';
           monitorUpcomingList.innerHTML = upcoming.map((u) => `
-            <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; padding: 8px 12px; min-width: 220px; font-size: 11px;">
+            <div style="background: #ffffff; border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; padding: 8px 12px; min-width: 220px; font-size: 11px; box-shadow: var(--shadow-card);">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                 <strong style="color: var(--text-primary); font-size: 12px;">${escapeHtml(u.name)}</strong>
                 <span class="badge badge-scheduled">${formatTimeUntil(u.scheduledAt)}</span>
@@ -1238,7 +1238,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       if (lblText) {
         lblText.style.borderColor = 'var(--border-color)';
-        lblText.style.background = 'rgba(255, 255, 255, 0.02)';
+        lblText.style.background = '#ffffff';
       }
       if (ociLockBadge) {
         ociLockBadge.innerHTML = '🏛️ Oracle OCI Auto-Rotated';
@@ -1253,7 +1253,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       if (lblVisual) {
         lblVisual.style.borderColor = 'var(--border-color)';
-        lblVisual.style.background = 'rgba(255, 255, 255, 0.02)';
+        lblVisual.style.background = '#ffffff';
       }
       if (ociLockBadge) {
         ociLockBadge.innerHTML = '🌐 All Providers Active';
@@ -1599,21 +1599,21 @@ document.addEventListener('DOMContentLoaded', () => {
         : (cdnUrl || `https://cdn.theworldwidejournals.com/posters/${keyOrFilename}`);
 
       const itemCard = document.createElement('div');
-      itemCard.style.cssText = 'display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px;';
+      itemCard.style.cssText = 'display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; background: #ffffff; border: 1px solid var(--border-color); border-radius: 6px; box-shadow: var(--shadow-card);';
 
       itemCard.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
-          <div style="font-weight: 700; color: #f8fafc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 280px;" title="${item.filename}">
+          <div style="font-weight: 700; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 280px;" title="${item.filename}">
             🖼️ ${item.filename}
           </div>
           <div style="display: flex; gap: 8px; align-items: center;">
-            ${item.alreadyExists ? '<span style="color: #a78bfa; font-size: 10px; background: rgba(167, 139, 250, 0.15); padding: 1px 6px; border-radius: 4px;">⚡ Existing (Reused)</span>' : ''}
-            <span style="color: #94a3b8; font-size: 10px;">${!item.alreadyExists && item.originalSizeKB ? item.originalSizeKB + ' KB ➔ ' : ''}<strong style="color: #34d399;">${item.compressedSizeKB || (item.size/1024).toFixed(1)} KB</strong></span>
-            <span style="color: #38bdf8; font-size: 10px; font-family: monospace;">WebP</span>
+            ${item.alreadyExists ? '<span style="color: #7c3aed; font-size: 10px; background: rgba(124, 58, 237, 0.1); padding: 1px 6px; border-radius: 4px;">⚡ Existing (Reused)</span>' : ''}
+            <span style="color: #64748b; font-size: 10px;">${!item.alreadyExists && item.originalSizeKB ? item.originalSizeKB + ' KB ➔ ' : ''}<strong style="color: #059669;">${item.compressedSizeKB || (item.size/1024).toFixed(1)} KB</strong></span>
+            <span style="color: var(--sky); font-size: 10px; font-family: monospace;">WebP</span>
           </div>
         </div>
         <div style="display: flex; gap: 6px; align-items: center; margin-top: 2px;">
-          <input type="text" readonly value="${effectiveUrl}" class="form-input font-mono" style="flex: 1; padding: 4px 8px; font-size: 11px; height: 28px; background: #090d16; border: 1px solid #334155; color: #38bdf8; border-radius: 4px;">
+          <input type="text" readonly value="${effectiveUrl}" class="form-input font-mono" style="flex: 1; padding: 4px 8px; font-size: 11px; height: 28px; background: #f8fafc; border: 1px solid var(--border-color); color: var(--sky); border-radius: 4px;">
           <button type="button" class="btn btn-secondary btn-sm btn-copy-single" data-url="${effectiveUrl}" style="padding: 3px 8px; font-size: 10.5px; height: 28px; white-space: nowrap;">📋 Copy</button>
         </div>
       `;

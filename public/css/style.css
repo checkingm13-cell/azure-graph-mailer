@@ -1,4 +1,6 @@
 :root {
+  color-scheme: light;
+
   /* Crisp Modern Whitish Light Theme (Clean Slate & Soft White) */
   --bg-main: #f1f5f9;        /* Soft airy light-slate background, no eye glare */
   --bg-surface: #ffffff;     /* Clean pure white for headers, panels, cards */
@@ -412,8 +414,14 @@ body {
 .form-textarea:focus {
   outline: none;
   border-color: var(--sky);
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
-  background-color: rgba(12, 18, 32, 0.95);
+  box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
+  background-color: #ffffff;
+}
+
+select option,
+select optgroup {
+  background-color: #ffffff;
+  color: #0f172a;
 }
 
 .form-input::placeholder,
@@ -670,9 +678,9 @@ body {
 
 /* Terminal Window */
 .terminal-window {
-  background-color: #0f172a;
-  border: 1px solid #334155;
-  color: #f8fafc;
+  background-color: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
   border-radius: 6px;
   padding: 14px;
   font-family: var(--font-mono);
@@ -996,7 +1004,7 @@ body {
     left: 0;
     right: 0;
     height: 60px;
-    background: rgba(11, 15, 25, 0.95);
+    background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-top: 1px solid var(--border-color);
@@ -1198,8 +1206,8 @@ body {
 }
 
 .parent-campaign-card:hover {
-  border-color: rgba(255, 255, 255, 0.15);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  border-color: #cbd5e1;
+  box-shadow: var(--shadow-hover);
 }
 
 .parent-campaign-header {
@@ -1210,11 +1218,11 @@ body {
   flex-wrap: wrap;
   gap: 12px;
   cursor: pointer;
-  background: rgba(255, 255, 255, 0.015);
+  background: var(--bg-surface);
 }
 
 .parent-campaign-header:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: #f8fafc;
 }
 
 .parent-title-group {
@@ -1244,7 +1252,7 @@ body {
 
 .parent-progress-bar-bg {
   flex-grow: 1;
-  background: rgba(255, 255, 255, 0.06);
+  background: #e2e8f0;
   height: 7px;
   border-radius: 999px;
   overflow: hidden;
@@ -1266,7 +1274,7 @@ body {
 .child-batches-container {
   display: none;
   border-top: 1px solid var(--border-color);
-  background: rgba(0, 0, 0, 0.2);
+  background: #f8fafc;
 }
 
 .parent-campaign-card.open .child-batches-container {
@@ -1279,7 +1287,7 @@ body {
   align-items: center;
   gap: 12px;
   padding: 10px 18px 10px 38px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--border-color);
   font-size: 12px;
   transition: background 0.15s ease;
 }
@@ -1289,7 +1297,7 @@ body {
 }
 
 .child-batch-row:hover {
-  background: rgba(255, 255, 255, 0.025);
+  background: #f1f5f9;
 }
 
 /* Slide-Over Inspection Drawer */
