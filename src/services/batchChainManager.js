@@ -174,6 +174,12 @@ class BatchChainManager {
         const renderedSubject = renderTemplate(template.subject, { ...contact, _index: cIdx }, true);
         const renderedBody = renderTemplate(template.body_html, { ...contact, _index: cIdx }, false);
         
+        let itemScheduledAt = scheduledAt;
+        if (!scheduledAt && startImmediately && i === 0) {
+          const itemTime = new Date(Date.now() + (cIdx * 2500));
+          itemScheduledAt = itemTime.toISOString().replace('T', ' ').slice(0, 19);
+        }
+
         insertQueue.run(
           campaignId,
           contactRecord ? contactRecord.id : null,
@@ -181,7 +187,7 @@ class BatchChainManager {
           contact.name || '',
           renderedSubject,
           renderedBody,
-          scheduledAt,
+          itemScheduledAt,
           templateId
         );
       }

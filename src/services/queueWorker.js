@@ -300,7 +300,11 @@ class QueueWorker {
 
         const maxDispatchCount = Math.min(availableAccounts.length, concurrency);
 
-        // Fair Round-Robin: Interleaves rows across active campaigns so no single campaign monopolizes dispatch slots
+        // Fair Round-Robin: Interleaves rows across active campaigns so no single campaign monopolizes dispatch slots.
+        // Pacing Guard: Non-priority campaigns dispatch AT MOST 1 email per worker tick (campaign_turn = 1)
+        // so parallel accounts rotate cleanly across ticks and never fire same-campaign emails simultaneously.
+        const priorityTurnCondition = priorityIds.length > 0 ? `OR campaign_id IN (${priorityIds.join(',')})` : '';
+
         const queueItems = db.prepare(`
           WITH RankedQueue AS (
             SELECT q.*, c.name AS campaign_name, c.status AS campaign_status,
@@ -326,6 +330,7 @@ class QueueWorker {
               AND c.status IN ('SCHEDULED', 'QUEUED', 'RUNNING')
           )
           SELECT * FROM RankedQueue
+          WHERE (campaign_turn = 1 ${priorityTurnCondition})
           ORDER BY 
             ${priorityOrderClause}
             campaign_turn ASC,

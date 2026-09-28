@@ -1230,7 +1230,12 @@ router.post('/campaigns/launch-batches', (req, res) => {
     const mode = parsedSenderAccountId ? 'CONTROLLED' : (req.body.mode || 'SMART').toUpperCase();
     const fallbackAllowed = req.body.fallbackAllowed !== undefined ? (req.body.fallbackAllowed ? 1 : 0) : (parsedSenderAccountId ? 0 : 1);
     const sendingSpeed = (req.body.sendingSpeed || 'BALANCED').toUpperCase();
-    const customIntervalMs = parseInt(req.body.customIntervalMs || '2500', 10);
+    let customIntervalMs = parseInt(req.body.customIntervalMs, 10);
+    if (isNaN(customIntervalMs) || customIntervalMs <= 0) {
+      if (sendingSpeed === 'SAFE') customIntervalMs = 6500;
+      else if (sendingSpeed === 'FAST') customIntervalMs = 1000;
+      else customIntervalMs = 2500;
+    }
     const campaignCategory = (req.body.category || '').toUpperCase() === 'VISUAL'
       || activeTemplates.some(t => t.category === 'VISUAL' || (t.body_html && /<img\b/i.test(t.body_html)))
       ? 'VISUAL'
@@ -1353,7 +1358,12 @@ router.post('/campaigns/launch-batches', (req, res) => {
 
         const renderedSubject = renderTemplate(assignedTemplate.subject, { ...c, _index: cIdx }, true);
         const renderedBody = renderTemplate(assignedTemplate.body_html, { ...c, _index: cIdx }, false);
-        queueInsert.run(campaignId, contactId, c.email, c.name || '', renderedSubject, renderedBody, batchScheduledAt, assignedTemplate.id);
+
+        // Stagger scheduled_at per recipient to strictly enforce custom pacing & clean sender rotation
+        const recipientMs = startMs + (cIdx * customIntervalMs);
+        const recipientScheduledAt = formatSqliteDateTime(new Date(recipientMs));
+
+        queueInsert.run(campaignId, contactId, c.email, c.name || '', renderedSubject, renderedBody, recipientScheduledAt, assignedTemplate.id);
       }
 
       db.prepare(`
@@ -1794,7 +1804,10 @@ router.post('/campaigns/:id/clone', (req, res) => {
       const assignedTemplate = activeTemplates[cIdx % activeTemplates.length];
       const renderedSubject = renderTemplate(assignedTemplate.subject, { ...cObj, email: it.email, _index: cIdx }, true);
       const renderedBody = renderTemplate(assignedTemplate.body_html, { ...cObj, email: it.email, _index: cIdx }, false);
-      queueInsert.run(newCampId, contact?.id || null, it.email, it.name || '', renderedSubject, renderedBody, nowSql, assignedTemplate.id);
+      
+      const itemMs = Date.now() + (cIdx * numericIntervalMs);
+      const itemScheduledAt = formatSqliteDateTime(new Date(itemMs));
+      queueInsert.run(newCampId, contact?.id || null, it.email, it.name || '', renderedSubject, renderedBody, itemScheduledAt, assignedTemplate.id);
     }
 
     db.prepare(`
