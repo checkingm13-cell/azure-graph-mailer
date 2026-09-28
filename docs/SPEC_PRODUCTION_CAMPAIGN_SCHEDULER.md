@@ -74,57 +74,108 @@ The campaign scheduling engine orchestrates multi-account, high-throughput deliv
 ## 3. Queue Worker Scheduler Engine (`src/services/queueWorker.js`)
 
 ### 3.1 Priority Queue Selection Query (IST Anchored)
-The worker extracts eligible queue items up to the active concurrency limit (default: 10):
+### 3.1 Priority Queue Selection Query (IST Anchored with Pacing Guard)
+To prevent parallel account collisions and enforce strict per-recipient sequential pacing across regular campaigns, the worker selects queue items using a window-partitioned CTE (`campaign_turn = 1`):
 
 ```sql
-SELECT q.*, c.name AS campaign_name, c.status AS campaign_status,
-       c.mode AS campaign_mode,
-       COALESCE(c.pinned_account_id, c.sender_account_id) AS campaign_pinned_account_id,
-       c.fallback_allowed AS campaign_fallback_allowed,
-       c.custom_interval_ms AS campaign_custom_interval_ms
-FROM queue q
-JOIN campaigns c ON q.campaign_id = c.id
-WHERE q.status = 'queued'
-  AND (q.scheduled_at IS NULL OR q.scheduled_at <= datetime('now', '+330 minutes'))
-  AND c.status IN ('SCHEDULED', 'QUEUED', 'RUNNING')
+WITH RankedQueue AS (
+  SELECT q.*, c.name AS campaign_name, c.status AS campaign_status,
+         c.mode AS campaign_mode,
+         COALESCE(c.pinned_account_id, c.sender_account_id) AS campaign_pinned_account_id,
+         c.fallback_allowed AS campaign_fallback_allowed,
+         c.custom_interval_ms AS campaign_custom_interval_ms,
+         ROW_NUMBER() OVER (PARTITION BY q.campaign_id ORDER BY q.scheduled_at ASC, q.id ASC) AS campaign_turn
+  FROM queue q
+  JOIN campaigns c ON q.campaign_id = c.id
+  WHERE q.status = 'queued'
+    AND (q.scheduled_at IS NULL OR q.scheduled_at <= datetime('now', '+330 minutes'))
+    AND c.status IN ('SCHEDULED', 'QUEUED', 'RUNNING')
+)
+SELECT * FROM RankedQueue
+WHERE (campaign_turn = 1 OR campaign_id IN (:priorityIds))
 ORDER BY 
   CASE 
-    WHEN q.campaign_id IN (:priorityIds) THEN 0 
-    WHEN c.status = 'RUNNING' THEN 1 
+    WHEN campaign_id IN (:priorityIds) THEN 0 
+    WHEN campaign_status = 'RUNNING' THEN 1 
     ELSE 2 
   END ASC,
-  CASE WHEN q.scheduled_at IS NULL THEN 0 ELSE 1 END ASC,
-  q.scheduled_at ASC,
-  q.id ASC
+  CASE WHEN scheduled_at IS NULL THEN 0 ELSE 1 END ASC,
+  scheduled_at ASC,
+  id ASC
 LIMIT :concurrency;
 ```
 
-### 3.2 Account Lease & Auto-Fallback Logic
-```javascript
-let account = null;
-if (item.campaign_pinned_account_id) {
-  account = availableAccounts.find(a => a.id === item.campaign_pinned_account_id && !assignedAccountIds.has(a.id));
-  // Auto-Fallback if pinned account is saturated (sent_today >= daily_limit) or in cooldown
-  if (!account) {
-    account = availableAccounts.find(a => !assignedAccountIds.has(a.id)) || availableAccounts[idx % availableAccounts.length];
-  }
-} else {
-  account = availableAccounts.find(a => !assignedAccountIds.has(a.id)) || availableAccounts[idx % availableAccounts.length];
-}
-```
-
-### 3.3 Lifecycle Hooks
-- **Campaign Activation**: When first email dispatches:
-  `UPDATE campaigns SET status = 'RUNNING', started_at = COALESCE(started_at, datetime('now', '+330 minutes')) WHERE id = ?`
-- **Campaign Completion**: When `COUNT(status IN ('queued', 'sending')) = 0`:
-  `UPDATE campaigns SET status = 'COMPLETED', completed_at = datetime('now', '+330 minutes') WHERE id = ?`
-- **Batch Chaining Trigger**: Calls `batchChainManager.checkAndTriggerNextBatch(campaignId, batchNumber)` immediately upon completion.
-- **Stranded Email Watchdog**: Every 30s, rescues stranded `sending` records:
-  `UPDATE queue SET status = 'queued', account_id = NULL, scheduled_at = datetime('now', '+330 minutes') WHERE status = 'sending'`
+> [!IMPORTANT]
+> - **Regular Campaigns (`campaign_turn = 1`)**: Exactly **one email per regular campaign** is processed in each worker tick. This enables the available accounts in the pool to rotate naturally (`last_sent_at ASC`) without firing 5–10 emails simultaneously.
+> - **Priority Instant Send Bypass (`campaign_id IN (:priorityIds)`)**: Triggered by user 1-Click "Send Now", this bypasses the turn restriction to unleash full multi-account parallel throughput.
 
 ---
 
-## 4. API Endpoints
+## 4. Staggered Batches & Production Request Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Editorial Operator
+    participant UI as Browser Dashboard
+    participant API as Express API (/api/campaigns/launch-batches)
+    participant DB as SQLite Database
+    participant Worker as QueueWorker Loop
+    participant M365 as Sender Pool (Graph / OCI)
+
+    User->>UI: Selects CSV, Templates, Stagger Interval (e.g. 60m), Custom Speed (e.g. 2.5s)
+    User->>UI: Inputs Target Launch Date & Time (e.g. 28-09-2026 02:27 PM)
+    UI->>API: POST /api/campaigns/launch-batches (staggerIntervalMinutes: 60, customIntervalMs: 2500)
+    
+    Note over API: parseIST() evaluates Target Time.<br/>If in future: baseMs = targetMs.<br/>If in past/now: baseMs = Date.now().
+    
+    loop For each Batch i in Batches
+        Note over API: batchScheduledAt = baseMs + (i * staggerIntervalMs)
+        API->>DB: INSERT INTO campaigns (status = 'SCHEDULED', scheduled_at = batchScheduledAt)
+        loop For each Contact j in Batch
+            Note over API: itemScheduledAt = batchScheduledAt + (j * customIntervalMs)
+            API->>DB: INSERT INTO queue (scheduled_at = itemScheduledAt)
+        end
+    end
+
+    API-->>UI: 200 OK (Created Batches & Queued Items)
+    
+    loop Every Tick (1000ms - 2000ms)
+        Worker->>DB: SELECT RankedQueue WHERE scheduled_at <= NOW(+330m) AND campaign_turn = 1
+        alt Batch i Scheduled Time Not Yet Arrived
+            DB-->>Worker: 0 rows (Batch held on SCHEDULED hold)
+        else Batch i Scheduled Time Arrived (and recipient turn ready)
+            DB-->>Worker: Return 1 recipient item
+            Worker->>DB: Lease next available account (last_sent_at ASC)
+            Worker->>M365: Dispatch Email
+            M365-->>Worker: Sent 200 OK / 202 Accepted
+            Worker->>DB: UPDATE queue SET status = 'sent', sent_at = NOW(+330m)
+        end
+    end
+```
+
+### 4.1 Dispatch Timing Calculations
+
+1. **Target Launch Time vs Immediate Start**:
+   - `scheduleMode === 'immediate'`: Base start time is `Date.now()`.
+   - `scheduleMode === 'scheduled' || 'staggered'`: Evaluated via `parseIST(scheduledDateTimeIST)`.
+   - If the user-specified time has already elapsed (`parsed <= Date.now()`), the system safely falls back to `baseMs = Date.now()`. If future, `baseMs = parsedMs`.
+
+2. **Batch Staggering Formula**:
+   $$\text{batchScheduledAt}_i = \text{baseMs} + (i \times \text{batchStaggerIntervalMinutes} \times 60{,}000)$$
+   - `Batch_01` begins at $\text{baseMs}$.
+   - `Batch_02` remains on hold until $\text{baseMs} + 60\text{ min}$.
+   - `Batch_03` remains on hold until $\text{baseMs} + 120\text{ min}$.
+
+3. **Per-Recipient Granular Timestamp Staggering**:
+   $$\text{itemScheduledAt}_{i, j} = \text{batchScheduledAt}_i + (j \times \text{customIntervalMs})$$
+   - Recipient #1 is eligible at $\text{batchScheduledAt}_i + 0\text{s}$.
+   - Recipient #2 is eligible at $\text{batchScheduledAt}_i + 2.5\text{s}$.
+   - Recipient #3 is eligible at $\text{batchScheduledAt}_i + 5.0\text{s}$.
+
+---
+
+## 5. API Endpoints
 
 1. `POST /api/campaigns/:id/send-now`:
    - Recursively targets campaign and child batches (`parent_id = :id` OR `name LIKE ':name_Batch_%'`).
@@ -138,7 +189,7 @@ if (item.campaign_pinned_account_id) {
 
 ---
 
-## 5. Pacing & Concurrency Controls
+## 6. Pacing & Concurrency Controls
 
 - **Worker Concurrency**: 10 concurrent dispatches per loop tick (managed via `worker_concurrency` setting, capped at 20).
 - **Dual Pacing Modes**:
@@ -148,7 +199,7 @@ if (item.campaign_pinned_account_id) {
 
 ---
 
-## 6. Batch Chain Manager Specification
+## 7. Batch Chain Manager Specification
 
 - **Naming Convention**: `${baseCampaignName}_Batch_${batchNumber}` (e.g., `17-9-26-campaign01_Batch_01`).
 - **Strict Series Isolation**: Queries next batch using `${baseName}_Batch_${nextBatchStr}`.
@@ -157,8 +208,10 @@ if (item.campaign_pinned_account_id) {
 ---
 
 ## 🔗 Related Notes (Obsidian Links)
-* [[INCIDENT_REPORT_QUEUE_FREEZE_IST_TIMEZONE_AND_SEND_NOW_AUDIT]]
+* [[INCIDENT_REPORT_DISPATCH_PACING_PARALLEL_BURST_AND_RECIPIENT_STAGGER]]
+* [[UI_DESIGN_SYSTEM_AND_LIGHT_THEME_SPECIFICATION]]
+* [[ALGORITHM_TIMING_SCHEDULING_AND_WORKERS_DSA]]
 * [[ARCHITECTURE_AND_SYSTEM_DESIGN]]
-* [[INCIDENT_REPORT_49_50_STUCK_BATCHES_AND_DSA_AUDIT]]
+* [[INCIDENT_REPORT_QUEUE_FREEZE_IST_TIMEZONE_AND_SEND_NOW_AUDIT]]
 * [[DEPLOYMENT_GUIDE]]
 * [[README]]
