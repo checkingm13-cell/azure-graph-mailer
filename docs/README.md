@@ -35,6 +35,7 @@ Welcome to the **Azure Graph Mailer** Obsidian Vault. This vault documents the f
 ---
 
 ## 🏗️ Architecture & Specifications
+- **[[END_TO_END_REQUEST_PROCESSING_LIFECYCLE_ARCHITECTURE]]**: Master technical architecture specification tracing the complete end-to-end request processing lifecycles: CSV lead ingestion & deduplication, batch division & monitoring test inboxes, template engine with dynamic apex link rewriting, 24/7 queue worker loop with `campaign_turn = 1` pacing guard, multi-provider cloud transports (Graph, ACS, OCI SMTP), real-time telemetry with drawer layout freezing, and Cloudflare Edge WebP creative optimization.
 - **[[UI_DESIGN_SYSTEM_AND_LIGHT_THEME_SPECIFICATION]]**: Complete design system reference for the modern whitish-slate light theme (`#f1f5f9` canvas, `#ffffff` cards, `#e2e8f0` borders), Windows OS dark-mode dropdown override (`color-scheme: light`), status badge pills, inspection drawer, and mobile bottom navigation.
 - **[[ENTERPRISE_DELIVERABILITY_BLUEPRINT_VERP_SES_AND_HEADERS]]**: Reverse-engineered deliverability blueprint from Federal Bank (Amazon SES) and Crocs (Self-Hosted PowerMTA/VERP): strict DMARC `p=reject`, dual DKIM, RFC 8058 One-Click Unsubscribe, VERP bounce routing, hidden preheaders, and MSO table engineering.
 - **[[VISUAL_CAMPAIGN_AND_OCI_ENGINE_SPECIFICATION]]**: Production specification for Visual Graphic Card campaigns, Worldwide Journals CDN hosting, automated `<img` tag categorization, Google Image Proxy edge pre-caching, strict Oracle OCI SMTP engine lock, and Step 2 radio card UI.
