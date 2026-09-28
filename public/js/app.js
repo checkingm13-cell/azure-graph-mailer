@@ -3009,6 +3009,25 @@ document.addEventListener('DOMContentLoaded', () => {
         drawerMetricFailed.textContent = data.summary.failed || 0;
       }
 
+      // Render customization badges (Batch info, Sender strategy, Pacing, Format)
+      const c = data.campaign;
+      const badgesBox = document.getElementById('drawerCustomizationBadges');
+      if (badgesBox && c) {
+        const isVisual = c.category === 'VISUAL';
+        const speedSec = (c.custom_interval_ms ? (c.custom_interval_ms / 1000).toFixed(1) : (c.sending_speed === 'FAST' ? '1.0' : '2.5')) + 's';
+        const senderText = c.mode === 'CONTROLLED' ? `🎯 Pinned: ${c.sender_email || 'Sender'}` : '⚡ Smart Pool';
+        const batchBadge = data.childBatchCount > 0
+          ? `<span class="badge" style="font-size: 10px; background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.35);">📦 ${data.childBatchCount} Auto-Split Batches</span>`
+          : (c.is_batch ? `<span class="badge" style="font-size: 10px; background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.35);">📦 Sub-Batch (${c.total_count} emails)</span>` : '');
+
+        badgesBox.innerHTML = `
+          ${batchBadge}
+          <span class="badge" style="font-size: 10px; background: rgba(56, 189, 248, 0.15); color: var(--sky); border: 1px solid rgba(56, 189, 248, 0.3);">${senderText}</span>
+          <span class="badge" style="font-size: 10px; background: rgba(16, 185, 129, 0.15); color: var(--emerald); border: 1px solid rgba(16, 185, 129, 0.3);">⏱️ ${c.sending_speed || 'FAST'} (${speedSec})</span>
+          <span class="badge" style="font-size: 10px; background: rgba(245, 158, 11, 0.15); color: var(--amber); border: 1px solid rgba(245, 158, 11, 0.3);">${isVisual ? '🖼️ Visual (OCI Locked)' : '📄 Standard Text'}</span>
+        `;
+      }
+
       const drawerRecipientCount = document.getElementById('drawerRecipientCount');
       if (drawerRecipientCount) {
         drawerRecipientCount.textContent = `Showing ${(data.sampleItems || []).length} recipients`;

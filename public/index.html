@@ -1383,7 +1383,10 @@
     <div class="drawer-header">
       <div>
         <h4 id="drawerBatchName" style="margin: 0; font-size: 15px; color: var(--text-primary);">Campaign Inspection</h4>
-        <span id="drawerBatchStatus" class="badge badge-queued" style="font-size: 10px; margin-top: 4px;">QUEUED</span>
+        <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px; flex-wrap: wrap;">
+          <span id="drawerBatchStatus" class="badge badge-queued" style="font-size: 10px;">QUEUED</span>
+          <div id="drawerCustomizationBadges" style="display: inline-flex; gap: 4px; flex-wrap: wrap;"></div>
+        </div>
       </div>
       <button type="button" id="btnCloseDrawer" class="btn btn-secondary btn-xs" style="font-size: 14px; padding: 4px 10px;">✕</button>
     </div>

@@ -957,6 +957,8 @@ router.get('/campaigns/:id/preview', (req, res) => {
     ok: true,
     campaign: camp,
     summary,
+    childBatchCount: childIds.length,
+    childBatchIds: childIds,
     sampleItems
   });
 });
