@@ -1589,9 +1589,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     items.forEach((item, index) => {
       const keyOrFilename = item.key ? item.key.replace(/^posters\//, '') : item.filename;
+      let cdnUrl = item.url || '';
+      // Ensure any direct Oracle URL gets converted to Cloudflare Edge CDN
+      if (cdnUrl.includes('objectstorage.')) {
+        cdnUrl = `https://cdn.theworldwidejournals.com/posters/${keyOrFilename}`;
+      }
       const effectiveUrl = isSenderDomain 
         ? `https://{{senderDomain}}/posters/${keyOrFilename}`
-        : item.url;
+        : (cdnUrl || `https://cdn.theworldwidejournals.com/posters/${keyOrFilename}`);
 
       const itemCard = document.createElement('div');
       itemCard.style.cssText = 'display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px;';
