@@ -30,7 +30,7 @@
         ⚡ 0.0 emails/sec
       </div>
       <button type="button" id="btnHeaderUploadPoster" class="btn btn-secondary btn-sm"
-        style="font-weight: 600; color: #fbbf24; border-color: rgba(245, 158, 11, 0.5); background: rgba(245, 158, 11, 0.1);">🖼️ Upload Image (OCI)</button>
+        style="font-weight: 600; color: #fbbf24; border-color: rgba(245, 158, 11, 0.5); background: rgba(245, 158, 11, 0.1);">⚡ Upload Image (Cloudflare CDN)</button>
       <input type="file" id="inputHeaderPosterFile" accept="image/*" style="display: none;">
       <button type="button" id="btnOpenQuickTest" class="btn btn-primary btn-sm"
         style="font-weight: 600;">⚡ Quick Test</button>
@@ -656,13 +656,13 @@
                 <div style="display: flex; align-items: center; gap: 8px;">
                   <span style="font-size: 16px;">🖼️</span>
                   <div>
-                    <strong style="color: var(--amber); font-size: 12.5px;">Need to host a new poster/image on OCI CDN?</strong>
-                    <span style="display: block; font-size: 11px; color: var(--text-secondary); margin-top: 1px;">Upload high-converting creative directly to Oracle Cloud Object Storage</span>
+                    <strong style="color: var(--amber); font-size: 12.5px;">Need to host a new poster/image on Cloudflare CDN?</strong>
+                    <span style="display: block; font-size: 11px; color: var(--text-secondary); margin-top: 1px;">Upload high-converting creative accelerated via cdn.theworldwidejournals.com</span>
                   </div>
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center;">
                   <button type="button" id="btnLaunchUploadPoster" class="btn btn-warning btn-sm" style="font-size: 11.5px; font-weight: 600; padding: 4px 10px;">
-                    📤 Upload Image to OCI
+                    ⚡ Upload Image to CDN
                   </button>
                   <input type="file" id="inputLaunchPosterFile" accept="image/*" style="display: none;">
                 </div>
@@ -850,7 +850,7 @@
                 <label class="form-label" style="margin-bottom: 0;">Email Body (HTML supported)</label>
                 <div style="display: flex; gap: 6px; align-items: center;">
                   <button type="button" id="btnUploadPosterImage" class="btn btn-secondary btn-xs" style="background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.4); color: var(--amber); font-weight: 600; padding: 3px 8px; font-size: 11px;">
-                    🖼️ Upload Poster / Image (OCI)
+                    ⚡ Upload Poster / Image (Cloudflare CDN)
                   </button>
                   <input type="file" id="inputPosterImageFile" accept="image/*" style="display: none;">
                   <button type="button" id="btnOpenLinkBuilder" class="btn btn-secondary btn-xs" style="background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.4); color: var(--emerald); font-weight: 600; padding: 3px 8px; font-size: 11px;">
@@ -1078,10 +1078,10 @@
     <div class="modal-card" style="max-width: 520px; width: 90%;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
         <div style="display: flex; align-items: center; gap: 10px;">
-          <span style="font-size: 24px;">🖼️</span>
+          <span style="font-size: 24px;">⚡</span>
           <div>
-            <h3 style="margin: 0; font-size: 16px; color: var(--text-primary);">Upload Poster / Image to OCI CDN</h3>
-            <p style="margin: 0; font-size: 11.5px; color: var(--text-muted);">Host images permanently on Oracle Cloud Object Storage</p>
+            <h3 style="margin: 0; font-size: 16px; color: var(--text-primary);">Upload Poster / Image to Cloudflare CDN</h3>
+            <p style="margin: 0; font-size: 11.5px; color: var(--text-muted);">Accelerated globally via Cloudflare Edge (<code>cdn.theworldwidejournals.com</code>)</p>
           </div>
         </div>
         <button type="button" id="btnCloseUploadModal" class="btn btn-secondary btn-sm" style="padding: 4px 10px; border-radius: 6px;">✕</button>
@@ -1095,7 +1095,7 @@
       </div>
 
       <div id="modalUploadLoading" style="display: none; text-align: center; padding: 14px; color: var(--amber); font-size: 13px; font-weight: 600;">
-        <span style="display: inline-block; animation: pulse 1.5s infinite;">⏳ Compressing &amp; uploading images to OCI CDN in parallel...</span>
+        <span style="display: inline-block; animation: pulse 1.5s infinite;">⏳ Compressing &amp; uploading images to Cloudflare CDN in parallel...</span>
       </div>
 
       <div id="modalUploadResultBox" style="display: none; margin-bottom: 14px; padding: 12px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px;">
