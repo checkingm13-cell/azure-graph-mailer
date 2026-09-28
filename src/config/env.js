@@ -44,7 +44,10 @@ const config = {
   ociS3SecretKey: process.env.OCI_S3_SECRET_KEY || '',
   ociS3Namespace: process.env.OCI_S3_NAMESPACE || '',
   ociS3Bucket: process.env.OCI_S3_BUCKET || '',
-  ociS3Region: process.env.OCI_S3_REGION || 'ap-mumbai-1'
+  ociS3Region: process.env.OCI_S3_REGION || 'ap-mumbai-1',
+
+  // Cloudflare Global CDN Edge Domain
+  cloudflareCdnDomain: process.env.CLOUDFLARE_CDN_DOMAIN || 'cdn.theworldwidejournals.com'
 };
 
 module.exports = Object.freeze(config);

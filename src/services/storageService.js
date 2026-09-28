@@ -34,6 +34,14 @@ function getObjectKey(originalName, mimeType = 'image/webp') {
 }
 
 function getPublicUrl(objectKey) {
+  const filename = objectKey.split('/').filter(Boolean).pop();
+
+  // If Cloudflare CDN Domain is configured, use the lightning-fast edge CDN
+  if (config.cloudflareCdnDomain) {
+    return `https://${config.cloudflareCdnDomain}/posters/${encodeURIComponent(filename)}`;
+  }
+
+  // Fallback to direct Oracle Object Storage endpoint
   const region = config.ociS3Region || 'ap-mumbai-1';
   const encodedKey = objectKey.split('/').map(encodeURIComponent).join('/');
   return `https://objectstorage.${region}.oraclecloud.com/n/${config.ociS3Namespace}/b/${config.ociS3Bucket}/o/${encodedKey}`;

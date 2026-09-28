@@ -2133,10 +2133,10 @@ document.addEventListener('DOMContentLoaded', () => {
       // Self-heal any accidental triple slash in preview
       out = out.replace(/https?:\/\/\//gi, `https://${senderDomain}/`);
 
-      // Route all /posters/... image URLs directly to OCI Object Storage CDN for reliable browser preview
+      // Route all /posters/... image URLs directly to Cloudflare Edge CDN for sub-millisecond browser preview
       out = out.replace(
         /https?:\/\/[^"'\s>]+\/posters\/([^"'\s>]+)/gi,
-        'https://objectstorage.ap-mumbai-1.oraclecloud.com/n/bmgxwcqtiqic/b/wwjemailassets/o/posters/$1'
+        'https://cdn.theworldwidejournals.com/posters/$1'
       );
       return out;
     }
@@ -3131,10 +3131,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (inspectModalBodyContainer) {
       if (item.rendered_html) {
-        // Rewrite image links to direct OCI CDN for guaranteed clean rendering
+        // Rewrite image links to Cloudflare Edge CDN for guaranteed clean rendering
         let cleanHtml = item.rendered_html.replace(
           /https?:\/\/[^"'\s>]+\/posters\/([^"'\s>]+)/gi,
-          'https://objectstorage.ap-mumbai-1.oraclecloud.com/n/bmgxwcqtiqic/b/wwjemailassets/o/posters/$1'
+          'https://cdn.theworldwidejournals.com/posters/$1'
         );
         if (typeof DOMPurify !== 'undefined') {
           inspectModalBodyContainer.innerHTML = DOMPurify.sanitize(cleanHtml, { USE_PROFILES: { html: true } });

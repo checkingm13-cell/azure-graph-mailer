@@ -50,6 +50,7 @@ Welcome to the **Azure Graph Mailer** Obsidian Vault. This vault documents the f
 ---
 
 ## ⚙️ Operations, Warmup & Scaling
+- **[[CLOUDFLARE_CDN_EDGE_IMAGE_DELIVERY_SOP]]**: Standard Operating Procedure for Cloudflare Global CDN Edge acceleration (`cdn.theworldwidejournals.com`), Cloudflare Worker reverse-proxy, sub-millisecond inbox image delivery, and edge RAM caching.
 - **[[OCI_OBJECT_STORAGE_AND_CDN_IMAGE_HOSTING_SOP]]**: Standard Operating Procedure for provisioning public OCI Object Storage buckets, Pre-Authenticated Requests (PAR), setting image MIME types, and automated 1-click dashboard upload roadmap.
 - **[[DEPLOYMENT_GUIDE]]**: Sub-35-second CI/CD deployment guide with GitHub Actions and Azure App Service Linux.
 - **[[M365_SHARED_MAILBOX_SETUP_GUIDE]]**: Creating and routing mailboxes via Microsoft 365 Shared Mailboxes without extra licensing costs.

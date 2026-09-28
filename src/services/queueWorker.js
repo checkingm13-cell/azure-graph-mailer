@@ -507,11 +507,12 @@ class QueueWorker {
               false
             );
 
-            // Self-heal legacy or pre-rendered poster image URLs directly to 0-hop Oracle Cloud CDN
-            const OCI_POSTER_CDN_BASE = 'https://objectstorage.ap-mumbai-1.oraclecloud.com/n/bmgxwcqtiqic/b/wwjemailassets/o/posters';
+            // Self-heal legacy or pre-rendered poster image URLs directly to Cloudflare Edge CDN (with fallback to Oracle Cloud)
+            const cdnHost = config.cloudflareCdnDomain || 'cdn.theworldwidejournals.com';
+            const POSTER_CDN_BASE = `https://${cdnHost}/posters`;
             dynamicHtml = dynamicHtml.replace(
-              /<img\b([^>]*?)\bsrc=["'](?:https?:?\/\/?[^"']*?\/posters(?:%2F|\/))([^"']+?)["']([^>]*?)>/gi,
-              `<img$1src="${OCI_POSTER_CDN_BASE}/$2"$3>`
+              /<img\b([^>]*?)\bsrc=["'](?:https?:?\/\/?[^"']*?\/posters(?:%2F|\/)|https:\/\/objectstorage\.[^"'\s>]+?\/posters(?:%2F|\/))([^"']+?)["']([^>]*?)>/gi,
+              `<img$1src="${POSTER_CDN_BASE}/$2"$3>`
             );
 
             // Auto-detect and bind inline CID image attachments for visual cards

@@ -2012,6 +2012,17 @@ router.post('/upload-image', imageUpload.any(), async (req, res) => {
 
     const results = await Promise.all(uploadTasks);
 
+    // Asynchronously pre-warm Cloudflare Edge CDN & Google Image Proxy for 0ms inbox rendering
+    results.forEach(item => {
+      if (item && item.url) {
+        // Fire-and-forget: warm Cloudflare CDN Edge cache
+        fetch(item.url, { method: 'HEAD' }).catch(() => {});
+        // Fire-and-forget: warm Google Image Proxy
+        const gWarm = `https://images1-focus-opensocial.googleusercontent.com/gadgets/proxy?container=focus&refresh=2592000&url=${encodeURIComponent(item.url)}`;
+        fetch(gWarm, { method: 'GET' }).catch(() => {});
+      }
+    });
+
     // If single file uploaded, return backward-compatible response along with multi-image list
     const isSingle = results.length === 1;
     res.json({
