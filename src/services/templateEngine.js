@@ -120,6 +120,10 @@ function renderTemplate(templateStr, data = {}, isSubject = null) {
     date: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
   };
 
+  // Generate per-recipient unsubscribe token (base64url-encoded email for URL-safe identification)
+  const recipientEmail = (data.email || '').trim().toLowerCase();
+  const unsubToken = recipientEmail ? Buffer.from(recipientEmail).toString('base64url') : '';
+
   // Only inject sender domain tags into replacement map if senderDomain is known!
   // If senderDomain is not provided yet (e.g. at queue creation time before pool account is selected),
   // DO NOT replace {{senderDomain}} with empty string! Preserve {{senderDomain}} for queueWorker dispatch.
@@ -130,6 +134,15 @@ function renderTemplate(templateStr, data = {}, isSubject = null) {
     map['sender_email'] = senderEmail;
     map['senderemail'] = senderEmail;
     map['senderEmail'] = senderEmail;
+
+    // Unsubscribe token and fully-qualified unsubscribe URL (only when sender domain is resolved)
+    if (unsubToken) {
+      map['unsub_token'] = unsubToken;
+      map['unsubtoken'] = unsubToken;
+      map['unsubscribe_url'] = `https://${senderDomain}/unsubscribe?email=${encodeURIComponent(recipientEmail)}&token=${unsubToken}`;
+      map['unsubscribeurl'] = map['unsubscribe_url'];
+      map['unsubscribe_url'] = map['unsubscribe_url'];
+    }
   }
 
   // Replace {{tag}}, {tag}, and [tag] variations (e.g. [FNAME], {{Name}}, {{senderDomain}})

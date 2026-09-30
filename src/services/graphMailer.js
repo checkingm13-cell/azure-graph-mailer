@@ -66,6 +66,27 @@ async function sendViaGraph({
     });
   }
 
+  // RFC 8058 compliant List-Unsubscribe headers for native one-click unsubscribe in Gmail/Yahoo/Outlook
+  const senderDomain = fromEmail.includes('@') ? fromEmail.split('@')[1].trim().toLowerCase() : '';
+  const { extractApexDomain } = require('./templateEngine');
+  const apexDomain = extractApexDomain(senderDomain) || senderDomain;
+  const unsubToken = Buffer.from(toEmail.trim().toLowerCase()).toString('base64url');
+
+  message.internetMessageHeaders = [
+    {
+      name: 'List-Unsubscribe',
+      value: `<https://${apexDomain}/unsubscribe?email=${encodeURIComponent(toEmail.trim())}&token=${unsubToken}>, <mailto:unsubscribe@${apexDomain}?subject=Unsubscribe%20${encodeURIComponent(toEmail.trim())}>`
+    },
+    {
+      name: 'List-Unsubscribe-Post',
+      value: 'List-Unsubscribe=One-Click'
+    },
+    {
+      name: 'List-ID',
+      value: `Worldwide Journals <bulletin.${apexDomain}>`
+    }
+  ];
+
   const mailPayload = {
     message: message
   };

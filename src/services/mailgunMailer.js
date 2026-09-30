@@ -37,7 +37,9 @@ async function sendViaMailgun({ fromEmail, toEmail, subject, htmlBody }) {
     subject: subject,
     html: htmlBody,
     'h:X-Mailer': 'Azure-Graph-Mailer-Mailgun-Engine',
-    'h:List-Unsubscribe': `<mailto:unsubscribe@${domain}>`,
+    'h:List-Unsubscribe': `<https://${domain}/unsubscribe?email=${encodeURIComponent(toEmail.trim())}&token=${Buffer.from(toEmail.trim().toLowerCase()).toString('base64url')}>, <mailto:unsubscribe@${domain}?subject=Unsubscribe%20${encodeURIComponent(toEmail.trim())}>`,
+    'h:List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    'h:List-ID': `Paper Edition <bulletin.${domain}>`,
     'o:tracking': 'yes',
     'o:tracking-clicks': 'htmlonly',
     'o:tracking-opens': 'yes'
